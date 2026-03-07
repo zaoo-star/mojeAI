@@ -207,17 +207,17 @@ onAuthStateChanged(auth, user => {
   <div class="section-title">API Klíče</div>
 
   <div class="ai-card">
-    <div class="ai-card-header"><div class="ai-dot" style="background:#c084fc"></div><span>Claude</span><small>šéf 👑 · Anthropic</small></div>
+    <div class="ai-card-header"><div class="ai-dot" style="background:#c084fc"></div><span>Claude (CEO 👑)</span><small>šéf · Anthropic</small></div>
     <input type="password" id="key-claude" placeholder="sk-ant-..." autocomplete="off">
     <div class="hint">→ console.anthropic.com</div>
   </div>
   <div class="ai-card">
-    <div class="ai-card-header"><div class="ai-dot" style="background:#38bdf8"></div><span>Gemini</span><small>Google · asistent</small></div>
+    <div class="ai-card-header"><div class="ai-dot" style="background:#38bdf8"></div><span>Gemini (Analytik 📊)</span><small>Google</small></div>
     <input type="password" id="key-gemini" placeholder="AIza..." autocomplete="off">
     <div class="hint">→ aistudio.google.com/app/apikey</div>
   </div>
   <div class="ai-card">
-    <div class="ai-card-header"><div class="ai-dot" style="background:#4ade80"></div><span>ChatGPT</span><small>OpenAI · asistent</small></div>
+    <div class="ai-card-header"><div class="ai-dot" style="background:#4ade80"></div><span>ChatGPT (Generalista 🎯)</span><small>OpenAI</small></div>
     <input type="password" id="key-chatgpt" placeholder="sk-proj-..." autocomplete="off">
     <div class="hint">→ platform.openai.com/api-keys</div>
   </div>
@@ -307,9 +307,9 @@ onAuthStateChanged(auth, user => {
 <script>
 // ════ DATA ════
 const BUILTIN_AI = {
-  claude:  { name:'Claude',  rawColor:'#c084fc', key:'', builtin:true, boss:true },
-  gemini:  { name:'Gemini',  rawColor:'#38bdf8', key:'', builtin:true },
-  chatgpt: { name:'ChatGPT', rawColor:'#4ade80', key:'', builtin:true },
+  claude:  { name:'Claude (CEO 👑)',          rawColor:'#c084fc', key:'', builtin:true, boss:true },
+  gemini:  { name:'Gemini (Analytik 📊)',     rawColor:'#38bdf8', key:'', builtin:true },
+  chatgpt: { name:'ChatGPT (Generalista 🎯)', rawColor:'#4ade80', key:'', builtin:true },
 };
 let AI = { ...BUILTIN_AI };
 let active=[], selected=[], history=[], isBusy=false;
