@@ -1,0 +1,483 @@
+<!DOCTYPE html>
+<html lang="cs">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+<title>AI Chat</title>
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #0e0e12;
+    --surface: #17171e;
+    --card: #1e1e28;
+    --border: rgba(255,255,255,0.07);
+    --claude: #c084fc;
+    --gemini: #38bdf8;
+    --chatgpt: #4ade80;
+    --text: #f0f0f5;
+    --muted: rgba(240,240,245,0.4);
+    --input-bg: #1e1e28;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
+  html, body { height: 100%; background: var(--bg); color: var(--text); font-family: 'DM Sans', sans-serif; overflow: hidden; }
+
+  /* SETUP SCREEN */
+  #setup {
+    height: 100vh;
+    overflow-y: auto;
+    padding: 24px 20px 40px;
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+  }
+  .setup-header { text-align: center; padding: 20px 0 8px; }
+  .setup-header h1 { font-size: 26px; font-weight: 600; letter-spacing: -0.5px; }
+  .setup-header p { color: var(--muted); font-size: 14px; margin-top: 6px; }
+
+  .ai-card {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    padding: 16px;
+  }
+  .ai-card-header {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 12px;
+  }
+  .ai-dot { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; }
+  .ai-card-header span { font-weight: 600; font-size: 15px; }
+  .ai-card-header small { color: var(--muted); font-size: 12px; margin-left: auto; }
+  .ai-card input {
+    width: 100%;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 12px 14px;
+    color: var(--text);
+    font-family: 'DM Mono', monospace;
+    font-size: 12px;
+    outline: none;
+  }
+  .ai-card input:focus { border-color: rgba(255,255,255,0.2); }
+  .ai-card input::placeholder { color: var(--muted); }
+  .ai-card .hint { font-size: 11px; color: var(--muted); margin-top: 7px; }
+  .ai-card .hint a { color: inherit; }
+
+  .start-btn {
+    background: var(--text);
+    color: var(--bg);
+    border: none;
+    border-radius: 14px;
+    padding: 16px;
+    font-family: 'DM Sans', sans-serif;
+    font-size: 16px;
+    font-weight: 600;
+    width: 100%;
+    cursor: pointer;
+    transition: opacity 0.2s;
+  }
+  .start-btn:active { opacity: 0.85; }
+
+  /* CHAT SCREEN */
+  #chat { height: 100vh; display: none; flex-direction: column; }
+
+  .chat-header {
+    background: var(--surface);
+    border-bottom: 1px solid var(--border);
+    padding: 14px 16px;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    flex-shrink: 0;
+  }
+  .back-btn {
+    background: none;
+    border: none;
+    color: var(--muted);
+    font-size: 20px;
+    cursor: pointer;
+    padding: 4px;
+    line-height: 1;
+  }
+  .chat-header-title { font-weight: 600; font-size: 16px; flex: 1; }
+  .active-dots { display: flex; gap: 5px; }
+  .active-dot { width: 8px; height: 8px; border-radius: 50%; }
+
+  .messages {
+    flex: 1;
+    overflow-y: auto;
+    padding: 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+    scroll-behavior: smooth;
+  }
+
+  .msg-user {
+    display: flex;
+    justify-content: flex-end;
+  }
+  .msg-user-bubble {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 18px 18px 4px 18px;
+    padding: 12px 16px;
+    max-width: 80%;
+    font-size: 15px;
+    line-height: 1.5;
+  }
+
+  .msg-ais { display: flex; flex-direction: column; gap: 10px; }
+
+  .msg-ai {
+    display: flex;
+    gap: 10px;
+    align-items: flex-start;
+    animation: fadeSlide 0.3s ease;
+  }
+  @keyframes fadeSlide {
+    from { opacity: 0; transform: translateY(8px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+  .ai-avatar {
+    width: 30px;
+    height: 30px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 11px;
+    font-weight: 700;
+    font-family: 'DM Mono', monospace;
+    flex-shrink: 0;
+    margin-top: 2px;
+  }
+  .ai-bubble-wrap { flex: 1; }
+  .ai-name { font-size: 11px; font-weight: 600; margin-bottom: 5px; letter-spacing: 0.5px; text-transform: uppercase; }
+  .ai-bubble {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 4px 18px 18px 18px;
+    padding: 12px 14px;
+    font-size: 14px;
+    line-height: 1.6;
+    color: var(--text);
+  }
+  .ai-bubble.loading {
+    display: flex;
+    gap: 5px;
+    align-items: center;
+    padding: 14px;
+  }
+  .dot-anim { width: 6px; height: 6px; border-radius: 50%; background: var(--muted); animation: bounce 1.2s infinite; }
+  .dot-anim:nth-child(2) { animation-delay: 0.2s; }
+  .dot-anim:nth-child(3) { animation-delay: 0.4s; }
+  @keyframes bounce { 0%,60%,100%{transform:translateY(0)} 30%{transform:translateY(-6px)} }
+
+  .input-area {
+    background: var(--surface);
+    border-top: 1px solid var(--border);
+    padding: 12px 16px;
+    display: flex;
+    gap: 10px;
+    align-items: flex-end;
+    flex-shrink: 0;
+  }
+  #msgInput {
+    flex: 1;
+    background: var(--input-bg);
+    border: 1px solid var(--border);
+    border-radius: 20px;
+    padding: 11px 16px;
+    color: var(--text);
+    font-family: 'DM Sans', sans-serif;
+    font-size: 15px;
+    outline: none;
+    resize: none;
+    max-height: 120px;
+    line-height: 1.4;
+  }
+  #msgInput:focus { border-color: rgba(255,255,255,0.2); }
+  #msgInput::placeholder { color: var(--muted); }
+  .send-btn {
+    width: 42px;
+    height: 42px;
+    border-radius: 50%;
+    background: var(--text);
+    border: none;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    transition: opacity 0.2s;
+  }
+  .send-btn:active { opacity: 0.8; }
+  .send-btn svg { width: 18px; height: 18px; }
+</style>
+</head>
+<body>
+
+<!-- SETUP -->
+<div id="setup">
+  <div class="setup-header">
+    <h1>AI Chat</h1>
+    <p>Vlož API klíče pro AI které chceš použít.<br>Prázdné = přeskočí se.</p>
+  </div>
+
+  <div class="ai-card">
+    <div class="ai-card-header">
+      <div class="ai-dot" style="background:var(--claude)"></div>
+      <span>Claude</span>
+      <small>Anthropic</small>
+    </div>
+    <input type="password" id="key-claude" placeholder="sk-ant-..." autocomplete="off">
+    <div class="hint">→ <a href="https://console.anthropic.com" target="_blank">console.anthropic.com</a></div>
+  </div>
+
+  <div class="ai-card">
+    <div class="ai-card-header">
+      <div class="ai-dot" style="background:var(--gemini)"></div>
+      <span>Gemini</span>
+      <small>Google · zdarma</small>
+    </div>
+    <input type="password" id="key-gemini" placeholder="AIza..." autocomplete="off">
+    <div class="hint">→ <a href="https://aistudio.google.com/app/apikey" target="_blank">aistudio.google.com</a></div>
+  </div>
+
+  <div class="ai-card">
+    <div class="ai-card-header">
+      <div class="ai-dot" style="background:var(--chatgpt)"></div>
+      <span>ChatGPT</span>
+      <small>OpenAI</small>
+    </div>
+    <input type="password" id="key-chatgpt" placeholder="sk-proj-..." autocomplete="off">
+    <div class="hint">→ <a href="https://platform.openai.com/api-keys" target="_blank">platform.openai.com</a></div>
+  </div>
+
+  <button class="start-btn" onclick="startChat()">Spustit chat →</button>
+  <div style="text-align:center;font-size:12px;color:var(--muted);margin-top:-8px">Klíče se uloží v prohlížeči pro příště</div>
+</div>
+
+<!-- CHAT -->
+<div id="chat">
+  <div class="chat-header">
+    <button class="back-btn" onclick="goBack()">←</button>
+    <div class="chat-header-title">AI Chat</div>
+    <div class="active-dots" id="activeDots"></div>
+  </div>
+  <div class="messages" id="messages"></div>
+  <div class="input-area">
+    <textarea id="msgInput" placeholder="Napiš zprávu..." rows="1" onkeydown="handleKey(event)" oninput="autoResize(this)"></textarea>
+    <button class="send-btn" onclick="sendMessage()">
+      <svg viewBox="0 0 24 24" fill="none" stroke="#0e0e12" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+        <line x1="22" y1="2" x2="11" y2="13"></line>
+        <polygon points="22 2 15 22 11 13 2 9 22 2"></polygon>
+      </svg>
+    </button>
+  </div>
+</div>
+
+<script>
+// Načti uložené klíče
+window.addEventListener('DOMContentLoaded', () => {
+  document.getElementById('key-claude').value  = localStorage.getItem('key-claude')  || '';
+  document.getElementById('key-gemini').value  = localStorage.getItem('key-gemini')  || '';
+  document.getElementById('key-chatgpt').value = localStorage.getItem('key-chatgpt') || '';
+});
+
+const AI = {
+  claude:  { name: 'Claude',  color: 'var(--claude)',  key: '' },
+  gemini:  { name: 'Gemini',  color: 'var(--gemini)',  key: '' },
+  chatgpt: { name: 'ChatGPT', color: 'var(--chatgpt)', key: '' },
+};
+
+let active = [];
+let history = [];
+
+function startChat() {
+  AI.claude.key  = document.getElementById('key-claude').value.trim();
+  AI.gemini.key  = document.getElementById('key-gemini').value.trim();
+  AI.chatgpt.key = document.getElementById('key-chatgpt').value.trim();
+
+  // Ulož klíče pro příště
+  localStorage.setItem('key-claude',  AI.claude.key);
+  localStorage.setItem('key-gemini',  AI.gemini.key);
+  localStorage.setItem('key-chatgpt', AI.chatgpt.key);
+
+  active = Object.entries(AI).filter(([,v]) => v.key).map(([k]) => k);
+  if (!active.length) { alert('Vlož aspoň jeden API klíč!'); return; }
+
+  // Active dots
+  const dots = document.getElementById('activeDots');
+  dots.innerHTML = active.map(k =>
+    `<div class="active-dot" style="background:${AI[k].color}" title="${AI[k].name}"></div>`
+  ).join('');
+
+  document.getElementById('setup').style.display = 'none';
+  document.getElementById('chat').style.display = 'flex';
+  document.getElementById('msgInput').focus();
+}
+
+function goBack() {
+  document.getElementById('chat').style.display = 'none';
+  document.getElementById('setup').style.display = 'flex';
+}
+
+function handleKey(e) {
+  if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMessage(); }
+}
+
+function autoResize(el) {
+  el.style.height = 'auto';
+  el.style.height = Math.min(el.scrollHeight, 120) + 'px';
+}
+
+async function sendMessage() {
+  const input = document.getElementById('msgInput');
+  const text = input.value.trim();
+  if (!text) return;
+  input.value = '';
+  input.style.height = 'auto';
+
+  const msgs = document.getElementById('messages');
+
+  // User bubble
+  const userDiv = document.createElement('div');
+  userDiv.className = 'msg-user';
+  userDiv.innerHTML = `<div class="msg-user-bubble">${escHtml(text)}</div>`;
+  msgs.appendChild(userDiv);
+
+  // AI responses container
+  const aisDiv = document.createElement('div');
+  aisDiv.className = 'msg-ais';
+  msgs.appendChild(aisDiv);
+  scrollBottom();
+
+  const responses = {};
+
+  for (const key of active) {
+    const ai = AI[key];
+
+    // Loading bubble
+    const wrap = document.createElement('div');
+    wrap.className = 'msg-ai';
+    wrap.innerHTML = `
+      <div class="ai-avatar" style="background:${ai.color}22;color:${ai.color};border:1px solid ${ai.color}44">
+        ${ai.name[0]}
+      </div>
+      <div class="ai-bubble-wrap">
+        <div class="ai-name" style="color:${ai.color}">${ai.name}</div>
+        <div class="ai-bubble loading" id="bubble-${key}">
+          <div class="dot-anim" style="background:${ai.color}88"></div>
+          <div class="dot-anim" style="background:${ai.color}88"></div>
+          <div class="dot-anim" style="background:${ai.color}88"></div>
+        </div>
+      </div>`;
+    aisDiv.appendChild(wrap);
+    scrollBottom();
+
+    try {
+      let reply = '';
+      if (key === 'claude')  reply = await callClaude(text, responses);
+      if (key === 'gemini')  reply = await callGemini(text, responses);
+      if (key === 'chatgpt') reply = await callChatGPT(text, responses);
+      responses[key] = reply;
+      document.getElementById(`bubble-${key}`).className = 'ai-bubble';
+      document.getElementById(`bubble-${key}`).innerHTML = formatText(reply);
+    } catch(e) {
+      document.getElementById(`bubble-${key}`).className = 'ai-bubble';
+      document.getElementById(`bubble-${key}`).innerHTML = `<span style="color:#f87171">Chyba: ${escHtml(e.message)}</span>`;
+    }
+    scrollBottom();
+  }
+
+  history.push({ user: text, ...responses });
+}
+
+async function callClaude(msg, context) {
+  const messages = [];
+  for (const t of history) {
+    messages.push({ role: 'user', content: t.user });
+    messages.push({ role: 'assistant', content: t.claude || '—' });
+  }
+  messages.push({ role: 'user', content: msg });
+
+  const r = await fetch('https://api.anthropic.com/v1/messages', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'x-api-key': AI.claude.key,
+      'anthropic-version': '2023-06-01',
+      'anthropic-dangerous-direct-browser-access': 'true',
+    },
+    body: JSON.stringify({ model: 'claude-opus-4-5', max_tokens: 1024, system: 'Odpovídej stručně a jasně.', messages })
+  });
+  if (!r.ok) { const e = await r.json(); throw new Error(e.error?.message || r.status); }
+  const d = await r.json();
+  return d.content[0].text;
+}
+
+async function callGemini(msg, context) {
+  const others = Object.entries(context).map(([k,v]) => `${AI[k].name}: ${v}`).join('\n');
+  const prompt = others
+    ? `Uživatel: "${msg}"\n\nOstatní AI odpověděli:\n${others}\n\nTvoje doplnění:`
+    : msg;
+
+  const contents = [];
+  for (const t of history) {
+    contents.push({ role: 'user', parts: [{ text: t.user }] });
+    contents.push({ role: 'model', parts: [{ text: t.gemini || '—' }] });
+  }
+  contents.push({ role: 'user', parts: [{ text: prompt }] });
+
+  const r = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${AI.gemini.key}`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ contents, generationConfig: { maxOutputTokens: 1024 } })
+  });
+  if (!r.ok) { const e = await r.json(); throw new Error(e.error?.message || r.status); }
+  const d = await r.json();
+  return d.candidates[0].content.parts[0].text;
+}
+
+async function callChatGPT(msg, context) {
+  const others = Object.entries(context).map(([k,v]) => `${AI[k].name}: ${v}`).join('\n');
+  const userContent = others
+    ? `Uživatel: "${msg}"\n\nOstatní AI:\n${others}\n\nTvoje doplnění:`
+    : msg;
+
+  const messages = [{ role: 'system', content: 'Odpovídej stručně. Pokud jsou k dispozici odpovědi jiných AI, doplň co chybí.' }];
+  for (const t of history) {
+    messages.push({ role: 'user', content: t.user });
+    messages.push({ role: 'assistant', content: t.chatgpt || '—' });
+  }
+  messages.push({ role: 'user', content: userContent });
+
+  const r = await fetch('https://api.openai.com/v1/chat/completions', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${AI.chatgpt.key}` },
+    body: JSON.stringify({ model: 'gpt-4o', messages, max_tokens: 1024 })
+  });
+  if (!r.ok) { const e = await r.json(); throw new Error(e.error?.message || r.status); }
+  const d = await r.json();
+  return d.choices[0].message.content;
+}
+
+function scrollBottom() {
+  const m = document.getElementById('messages');
+  setTimeout(() => m.scrollTop = m.scrollHeight, 50);
+}
+
+function escHtml(t) {
+  return t.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+
+function formatText(t) {
+  return escHtml(t).replace(/\n/g, '<br>');
+}
+</script>
+</body>
+</html>
