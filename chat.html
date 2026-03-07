@@ -7,477 +7,566 @@
 <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
 <style>
   :root {
-    --bg: #0e0e12;
-    --surface: #17171e;
-    --card: #1e1e28;
-    --border: rgba(255,255,255,0.07);
-    --claude: #c084fc;
-    --gemini: #38bdf8;
-    --chatgpt: #4ade80;
-    --text: #f0f0f5;
-    --muted: rgba(240,240,245,0.4);
-    --input-bg: #1e1e28;
+    --bg:#0e0e12;--surface:#17171e;--card:#1e1e28;--border:rgba(255,255,255,0.07);
+    --claude:#c084fc;--gemini:#38bdf8;--chatgpt:#4ade80;
+    --text:#f0f0f5;--muted:rgba(240,240,245,0.4);--input-bg:#1e1e28;
   }
-  * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
-  html, body { height: 100%; background: var(--bg); color: var(--text); font-family: 'DM Sans', sans-serif; overflow: hidden; }
+  *{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent;}
+  html,body{height:100%;background:var(--bg);color:var(--text);font-family:'DM Sans',sans-serif;overflow:hidden;}
 
-  /* SETUP SCREEN */
-  #setup {
-    height: 100vh;
-    overflow-y: auto;
-    padding: 24px 20px 40px;
-    display: flex;
-    flex-direction: column;
-    gap: 20px;
-  }
-  .setup-header { text-align: center; padding: 20px 0 8px; }
-  .setup-header h1 { font-size: 26px; font-weight: 600; letter-spacing: -0.5px; }
-  .setup-header p { color: var(--muted); font-size: 14px; margin-top: 6px; }
+  /* SCREENS */
+  .screen{height:100vh;display:none;flex-direction:column;}
+  .screen.active{display:flex;}
+  #setup{overflow-y:auto;padding:24px 20px 40px;gap:20px;}
 
-  .ai-card {
-    background: var(--card);
-    border: 1px solid var(--border);
-    border-radius: 16px;
-    padding: 16px;
-  }
-  .ai-card-header {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    margin-bottom: 12px;
-  }
-  .ai-dot { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; }
-  .ai-card-header span { font-weight: 600; font-size: 15px; }
-  .ai-card-header small { color: var(--muted); font-size: 12px; margin-left: auto; }
-  .ai-card input {
-    width: 100%;
-    background: var(--surface);
-    border: 1px solid var(--border);
-    border-radius: 10px;
-    padding: 12px 14px;
-    color: var(--text);
-    font-family: 'DM Mono', monospace;
-    font-size: 12px;
-    outline: none;
-  }
-  .ai-card input:focus { border-color: rgba(255,255,255,0.2); }
-  .ai-card input::placeholder { color: var(--muted); }
-  .ai-card .hint { font-size: 11px; color: var(--muted); margin-top: 7px; }
-  .ai-card .hint a { color: inherit; }
+  /* SETUP */
+  .setup-header{text-align:center;padding:20px 0 8px;}
+  .setup-header h1{font-size:26px;font-weight:600;letter-spacing:-.5px;}
+  .setup-header p{color:var(--muted);font-size:14px;margin-top:6px;}
+  .ai-card{background:var(--card);border:1px solid var(--border);border-radius:16px;padding:16px;}
+  .ai-card-header{display:flex;align-items:center;gap:10px;margin-bottom:12px;}
+  .ai-dot{width:10px;height:10px;border-radius:50%;flex-shrink:0;}
+  .ai-card-header span{font-weight:600;font-size:15px;}
+  .ai-card-header small{color:var(--muted);font-size:12px;margin-left:auto;}
+  .ai-card input{width:100%;background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:12px 14px;color:var(--text);font-family:'DM Mono',monospace;font-size:12px;outline:none;margin-bottom:6px;}
+  .ai-card input:focus{border-color:rgba(255,255,255,0.2);}
+  .ai-card input::placeholder{color:var(--muted);}
+  .hint{font-size:11px;color:var(--muted);}
+  .start-btn{background:var(--text);color:var(--bg);border:none;border-radius:14px;padding:16px;font-family:'DM Sans',sans-serif;font-size:16px;font-weight:600;width:100%;cursor:pointer;}
+  .text-btn{background:none;border:1px dashed var(--border);border-radius:12px;padding:12px;color:var(--muted);font-family:'DM Sans',sans-serif;font-size:14px;width:100%;cursor:pointer;text-align:center;}
+  .text-btn:hover{border-color:rgba(255,255,255,0.2);color:var(--text);}
 
-  .start-btn {
-    background: var(--text);
-    color: var(--bg);
-    border: none;
-    border-radius: 14px;
-    padding: 16px;
-    font-family: 'DM Sans', sans-serif;
-    font-size: 16px;
-    font-weight: 600;
-    width: 100%;
-    cursor: pointer;
-    transition: opacity 0.2s;
-  }
-  .start-btn:active { opacity: 0.85; }
+  /* CUSTOM API MODAL */
+  #modal{position:fixed;inset:0;background:rgba(0,0,0,0.8);display:none;align-items:flex-end;z-index:100;}
+  #modal.open{display:flex;}
+  .modal-box{background:var(--surface);border-radius:20px 20px 0 0;padding:24px 20px 40px;width:100%;display:flex;flex-direction:column;gap:14px;}
+  .modal-box h3{font-size:17px;font-weight:600;}
+  .modal-box input,.modal-box select{width:100%;background:var(--card);border:1px solid var(--border);border-radius:10px;padding:12px 14px;color:var(--text);font-family:'DM Sans',sans-serif;font-size:14px;outline:none;}
+  .modal-box select option{background:var(--card);}
+  .modal-row{display:flex;gap:10px;}
+  .modal-row button{flex:1;padding:13px;border-radius:12px;font-family:'DM Sans',sans-serif;font-size:15px;font-weight:600;cursor:pointer;border:none;}
+  .btn-cancel{background:var(--card);color:var(--muted);}
+  .btn-save{background:var(--text);color:var(--bg);}
 
-  /* CHAT SCREEN */
-  #chat { height: 100vh; display: none; flex-direction: column; }
+  /* CHAT */
+  .chat-header{background:var(--surface);border-bottom:1px solid var(--border);padding:14px 16px;display:flex;align-items:center;gap:12px;flex-shrink:0;}
+  .back-btn{background:none;border:none;color:var(--muted);font-size:20px;cursor:pointer;padding:4px;line-height:1;}
+  .chat-header-title{font-weight:600;font-size:16px;flex:1;}
+  .header-btn{background:none;border:1px solid var(--border);border-radius:8px;color:var(--muted);font-size:12px;padding:6px 10px;cursor:pointer;font-family:'DM Sans',sans-serif;}
 
-  .chat-header {
-    background: var(--surface);
-    border-bottom: 1px solid var(--border);
-    padding: 14px 16px;
-    display: flex;
-    align-items: center;
-    gap: 12px;
-    flex-shrink: 0;
-  }
-  .back-btn {
-    background: none;
-    border: none;
-    color: var(--muted);
-    font-size: 20px;
-    cursor: pointer;
-    padding: 4px;
-    line-height: 1;
-  }
-  .chat-header-title { font-weight: 600; font-size: 16px; flex: 1; }
-  .active-dots { display: flex; gap: 5px; }
-  .active-dot { width: 8px; height: 8px; border-radius: 50%; }
+  /* AI SELECTOR BAR */
+  .ai-selector{background:var(--surface);border-bottom:1px solid var(--border);padding:10px 16px;display:flex;gap:8px;overflow-x:auto;flex-shrink:0;}
+  .ai-selector::-webkit-scrollbar{display:none;}
+  .ai-chip{display:flex;align-items:center;gap:6px;padding:7px 12px;border-radius:20px;border:1px solid var(--border);background:var(--card);cursor:pointer;white-space:nowrap;transition:all .15s;user-select:none;}
+  .ai-chip.selected{border-color:var(--chip-color);background:color-mix(in srgb, var(--chip-color) 15%, transparent);}
+  .ai-chip-dot{width:7px;height:7px;border-radius:50%;}
+  .ai-chip span{font-size:12px;font-weight:600;color:var(--muted);}
+  .ai-chip.selected span{color:var(--text);}
+  .ai-chip-all{font-size:11px;color:var(--muted);padding:7px 10px;}
 
-  .messages {
-    flex: 1;
-    overflow-y: auto;
-    padding: 16px;
-    display: flex;
-    flex-direction: column;
-    gap: 20px;
-    scroll-behavior: smooth;
-  }
-
-  .msg-user {
-    display: flex;
-    justify-content: flex-end;
-  }
-  .msg-user-bubble {
-    background: var(--card);
-    border: 1px solid var(--border);
-    border-radius: 18px 18px 4px 18px;
-    padding: 12px 16px;
-    max-width: 80%;
-    font-size: 15px;
-    line-height: 1.5;
-  }
-
-  .msg-ais { display: flex; flex-direction: column; gap: 10px; }
-
-  .msg-ai {
-    display: flex;
-    gap: 10px;
-    align-items: flex-start;
-    animation: fadeSlide 0.3s ease;
-  }
-  @keyframes fadeSlide {
-    from { opacity: 0; transform: translateY(8px); }
-    to { opacity: 1; transform: translateY(0); }
-  }
-  .ai-avatar {
-    width: 30px;
-    height: 30px;
-    border-radius: 50%;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    font-size: 11px;
-    font-weight: 700;
-    font-family: 'DM Mono', monospace;
-    flex-shrink: 0;
-    margin-top: 2px;
-  }
-  .ai-bubble-wrap { flex: 1; }
-  .ai-name { font-size: 11px; font-weight: 600; margin-bottom: 5px; letter-spacing: 0.5px; text-transform: uppercase; }
-  .ai-bubble {
-    background: var(--card);
-    border: 1px solid var(--border);
-    border-radius: 4px 18px 18px 18px;
-    padding: 12px 14px;
-    font-size: 14px;
-    line-height: 1.6;
-    color: var(--text);
-  }
-  .ai-bubble.loading {
-    display: flex;
-    gap: 5px;
-    align-items: center;
-    padding: 14px;
-  }
-  .dot-anim { width: 6px; height: 6px; border-radius: 50%; background: var(--muted); animation: bounce 1.2s infinite; }
-  .dot-anim:nth-child(2) { animation-delay: 0.2s; }
-  .dot-anim:nth-child(3) { animation-delay: 0.4s; }
-  @keyframes bounce { 0%,60%,100%{transform:translateY(0)} 30%{transform:translateY(-6px)} }
-
-  .input-area {
-    background: var(--surface);
-    border-top: 1px solid var(--border);
-    padding: 12px 16px;
-    display: flex;
-    gap: 10px;
-    align-items: flex-end;
-    flex-shrink: 0;
-  }
-  #msgInput {
-    flex: 1;
-    background: var(--input-bg);
-    border: 1px solid var(--border);
-    border-radius: 20px;
-    padding: 11px 16px;
-    color: var(--text);
-    font-family: 'DM Sans', sans-serif;
-    font-size: 15px;
-    outline: none;
-    resize: none;
-    max-height: 120px;
-    line-height: 1.4;
-  }
-  #msgInput:focus { border-color: rgba(255,255,255,0.2); }
-  #msgInput::placeholder { color: var(--muted); }
-  .send-btn {
-    width: 42px;
-    height: 42px;
-    border-radius: 50%;
-    background: var(--text);
-    border: none;
-    cursor: pointer;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    flex-shrink: 0;
-    transition: opacity 0.2s;
-  }
-  .send-btn:active { opacity: 0.8; }
-  .send-btn svg { width: 18px; height: 18px; }
+  .messages{flex:1;overflow-y:auto;padding:16px;display:flex;flex-direction:column;gap:20px;scroll-behavior:smooth;}
+  .msg-user{display:flex;justify-content:flex-end;}
+  .msg-user-bubble{background:var(--card);border:1px solid var(--border);border-radius:18px 18px 4px 18px;padding:12px 16px;max-width:80%;font-size:15px;line-height:1.5;}
+  .msg-ais{display:flex;flex-direction:column;gap:10px;}
+  .round-divider{display:flex;align-items:center;gap:8px;margin:4px 0;}
+  .round-divider span{font-size:10px;color:var(--muted);letter-spacing:1px;white-space:nowrap;}
+  .round-divider::before,.round-divider::after{content:'';flex:1;height:1px;background:var(--border);}
+  .msg-ai{display:flex;gap:10px;align-items:flex-start;animation:fadeSlide .3s ease;}
+  @keyframes fadeSlide{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:translateY(0)}}
+  .ai-avatar{width:30px;height:30px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;font-family:'DM Mono',monospace;flex-shrink:0;margin-top:2px;}
+  .ai-bubble-wrap{flex:1;}
+  .ai-name{font-size:11px;font-weight:600;margin-bottom:5px;letter-spacing:.5px;text-transform:uppercase;}
+  .ai-bubble{background:var(--card);border:1px solid var(--border);border-radius:4px 18px 18px 18px;padding:12px 14px;font-size:14px;line-height:1.6;color:var(--text);}
+  .ai-bubble.loading{display:flex;gap:5px;align-items:center;padding:14px;}
+  .ai-bubble.final{border-color:rgba(192,132,252,0.3);background:rgba(192,132,252,0.05);}
+  .dot-anim{width:6px;height:6px;border-radius:50%;animation:bounce 1.2s infinite;}
+  .dot-anim:nth-child(2){animation-delay:.2s;}
+  .dot-anim:nth-child(3){animation-delay:.4s;}
+  @keyframes bounce{0%,60%,100%{transform:translateY(0)}30%{transform:translateY(-6px)}}
+  .input-area{background:var(--surface);border-top:1px solid var(--border);padding:12px 16px;display:flex;gap:10px;align-items:flex-end;flex-shrink:0;}
+  #msgInput{flex:1;background:var(--input-bg);border:1px solid var(--border);border-radius:20px;padding:11px 16px;color:var(--text);font-family:'DM Sans',sans-serif;font-size:15px;outline:none;resize:none;max-height:120px;line-height:1.4;}
+  #msgInput::placeholder{color:var(--muted);}
+  .send-btn{width:42px;height:42px;border-radius:50%;background:var(--text);border:none;cursor:pointer;display:flex;align-items:center;justify-content:center;flex-shrink:0;}
+  .send-btn:disabled{background:#333;cursor:default;}
 </style>
 </head>
 <body>
 
 <!-- SETUP -->
-<div id="setup">
+<div id="setup" class="screen active">
   <div class="setup-header">
     <h1>AI Chat</h1>
-    <p>Vlož API klíče pro AI které chceš použít.<br>Prázdné = přeskočí se.</p>
+    <p>Vlož API klíče. Prázdné = přeskočí se.</p>
   </div>
-
   <div class="ai-card">
-    <div class="ai-card-header">
-      <div class="ai-dot" style="background:var(--claude)"></div>
-      <span>Claude</span>
-      <small>Anthropic</small>
-    </div>
+    <div class="ai-card-header"><div class="ai-dot" style="background:var(--claude)"></div><span>Claude</span><small>šéf 👑</small></div>
     <input type="password" id="key-claude" placeholder="sk-ant-..." autocomplete="off">
-    <div class="hint">→ <a href="https://console.anthropic.com" target="_blank">console.anthropic.com</a></div>
+    <div class="hint">→ console.anthropic.com</div>
   </div>
-
   <div class="ai-card">
-    <div class="ai-card-header">
-      <div class="ai-dot" style="background:var(--gemini)"></div>
-      <span>Gemini</span>
-      <small>Google · zdarma</small>
-    </div>
+    <div class="ai-card-header"><div class="ai-dot" style="background:var(--gemini)"></div><span>Gemini</span><small>Google · asistent</small></div>
     <input type="password" id="key-gemini" placeholder="AIza..." autocomplete="off">
-    <div class="hint">→ <a href="https://aistudio.google.com/app/apikey" target="_blank">aistudio.google.com</a></div>
+    <div class="hint">→ aistudio.google.com/app/apikey</div>
   </div>
-
   <div class="ai-card">
-    <div class="ai-card-header">
-      <div class="ai-dot" style="background:var(--chatgpt)"></div>
-      <span>ChatGPT</span>
-      <small>OpenAI</small>
-    </div>
+    <div class="ai-card-header"><div class="ai-dot" style="background:var(--chatgpt)"></div><span>ChatGPT</span><small>OpenAI · asistent</small></div>
     <input type="password" id="key-chatgpt" placeholder="sk-proj-..." autocomplete="off">
-    <div class="hint">→ <a href="https://platform.openai.com/api-keys" target="_blank">platform.openai.com</a></div>
+    <div class="hint">→ platform.openai.com/api-keys</div>
   </div>
-
+  <div id="customAiCards"></div>
+  <button class="text-btn" onclick="openModal()">+ Přidat vlastní AI (Mistral, Grok, Llama...)</button>
   <button class="start-btn" onclick="startChat()">Spustit chat →</button>
-  <div style="text-align:center;font-size:12px;color:var(--muted);margin-top:-8px">Klíče se uloží v prohlížeči pro příště</div>
+  <div style="text-align:center;font-size:11px;color:var(--muted)">Klíče se uloží v prohlížeči pro příště</div>
 </div>
 
 <!-- CHAT -->
-<div id="chat">
+<div id="chat" class="screen">
   <div class="chat-header">
     <button class="back-btn" onclick="goBack()">←</button>
     <div class="chat-header-title">AI Chat</div>
-    <div class="active-dots" id="activeDots"></div>
+    <button class="header-btn" onclick="goBack()">⚙ Nastavení</button>
   </div>
+  <div class="ai-selector" id="aiSelector"></div>
   <div class="messages" id="messages"></div>
   <div class="input-area">
-    <textarea id="msgInput" placeholder="Napiš zprávu..." rows="1" onkeydown="handleKey(event)" oninput="autoResize(this)"></textarea>
-    <button class="send-btn" onclick="sendMessage()">
+    <textarea id="msgInput" placeholder="Napiš zprávu…" rows="1" onkeydown="handleKey(event)" oninput="autoResize(this)"></textarea>
+    <button class="send-btn" id="sendBtn" onclick="sendMessage()">
       <svg viewBox="0 0 24 24" fill="none" stroke="#0e0e12" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-        <line x1="22" y1="2" x2="11" y2="13"></line>
-        <polygon points="22 2 15 22 11 13 2 9 22 2"></polygon>
+        <line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/>
       </svg>
     </button>
   </div>
 </div>
 
+<!-- MODAL: Přidat vlastní AI -->
+<div id="modal" onclick="closeModalOutside(event)">
+  <div class="modal-box">
+    <h3>Přidat vlastní AI</h3>
+    <input type="text" id="m-name" placeholder="Název (např. Mistral)" maxlength="20">
+    <input type="password" id="m-key" placeholder="API klíč">
+    <input type="text" id="m-url" placeholder="API URL (OpenAI-compatible endpoint)">
+    <input type="text" id="m-model" placeholder="Model (např. mistral-large-latest)">
+    <input type="text" id="m-color" placeholder="Barva (hex, např. #f59e0b)" value="#f59e0b">
+    <div class="hint" style="margin-top:-6px">Funguje s libovolným OpenAI-compatible API (Mistral, Grok, Groq, Ollama...)</div>
+    <div class="modal-row">
+      <button class="btn-cancel" onclick="closeModal()">Zrušit</button>
+      <button class="btn-save" onclick="saveCustomAi()">Přidat</button>
+    </div>
+  </div>
+</div>
+
 <script>
-// Načti uložené klíče
+// ════ DATA ════
+const BUILTIN_AI = {
+  claude:  { name:'Claude',  rawColor:'#c084fc', key:'', builtin:true, boss:true },
+  gemini:  { name:'Gemini',  rawColor:'#38bdf8', key:'', builtin:true },
+  chatgpt: { name:'ChatGPT', rawColor:'#4ade80', key:'', builtin:true },
+};
+let AI = { ...BUILTIN_AI };
+let active = [], selected = [], history = [], isBusy = false;
+
+const CLAUDE_MODELS = {
+  haiku:  { id:'claude-haiku-4-5-20251001',  label:'Haiku'  },
+  sonnet: { id:'claude-sonnet-4-5-20251022', label:'Sonnet' },
+  opus:   { id:'claude-opus-4-5-20251101',   label:'Opus'   },
+};
+
+// ════ INIT ════
 window.addEventListener('DOMContentLoaded', () => {
   document.getElementById('key-claude').value  = localStorage.getItem('key-claude')  || '';
   document.getElementById('key-gemini').value  = localStorage.getItem('key-gemini')  || '';
   document.getElementById('key-chatgpt').value = localStorage.getItem('key-chatgpt') || '';
+  loadCustomAIs();
 });
 
-const AI = {
-  claude:  { name: 'Claude',  color: 'var(--claude)',  key: '' },
-  gemini:  { name: 'Gemini',  color: 'var(--gemini)',  key: '' },
-  chatgpt: { name: 'ChatGPT', color: 'var(--chatgpt)', key: '' },
-};
+function loadCustomAIs() {
+  const saved = JSON.parse(localStorage.getItem('custom-ais') || '[]');
+  const container = document.getElementById('customAiCards');
+  container.innerHTML = '';
+  for (const c of saved) {
+    AI[c.id] = { name:c.name, rawColor:c.color, key:c.key, url:c.url, model:c.model, builtin:false };
+    const card = document.createElement('div');
+    card.className = 'ai-card';
+    card.innerHTML = `
+      <div class="ai-card-header">
+        <div class="ai-dot" style="background:${c.color}"></div>
+        <span>${escHtml(c.name)}</span>
+        <small>vlastní AI &nbsp;<button onclick="removeCustomAi('${c.id}')" style="background:none;border:none;color:#f87171;cursor:pointer;font-size:11px;">✕ smazat</button></small>
+      </div>
+      <input type="password" id="key-${c.id}" value="${escHtml(c.key)}" placeholder="API klíč" autocomplete="off">
+      <div class="hint">→ ${escHtml(c.url)}</div>`;
+    container.appendChild(card);
+  }
+}
 
-let active = [];
-let history = [];
+function saveCustomAi() {
+  const name  = document.getElementById('m-name').value.trim();
+  const key   = document.getElementById('m-key').value.trim();
+  const url   = document.getElementById('m-url').value.trim();
+  const model = document.getElementById('m-model').value.trim();
+  const color = document.getElementById('m-color').value.trim() || '#f59e0b';
+  if (!name || !url || !model) { alert('Vyplň název, URL a model!'); return; }
+  const id = 'custom_' + Date.now();
+  const saved = JSON.parse(localStorage.getItem('custom-ais') || '[]');
+  saved.push({ id, name, key, url, model, color });
+  localStorage.setItem('custom-ais', JSON.stringify(saved));
+  closeModal();
+  loadCustomAIs();
+}
 
+function removeCustomAi(id) {
+  const saved = JSON.parse(localStorage.getItem('custom-ais') || '[]').filter(c => c.id !== id);
+  localStorage.setItem('custom-ais', JSON.stringify(saved));
+  delete AI[id];
+  loadCustomAIs();
+}
+
+// ════ SETUP → CHAT ════
 function startChat() {
   AI.claude.key  = document.getElementById('key-claude').value.trim();
   AI.gemini.key  = document.getElementById('key-gemini').value.trim();
   AI.chatgpt.key = document.getElementById('key-chatgpt').value.trim();
-
-  // Ulož klíče pro příště
   localStorage.setItem('key-claude',  AI.claude.key);
   localStorage.setItem('key-gemini',  AI.gemini.key);
   localStorage.setItem('key-chatgpt', AI.chatgpt.key);
 
+  // Ulož klíče vlastních AI
+  const customs = JSON.parse(localStorage.getItem('custom-ais') || '[]');
+  for (const c of customs) {
+    const inp = document.getElementById('key-' + c.id);
+    if (inp) { c.key = inp.value.trim(); AI[c.id].key = c.key; }
+  }
+  localStorage.setItem('custom-ais', JSON.stringify(customs));
+
   active = Object.entries(AI).filter(([,v]) => v.key).map(([k]) => k);
   if (!active.length) { alert('Vlož aspoň jeden API klíč!'); return; }
 
-  // Active dots
-  const dots = document.getElementById('activeDots');
-  dots.innerHTML = active.map(k =>
-    `<div class="active-dot" style="background:${AI[k].color}" title="${AI[k].name}"></div>`
-  ).join('');
-
-  document.getElementById('setup').style.display = 'none';
-  document.getElementById('chat').style.display = 'flex';
+  selected = [...active]; // výchozí = všechny
+  buildSelector();
+  showScreen('chat');
   document.getElementById('msgInput').focus();
 }
 
-function goBack() {
-  document.getElementById('chat').style.display = 'none';
-  document.getElementById('setup').style.display = 'flex';
+function goBack() { showScreen('setup'); }
+function showScreen(id) {
+  document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
+  document.getElementById(id).classList.add('active');
 }
 
-function handleKey(e) {
-  if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMessage(); }
+// ════ AI SELECTOR ════
+function buildSelector() {
+  const bar = document.getElementById('aiSelector');
+  bar.innerHTML = '';
+
+  // "Všechny" chip
+  const allChip = document.createElement('div');
+  allChip.className = 'ai-chip ai-chip-all' + (isAllSelected() ? ' selected' : '');
+  allChip.style.setProperty('--chip-color', '#888');
+  allChip.innerHTML = `<span>Všechny</span>`;
+  allChip.onclick = () => { selected = [...active]; buildSelector(); };
+  bar.appendChild(allChip);
+
+  for (const key of active) {
+    const ai = AI[key];
+    const chip = document.createElement('div');
+    chip.className = 'ai-chip' + (selected.includes(key) ? ' selected' : '');
+    chip.style.setProperty('--chip-color', ai.rawColor);
+    chip.innerHTML = `<div class="ai-chip-dot" style="background:${ai.rawColor}"></div><span>${ai.name}</span>`;
+    chip.onclick = () => toggleAI(key);
+    bar.appendChild(chip);
+  }
 }
 
-function autoResize(el) {
-  el.style.height = 'auto';
-  el.style.height = Math.min(el.scrollHeight, 120) + 'px';
+function isAllSelected() { return active.every(k => selected.includes(k)); }
+
+function toggleAI(key) {
+  if (selected.includes(key)) {
+    if (selected.length === 1) return; // aspoň jedna musí být
+    selected = selected.filter(k => k !== key);
+  } else {
+    selected.push(key);
+  }
+  buildSelector();
 }
+
+// ════ MODAL ════
+function openModal() { document.getElementById('modal').classList.add('open'); }
+function closeModal() { document.getElementById('modal').classList.remove('open'); }
+function closeModalOutside(e) { if (e.target === document.getElementById('modal')) closeModal(); }
+
+// ════ CHAT ════
+function handleKey(e) { if (e.key==='Enter'&&!e.shiftKey){e.preventDefault();sendMessage();} }
+function autoResize(el) { el.style.height='auto'; el.style.height=Math.min(el.scrollHeight,120)+'px'; }
 
 async function sendMessage() {
+  if (isBusy) return;
   const input = document.getElementById('msgInput');
   const text = input.value.trim();
   if (!text) return;
-  input.value = '';
-  input.style.height = 'auto';
+  input.value = ''; input.style.height = 'auto';
+  isBusy = true;
+  document.getElementById('sendBtn').disabled = true;
 
   const msgs = document.getElementById('messages');
-
-  // User bubble
   const userDiv = document.createElement('div');
   userDiv.className = 'msg-user';
   userDiv.innerHTML = `<div class="msg-user-bubble">${escHtml(text)}</div>`;
   msgs.appendChild(userDiv);
 
-  // AI responses container
   const aisDiv = document.createElement('div');
   aisDiv.className = 'msg-ais';
   msgs.appendChild(aisDiv);
   scrollBottom();
 
-  const responses = {};
+  const currentSelected = [...selected];
+  const assistants = currentSelected.filter(k => !AI[k].boss);
+  const hasClaude  = currentSelected.includes('claude');
+  const MAX_ROUNDS = 5;
 
-  for (const key of active) {
-    const ai = AI[key];
+  let claudeVerdict = '', assistantAnswers = {};
 
-    // Loading bubble
-    const wrap = document.createElement('div');
-    wrap.className = 'msg-ai';
-    wrap.innerHTML = `
-      <div class="ai-avatar" style="background:${ai.color}22;color:${ai.color};border:1px solid ${ai.color}44">
-        ${ai.name[0]}
-      </div>
-      <div class="ai-bubble-wrap">
-        <div class="ai-name" style="color:${ai.color}">${ai.name}</div>
-        <div class="ai-bubble loading" id="bubble-${key}">
-          <div class="dot-anim" style="background:${ai.color}88"></div>
-          <div class="dot-anim" style="background:${ai.color}88"></div>
-          <div class="dot-anim" style="background:${ai.color}88"></div>
-        </div>
-      </div>`;
-    aisDiv.appendChild(wrap);
-    scrollBottom();
-
+  // Pokud je jen jedna AI – přímá odpověď
+  if (currentSelected.length === 1) {
+    const key = currentSelected[0];
+    const bubble = addBubble(aisDiv, key, AI[key].name.toUpperCase());
     try {
       let reply = '';
-      if (key === 'claude')  reply = await callClaude(text, responses);
-      if (key === 'gemini')  reply = await callGemini(text, responses);
-      if (key === 'chatgpt') reply = await callChatGPT(text, responses);
-      responses[key] = reply;
-      document.getElementById(`bubble-${key}`).className = 'ai-bubble';
-      document.getElementById(`bubble-${key}`).innerHTML = formatText(reply);
-    } catch(e) {
-      document.getElementById(`bubble-${key}`).className = 'ai-bubble';
-      document.getElementById(`bubble-${key}`).innerHTML = `<span style="color:#f87171">Chyba: ${escHtml(e.message)}</span>`;
-    }
+      if (key === 'claude') { const r = await callClaude(text, {}, '', 1); reply = r.text; updateBubbleLabel(bubble, `CLAUDE · ${r.modelLabel}`); }
+      else if (key === 'gemini') reply = await callGemini(text, {});
+      else if (key === 'chatgpt') reply = await callChatGPT(text, {});
+      else reply = await callCustom(key, text, {});
+      finishBubble(bubble, reply);
+    } catch(e) { finishBubble(bubble, null, e.message); }
     scrollBottom();
+    history.push({ user: text });
+    isBusy = false;
+    document.getElementById('sendBtn').disabled = false;
+    return;
   }
 
-  history.push({ user: text, ...responses });
+  // KOLO 0: Asistenti odpovídají paralelně
+  if (assistants.length > 0) {
+    addDivider(aisDiv, 'ASISTENTI ODPOVÍDAJÍ');
+    await Promise.all(assistants.map(async key => {
+      const bubble = addBubble(aisDiv, key, `${AI[key].name.toUpperCase()} · asistent`);
+      try {
+        let reply = '';
+        if (key === 'gemini') reply = await callGemini(text, {});
+        else if (key === 'chatgpt') reply = await callChatGPT(text, {});
+        else reply = await callCustom(key, text, {});
+        assistantAnswers[key] = reply;
+        finishBubble(bubble, reply);
+      } catch(e) { finishBubble(bubble, null, e.message); }
+      scrollBottom();
+    }));
+  }
+
+  if (!hasClaude) {
+    history.push({ user: text, ...assistantAnswers });
+    isBusy = false;
+    document.getElementById('sendBtn').disabled = false;
+    return;
+  }
+
+  // KOLA: Claude → asistenti kontrolují → opakuj
+  for (let round = 1; round <= MAX_ROUNDS; round++) {
+    addDivider(aisDiv, round === 1 ? 'CLAUDE HODNOTÍ' : `CLAUDE REVIDUJE · kolo ${round}`);
+    const claudeBubble = addBubble(aisDiv, 'claude', 'CLAUDE · vyhodnocuje...', true);
+    try {
+      const result = await callClaude(text, assistantAnswers, claudeVerdict, round);
+      claudeVerdict = result.text;
+      updateBubbleLabel(claudeBubble, `CLAUDE · ${result.modelLabel} · šéf`);
+      finishBubble(claudeBubble, claudeVerdict);
+    } catch(e) { finishBubble(claudeBubble, null, e.message); break; }
+    scrollBottom();
+
+    if (assistants.length === 0 || round === MAX_ROUNDS) break;
+
+    addDivider(aisDiv, 'ASISTENTI KONTROLUJÍ');
+    const reviews = {};
+    await Promise.all(assistants.map(async key => {
+      const bubble = addBubble(aisDiv, key, `${AI[key].name.toUpperCase()} · kontroluje`);
+      try {
+        const review = key === 'gemini' ? await reviewGemini(text, claudeVerdict)
+          : key === 'chatgpt' ? await reviewChatGPT(text, claudeVerdict)
+          : await reviewCustom(key, text, claudeVerdict);
+        reviews[key] = review;
+        finishBubble(bubble, `${review.approved ? '✅' : '❌'} ${review.comment}`);
+      } catch(e) { reviews[key] = { approved: true, comment: '' }; finishBubble(bubble, null, e.message); }
+      scrollBottom();
+    }));
+
+    const approveCount = Object.values(reviews).filter(r => r.approved).length;
+    const total = assistants.length;
+    const majority = approveCount >= Math.ceil(total / 2);
+    if (majority) {
+      addDivider(aisDiv, approveCount === total ? '✅ KONSENZUS – všichni souhlasí' : `✅ VĚTŠINA SOUHLASÍ (${approveCount}/${total})`);
+      break;
+    }
+    assistantAnswers = { ...assistantAnswers, ...Object.fromEntries(
+      Object.entries(reviews).filter(([,v]) => !v.approved).map(([k,v]) => [k, v.comment])
+    )};
+  }
+
+  // FINÁLE: Opus
+  addDivider(aisDiv, '👑 FINÁLNÍ ODPOVĚĎ · CLAUDE OPUS');
+  const finalBubble = addBubble(aisDiv, 'claude', 'CLAUDE · Opus · finální verifikace', true);
+  try {
+    const finalText = await callClaudeFinal(text, claudeVerdict, assistantAnswers);
+    finishBubble(finalBubble, finalText, null, true);
+    updateBubbleLabel(finalBubble, 'CLAUDE · Opus · ✓ finální odpověď');
+    claudeVerdict = finalText;
+  } catch(e) { finishBubble(finalBubble, null, e.message); }
+  scrollBottom();
+
+  history.push({ user: text, claude: claudeVerdict });
+  isBusy = false;
+  document.getElementById('sendBtn').disabled = false;
 }
 
-async function callClaude(msg, context) {
-  const messages = [];
-  for (const t of history) {
-    messages.push({ role: 'user', content: t.user });
-    messages.push({ role: 'assistant', content: t.claude || '—' });
-  }
-  messages.push({ role: 'user', content: msg });
+// ════ UI HELPERS ════
+let bc = 0;
+function addBubble(container, aiKey, label, isBoss = false) {
+  const id = 'b' + (++bc);
+  const ai = AI[aiKey];
+  const c = ai.rawColor;
+  const wrap = document.createElement('div');
+  wrap.className = 'msg-ai';
+  wrap.innerHTML = `
+    <div class="ai-avatar" style="background:${c}22;color:${c};border:${isBoss?'2px':'1px'} solid ${c}${isBoss?'88':'44'}">${ai.name[0]}</div>
+    <div class="ai-bubble-wrap">
+      <div class="ai-name bubble-label-${id}" style="color:${c}">${label}</div>
+      <div class="ai-bubble loading bubble-${id}">
+        <div class="dot-anim" style="background:${c}88"></div>
+        <div class="dot-anim" style="background:${c}88"></div>
+        <div class="dot-anim" style="background:${c}88"></div>
+      </div>
+    </div>`;
+  container.appendChild(wrap);
+  scrollBottom();
+  return id;
+}
+function finishBubble(id, text, error = null, isFinal = false) {
+  const el = document.querySelector(`.bubble-${id}`);
+  if (!el) return;
+  el.classList.remove('loading');
+  if (isFinal) el.classList.add('final');
+  el.innerHTML = error ? `<span style="color:#f87171">Chyba: ${escHtml(error)}</span>` : formatText(text);
+}
+function updateBubbleLabel(id, label) {
+  const el = document.querySelector(`.bubble-label-${id}`);
+  if (el) el.textContent = label;
+}
+function addDivider(container, label) {
+  const d = document.createElement('div');
+  d.className = 'round-divider';
+  d.innerHTML = `<span>${label}</span>`;
+  container.appendChild(d);
+}
 
+// ════ API CALLS ════
+async function pickModel(msg) {
   const r = await fetch('https://api.anthropic.com/v1/messages', {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'x-api-key': AI.claude.key,
-      'anthropic-version': '2023-06-01',
-      'anthropic-dangerous-direct-browser-access': 'true',
-    },
-    body: JSON.stringify({ model: 'claude-opus-4-5', max_tokens: 1024, system: 'Odpovídej stručně a jasně.', messages })
+    method:'POST',
+    headers:{'Content-Type':'application/json','x-api-key':AI.claude.key,'anthropic-version':'2023-06-01','anthropic-dangerous-direct-browser-access':'true'},
+    body:JSON.stringify({model:'claude-haiku-4-5-20251001',max_tokens:10,system:'Ohodnoť složitost. Odpověz POUZE: haiku, sonnet, nebo opus.\n- haiku: pozdrav, jednoduchá otázka\n- sonnet: vysvětlení, analýza\n- opus: kód, matematika, věda',messages:[{role:'user',content:msg}]})
   });
-  if (!r.ok) { const e = await r.json(); throw new Error(e.error?.message || r.status); }
+  if(!r.ok) return 'sonnet';
   const d = await r.json();
+  const c = d.content[0].text.trim().toLowerCase();
+  return CLAUDE_MODELS[c] ? c : 'sonnet';
+}
+
+async function callClaude(msg, assistantAnswers, prevVerdict, round) {
+  const modelKey = await pickModel(msg);
+  const model = CLAUDE_MODELS[modelKey];
+  const hasA = Object.keys(assistantAnswers).length > 0;
+  let system = 'Jsi hlavní AI. Dej nejlepší možnou odpověď.';
+  let userContent = msg;
+  if (hasA) {
+    const summary = Object.entries(assistantAnswers).map(([k,v])=>`${AI[k]?.name||k}: ${v}`).join('\n\n');
+    system = round===1
+      ? 'Jsi hlavní AI šéf. Zkontroluj odpovědi asistentů, oprav chyby, dej finální odpověď.'
+      : 'Jsi hlavní AI šéf. Zohledni výhrady asistentů a dej revidovanou odpověď.';
+    userContent = round===1
+      ? `Otázka: ${msg}\n\nOdpovědi asistentů:\n${summary}\n\nTvoje finální odpověď:`
+      : `Otázka: ${msg}\n\nTvůj předchozí verdikt: ${prevVerdict}\n\nVýhrady:\n${summary}\n\nRevidovaná odpověď:`;
+  }
+  const messages = [];
+  for (const t of history) { messages.push({role:'user',content:t.user}); messages.push({role:'assistant',content:t.claude||'—'}); }
+  messages.push({role:'user',content:userContent});
+  const r = await fetch('https://api.anthropic.com/v1/messages',{method:'POST',headers:{'Content-Type':'application/json','x-api-key':AI.claude.key,'anthropic-version':'2023-06-01','anthropic-dangerous-direct-browser-access':'true'},body:JSON.stringify({model:model.id,max_tokens:1024,system,messages})});
+  if(!r.ok){const e=await r.json();throw new Error(e.error?.message||r.status);}
+  const d=await r.json();
+  return {text:d.content[0].text,modelLabel:model.label};
+}
+
+async function callClaudeFinal(msg, verdict, allContext) {
+  const ctx = Object.entries(allContext).map(([k,v])=>`${AI[k]?.name||k}: ${v}`).join('\n\n');
+  const r = await fetch('https://api.anthropic.com/v1/messages',{method:'POST',headers:{'Content-Type':'application/json','x-api-key':AI.claude.key,'anthropic-version':'2023-06-01','anthropic-dangerous-direct-browser-access':'true'},body:JSON.stringify({model:'claude-opus-4-5-20251101',max_tokens:2048,system:'Vydej tu nejdokonalejší možnou odpověď. Integruj to nejlepší z celé diskuze. Buď komplexní ale stručný.',messages:[{role:'user',content:`Otázka: ${msg}\n\nDiskuze:\n${ctx}\n\nPoslední verdikt: ${verdict}\n\nFinální dokonalá odpověď:`}]})});
+  if(!r.ok){const e=await r.json();throw new Error(e.error?.message||r.status);}
+  const d=await r.json();
   return d.content[0].text;
 }
 
 async function callGemini(msg, context) {
-  const others = Object.entries(context).map(([k,v]) => `${AI[k].name}: ${v}`).join('\n');
-  const prompt = others
-    ? `Uživatel: "${msg}"\n\nOstatní AI odpověděli:\n${others}\n\nTvoje doplnění:`
-    : msg;
-
-  const contents = [];
-  for (const t of history) {
-    contents.push({ role: 'user', parts: [{ text: t.user }] });
-    contents.push({ role: 'model', parts: [{ text: t.gemini || '—' }] });
-  }
-  contents.push({ role: 'user', parts: [{ text: prompt }] });
-
-  const r = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${AI.gemini.key}`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ contents, generationConfig: { maxOutputTokens: 1024 } })
-  });
-  if (!r.ok) { const e = await r.json(); throw new Error(e.error?.message || r.status); }
-  const d = await r.json();
+  const others = Object.entries(context).map(([k,v])=>`${AI[k]?.name||k}: ${v}`).join('\n');
+  const prompt = others ? `Otázka: "${msg}"\n\nKontext:\n${others}\n\nTvoje odpověď:` : msg;
+  const r = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${AI.gemini.key}`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({contents:[{role:'user',parts:[{text:prompt}]}],generationConfig:{maxOutputTokens:1024}})});
+  if(!r.ok){const e=await r.json();throw new Error(e.error?.message||r.status);}
+  const d=await r.json();
   return d.candidates[0].content.parts[0].text;
 }
 
+async function reviewGemini(originalMsg, verdict) {
+  const prompt = `Otázka: "${originalMsg}"\nClaude odpověděl: "${verdict}"\nJe odpověď správná a úplná? Odpověz jako JSON: {"approved":true/false,"comment":"komentář"}`;
+  const r = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${AI.gemini.key}`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({contents:[{role:'user',parts:[{text:prompt}]}],generationConfig:{maxOutputTokens:200}})});
+  if(!r.ok){const e=await r.json();throw new Error(e.error?.message||r.status);}
+  const d=await r.json();
+  try{return JSON.parse(d.candidates[0].content.parts[0].text.replace(/```json|```/g,''));}
+  catch{return{approved:true,comment:d.candidates[0].content.parts[0].text};}
+}
+
 async function callChatGPT(msg, context) {
-  const others = Object.entries(context).map(([k,v]) => `${AI[k].name}: ${v}`).join('\n');
-  const userContent = others
-    ? `Uživatel: "${msg}"\n\nOstatní AI:\n${others}\n\nTvoje doplnění:`
-    : msg;
-
-  const messages = [{ role: 'system', content: 'Odpovídej stručně. Pokud jsou k dispozici odpovědi jiných AI, doplň co chybí.' }];
-  for (const t of history) {
-    messages.push({ role: 'user', content: t.user });
-    messages.push({ role: 'assistant', content: t.chatgpt || '—' });
-  }
-  messages.push({ role: 'user', content: userContent });
-
-  const r = await fetch('https://api.openai.com/v1/chat/completions', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${AI.chatgpt.key}` },
-    body: JSON.stringify({ model: 'gpt-4o', messages, max_tokens: 1024 })
-  });
-  if (!r.ok) { const e = await r.json(); throw new Error(e.error?.message || r.status); }
-  const d = await r.json();
+  const others = Object.entries(context).map(([k,v])=>`${AI[k]?.name||k}: ${v}`).join('\n');
+  const userContent = others ? `Otázka: "${msg}"\n\nKontext:\n${others}\n\nTvoje odpověď:` : msg;
+  const r = await fetch('https://api.openai.com/v1/chat/completions',{method:'POST',headers:{'Content-Type':'application/json','Authorization':`Bearer ${AI.chatgpt.key}`},body:JSON.stringify({model:'gpt-4o',max_tokens:1024,messages:[{role:'system',content:'Odpovídej stručně a jasně.'},{role:'user',content:userContent}]})});
+  if(!r.ok){const e=await r.json();throw new Error(e.error?.message||r.status);}
+  const d=await r.json();
   return d.choices[0].message.content;
 }
 
-function scrollBottom() {
-  const m = document.getElementById('messages');
-  setTimeout(() => m.scrollTop = m.scrollHeight, 50);
+async function reviewChatGPT(originalMsg, verdict) {
+  const r = await fetch('https://api.openai.com/v1/chat/completions',{method:'POST',headers:{'Content-Type':'application/json','Authorization':`Bearer ${AI.chatgpt.key}`},body:JSON.stringify({model:'gpt-4o',max_tokens:200,messages:[{role:'system',content:'Zkontroluj odpověď. Odpověz POUZE jako JSON: {"approved":true/false,"comment":"komentář"}'},{role:'user',content:`Otázka: "${originalMsg}"\nClaude odpověděl: "${verdict}"\nJe správná a úplná?`}]})});
+  if(!r.ok){const e=await r.json();throw new Error(e.error?.message||r.status);}
+  const d=await r.json();
+  try{return JSON.parse(d.choices[0].message.content.replace(/```json|```/g,''));}
+  catch{return{approved:true,comment:d.choices[0].message.content};}
 }
 
-function escHtml(t) {
-  return t.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+// Vlastní AI – OpenAI-compatible
+async function callCustom(key, msg, context) {
+  const ai = AI[key];
+  const others = Object.entries(context).map(([k,v])=>`${AI[k]?.name||k}: ${v}`).join('\n');
+  const userContent = others ? `Otázka: "${msg}"\n\nKontext:\n${others}\n\nTvoje odpověď:` : msg;
+  const r = await fetch(`${ai.url}/chat/completions`,{method:'POST',headers:{'Content-Type':'application/json','Authorization':`Bearer ${ai.key}`},body:JSON.stringify({model:ai.model,max_tokens:1024,messages:[{role:'system',content:'Odpovídej stručně a jasně.'},{role:'user',content:userContent}]})});
+  if(!r.ok){const e=await r.json();throw new Error(e.error?.message||r.status);}
+  const d=await r.json();
+  return d.choices[0].message.content;
 }
 
-function formatText(t) {
-  return escHtml(t).replace(/\n/g, '<br>');
+async function reviewCustom(key, originalMsg, verdict) {
+  const ai = AI[key];
+  const r = await fetch(`${ai.url}/chat/completions`,{method:'POST',headers:{'Content-Type':'application/json','Authorization':`Bearer ${ai.key}`},body:JSON.stringify({model:ai.model,max_tokens:200,messages:[{role:'system',content:'Zkontroluj odpověď. Odpověz POUZE jako JSON: {"approved":true/false,"comment":"komentář"}'},{role:'user',content:`Otázka: "${originalMsg}"\nClaude odpověděl: "${verdict}"\nJe správná a úplná?`}]})});
+  if(!r.ok){const e=await r.json();throw new Error(e.error?.message||r.status);}
+  const d=await r.json();
+  try{return JSON.parse(d.choices[0].message.content.replace(/```json|```/g,''));}
+  catch{return{approved:true,comment:d.choices[0].message.content};}
 }
+
+function scrollBottom(){const m=document.getElementById('messages');setTimeout(()=>m.scrollTop=m.scrollHeight,50);}
+function escHtml(t){return String(t).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}
+function formatText(t){return escHtml(t).replace(/\n/g,'<br>');}
 </script>
 </body>
 </html>
