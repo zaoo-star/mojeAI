@@ -421,14 +421,7 @@ function buildSelector() {
     chip.className='ai-chip'+(selected.includes(key)?' selected':'');
     chip.style.setProperty('--chip-color',ai.rawColor);
     chip.innerHTML=`<div class="ai-chip-dot" style="background:${ai.rawColor}"></div><span>${ai.name}</span>`;
-    // Krátké kliknutí = zapnout/vypnout, dlouhé = menu
-    let pressTimer=null;
-    chip.addEventListener('mousedown', ()=>{ pressTimer=setTimeout(()=>showChipMenu(key,chip),500); });
-    chip.addEventListener('mouseup', ()=>clearTimeout(pressTimer));
-    chip.addEventListener('touchstart', (e)=>{ pressTimer=setTimeout(()=>{showChipMenu(key,chip);e.preventDefault();},500); },{passive:false});
-    chip.addEventListener('touchend', ()=>clearTimeout(pressTimer));
-    chip.addEventListener('contextmenu',(e)=>{e.preventDefault();showChipMenu(key,chip);});
-    chip.onclick=(e)=>{ if(!e._fromMenu) toggleAI(key); };
+    chip.onclick=(e)=>{ e.stopPropagation(); showChipMenu(key,chip); };
     bar.appendChild(chip);
   }
 }
