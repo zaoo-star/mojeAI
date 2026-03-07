@@ -14,6 +14,19 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:'DM San
 .screen.active{display:flex;}
 #setup{overflow-y:auto;padding:24px 20px 40px;gap:20px;}
 
+
+/* LOGIN BAR */
+.login-bar{display:flex;align-items:center;gap:10px;background:var(--card);border:1px solid var(--border);border-radius:14px;padding:12px 16px;margin-bottom:4px;}
+.login-bar img{width:32px;height:32px;border-radius:50%;border:2px solid var(--border);}
+.login-bar .lb-info{flex:1;min-width:0;}
+.login-bar .lb-name{font-size:14px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.login-bar .lb-status{font-size:11px;color:var(--muted);}
+.login-bar .lb-btn{padding:7px 14px;border-radius:10px;border:none;font-size:13px;font-weight:600;cursor:pointer;white-space:nowrap;}
+.lb-btn-signin{background:white;color:#111;}
+.lb-btn-signout{background:var(--border);color:var(--text);}
+.lb-btn-sync{background:var(--claude);color:#0e0e12;margin-right:4px;}
+.sync-dot{width:8px;height:8px;border-radius:50%;background:#4ade80;display:inline-block;margin-right:4px;}
+
 /* SETUP */
 .setup-header{text-align:center;padding:20px 0 8px;}
 .setup-header h1{font-size:26px;font-weight:600;letter-spacing:-.5px;}
@@ -130,6 +143,46 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:'DM San
 .chip-menu-item.danger:hover{background:rgba(248,113,113,0.1);}
 .chip-menu-divider{height:1px;background:var(--border);margin:4px 0;}
 </style>
+<script type="module">
+// ════ FIREBASE ════
+import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
+import { getAuth, GoogleAuthProvider, signInWithPopup, signOut, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js";
+import { getFirestore, doc, setDoc, getDoc } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
+
+const firebaseConfig = {
+  apiKey: "AIzaSyAUPDJgkwPq3tTrz539jEr5CjxSpwFe3pg",
+  authDomain: "mojeai-15f93.firebaseapp.com",
+  projectId: "mojeai-15f93",
+  storageBucket: "mojeai-15f93.firebasestorage.app",
+  messagingSenderId: "476163889728",
+  appId: "1:476163889728:web:361492a39ab0488aa89da5"
+};
+
+const app = initializeApp(firebaseConfig);
+const auth = getAuth(app);
+const db = getFirestore(app);
+
+// Expose to global scope
+window._fbAuth = auth;
+window._fbDb = db;
+window._fbProvider = new GoogleAuthProvider();
+window._fbSignIn = () => signInWithPopup(auth, window._fbProvider);
+window._fbSignOut = () => signOut(auth);
+
+window._fbSave = async (uid, data) => {
+  await setDoc(doc(db, 'users', uid), data);
+};
+
+window._fbLoad = async (uid) => {
+  const snap = await getDoc(doc(db, 'users', uid));
+  return snap.exists() ? snap.data() : null;
+};
+
+onAuthStateChanged(auth, user => {
+  window._fbUser = user;
+  if (typeof window.onFbAuthChange === 'function') window.onFbAuthChange(user);
+});
+</script>
 </head>
 <body>
 
@@ -138,6 +191,17 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:'DM San
   <div class="setup-header">
     <h1>🤖 AI Chat</h1>
     <p>Tvůj tým AI asistentů. Claude = šéf 👑</p>
+  </div>
+
+  <!-- LOGIN BAR -->
+  <div class="login-bar" id="loginBar">
+    <div id="lb-avatar" style="width:32px;height:32px;border-radius:50%;background:var(--border);display:flex;align-items:center;justify-content:center;font-size:18px;">👤</div>
+    <div class="lb-info">
+      <div class="lb-name" id="lb-name">Nepřihlášen</div>
+      <div class="lb-status" id="lb-status">Nastavení uložena jen v tomto prohlížeči</div>
+    </div>
+    <button class="lb-btn lb-btn-sync" id="lb-sync-btn" onclick="fbSync()" style="display:none">☁ Sync</button>
+    <button class="lb-btn lb-btn-signin" id="lb-signin-btn" onclick="fbSignIn()">🔑 Google</button>
   </div>
 
   <div class="section-title">API Klíče</div>
@@ -570,26 +634,7 @@ function exportAs(format) {
         msgs+=`<div class="msg-ai" style="border-left:3px solid ${ai?.rawColor||'#888'}"><strong style="color:${ai?.rawColor||'#888'}">${ai?.name||k}</strong><div>${marked.parse(v)}</div></div>`;
       }
     }
-    const html=`<!DOCTYPE html><html lang="cs"><head><meta charset="UTF-8"><title>AI Chat – ${date}</title><style>body{font-family:system-ui,sans-serif;max-width:800px;margin:40px auto;padding:20px;background:#f9f9f9;color:#111;}.msg-user{background:#fff;border-radius:12px;padding:16px;margin:16px 0;box-shadow:0 1px 4px rgba(0,0,0,.08)}.msg-ai{background:#fff;border-radius:12px;padding:16px;margin:8px 0 16px 24px;box-shadow:0 1px 4px rgba(0,0,0,.08)}table{border-collapse:collapse;width:100%}td,th{border:1px solid #ddd;padding:8px}pre{background:#f4f4f4;padding:12px;border-radius:8px;overflow:auto}code{background:#f4f4f4;padding:2px 4px;border-radius:4px}
-</style></head><body><h1>AI Chat – ${date}</h1>${msgs}
-<!-- MODAL: Upravit AI -->
-<div id="editModal" onclick="closeEditOutside(event)" style="position:fixed;inset:0;background:rgba(0,0,0,0.8);display:none;align-items:flex-end;z-index:100;">
-  <div class="modal-box">
-    <h3 id="editModalTitle">Upravit AI</h3>
-    <input type="text" id="e-name" placeholder="Název" maxlength="20">
-    <input type="password" id="e-key" placeholder="API klíč">
-    <input type="text" id="e-url" placeholder="API URL (pro vlastní AI)">
-    <input type="text" id="e-model" placeholder="Model">
-    <input type="text" id="e-color" placeholder="Barva hex">
-    <div id="e-hint" class="hint"></div>
-    <div class="modal-row">
-      <button class="btn-cancel" onclick="closeEditModal()">Zrušit</button>
-      <button class="btn-save" onclick="saveEditAi()">Uložit</button>
-    </div>
-  </div>
-</div>
-
-</body></html>`;
+    const html=`<!DOCTYPE html><html lang="cs"><head><meta charset="UTF-8"><title>AI Chat – ${date}</title><style>body{font-family:system-ui,sans-serif;max-width:800px;margin:40px auto;padding:20px;background:#f9f9f9;color:#111;}.msg-user{background:#fff;border-radius:12px;padding:16px;margin:16px 0;box-shadow:0 1px 4px rgba(0,0,0,.08)}.msg-ai{background:#fff;border-radius:12px;padding:16px;margin:8px 0 16px 24px;box-shadow:0 1px 4px rgba(0,0,0,.08)}table{border-collapse:collapse;width:100%}td,th{border:1px solid #ddd;padding:8px}pre{background:#f4f4f4;padding:12px;border-radius:8px;overflow:auto}code{background:#f4f4f4;padding:2px 4px;border-radius:4px}</style></head><body><h1>AI Chat – ${date}</h1>${msgs}</body></html>`;;
     download('konverzace.html', html, 'text/html');
   }
 }
@@ -865,6 +910,80 @@ async function reviewCustom(key,originalMsg,verdict){
 function scrollBottom(){const m=document.getElementById('messages');setTimeout(()=>m.scrollTop=m.scrollHeight,50);}
 function escHtml(t){return String(t).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}
 function formatText(t){try{return marked.parse(t);}catch(e){return escHtml(t).replace(/\n/g,'<br>');}}
+
+// ════ FIREBASE AUTH ════
+window.onFbAuthChange = async (user) => {
+  const nameEl=document.getElementById('lb-name');
+  const statusEl=document.getElementById('lb-status');
+  const signinBtn=document.getElementById('lb-signin-btn');
+  const syncBtn=document.getElementById('lb-sync-btn');
+  const avatarEl=document.getElementById('lb-avatar');
+  if(user){
+    nameEl.textContent=user.displayName||user.email;
+    statusEl.innerHTML='<span class="sync-dot"></span>Přihlášen – nastavení sync s cloudem';
+    signinBtn.textContent='Odhlásit';
+    signinBtn.className='lb-btn lb-btn-signout';
+    signinBtn.onclick=fbSignOut;
+    syncBtn.style.display='block';
+    if(user.photoURL) avatarEl.innerHTML=`<img src="${user.photoURL}" style="width:32px;height:32px;border-radius:50%">`;
+    await fbLoad();
+  } else {
+    nameEl.textContent='Nepřihlášen';
+    statusEl.textContent='Nastavení uložena jen v tomto prohlížeči';
+    signinBtn.textContent='🔑 Google';
+    signinBtn.className='lb-btn lb-btn-signin';
+    signinBtn.onclick=fbSignIn;
+    syncBtn.style.display='none';
+    avatarEl.innerHTML='👤';
+  }
+};
+
+async function fbSignIn(){
+  try{ await window._fbSignIn(); }
+  catch(e){ alert('Přihlášení selhalo: '+e.message); }
+}
+
+async function fbSignOut(){
+  await window._fbSignOut();
+}
+
+async function fbSync(){
+  const user=window._fbUser;
+  if(!user) return;
+  const btn=document.getElementById('lb-sync-btn');
+  btn.textContent='⏳';
+  try{
+    await window._fbSave(user.uid,{
+      keyClaude:  localStorage.getItem('key-claude')||'',
+      keyGemini:  localStorage.getItem('key-gemini')||'',
+      keyChatgpt: localStorage.getItem('key-chatgpt')||'',
+      customAis:  localStorage.getItem('custom-ais')||'[]',
+      userMemory: localStorage.getItem('user-memory')||'',
+      updatedAt:  new Date().toISOString()
+    });
+    btn.textContent='✅';
+    setTimeout(()=>btn.textContent='☁ Sync',2000);
+  } catch(e){
+    btn.textContent='❌';
+    setTimeout(()=>btn.textContent='☁ Sync',2000);
+  }
+}
+
+async function fbLoad(){
+  const user=window._fbUser;
+  if(!user) return;
+  try{
+    const data=await window._fbLoad(user.uid);
+    if(!data) return;
+    if(data.keyClaude){localStorage.setItem('key-claude',data.keyClaude);document.getElementById('key-claude').value=data.keyClaude;}
+    if(data.keyGemini){localStorage.setItem('key-gemini',data.keyGemini);document.getElementById('key-gemini').value=data.keyGemini;}
+    if(data.keyChatgpt){localStorage.setItem('key-chatgpt',data.keyChatgpt);document.getElementById('key-chatgpt').value=data.keyChatgpt;}
+    if(data.userMemory){localStorage.setItem('user-memory',data.userMemory);document.getElementById('memoryText').value=data.userMemory;}
+    if(data.customAis){localStorage.setItem('custom-ais',data.customAis);loadCustomAIs();}
+    const t=data.updatedAt?new Date(data.updatedAt).toLocaleString('cs-CZ'):'?';
+    document.getElementById('lb-status').innerHTML=`<span class="sync-dot"></span>Načteno z cloudu – ${t}`;
+  } catch(e){ console.error('fbLoad:',e); }
+}
 </script>
 
 <!-- MODAL: Upravit AI -->
