@@ -432,6 +432,11 @@ window.addEventListener('DOMContentLoaded', () => {
   document.getElementById('memoryText').value  = localStorage.getItem('user-memory') || '';
   loadCustomAIs();
   initVoice();
+  // Auto-start pokud máme klíče
+  const hasKey = localStorage.getItem('key-claude')||localStorage.getItem('key-gemini')||
+    localStorage.getItem('key-chatgpt')||
+    JSON.parse(localStorage.getItem('custom-ais')||'[]').some(c=>c.key);
+  if(hasKey) startChat();
 });
 
 // ════ MEMORY ════
