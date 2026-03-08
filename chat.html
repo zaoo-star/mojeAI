@@ -2,7 +2,7 @@
 <html lang="cs">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, viewport-fit=cover">
 <title>AI Chat</title>
 <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/marked/9.1.6/marked.min.js"></script>
@@ -27,8 +27,8 @@
   --glow:rgba(249,115,22,0.15);
 }
 *{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent;}
-html,body{height:100%;background:var(--bg);color:var(--text);font-family:'Outfit',sans-serif;overflow:hidden;}
-.screen{height:100vh;display:none;flex-direction:column;}
+html,body{height:100%;height:100dvh;background:var(--bg);color:var(--text);font-family:'Outfit',sans-serif;overflow:hidden;}
+.screen{height:100vh;height:100dvh;display:none;flex-direction:column;}
 .screen.active{display:flex;}
 #setup{overflow-y:auto;padding:24px 18px 48px;gap:16px;}
 
@@ -148,7 +148,7 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:'Outfit
 @keyframes bounce{0%,60%,100%{transform:translateY(0)}30%{transform:translateY(-6px)}}
 
 /* INPUT AREA */
-.input-area{background:rgba(15,15,26,0.97);backdrop-filter:blur(12px);border-top:1px solid var(--border);padding:10px 12px;display:flex;gap:7px;align-items:flex-end;flex-shrink:0;}
+.input-area{background:rgba(15,15,26,0.97);backdrop-filter:blur(12px);border-top:1px solid var(--border);padding:10px 12px;padding-bottom:max(10px,env(safe-area-inset-bottom));display:flex;gap:7px;align-items:flex-end;flex-shrink:0;}
 .input-btn{width:36px;height:36px;border-radius:10px;background:var(--card);border:1px solid var(--border);color:var(--muted2);cursor:pointer;display:flex;align-items:center;justify-content:center;flex-shrink:0;font-size:16px;transition:all .2s;}
 .input-btn:hover{border-color:var(--accent);color:var(--accent);}
 .input-btn.recording{background:rgba(239,68,68,0.15);border-color:#ef4444;color:#ef4444;animation:pulse 1s infinite;}
@@ -199,7 +199,11 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:'Outfit
 
 
 /* SOURCES */
-.sources-bar{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px;}
+.sources-wrap{margin-top:8px;}
+.sources-toggle{display:inline-flex;align-items:center;gap:5px;background:rgba(45,212,191,0.07);border:1px solid rgba(45,212,191,0.2);border-radius:8px;padding:4px 10px;font-size:11px;color:var(--teal);cursor:pointer;font-family:'Outfit',sans-serif;transition:background .15s;}
+.sources-toggle:hover{background:rgba(45,212,191,0.14);}
+.sources-bar{display:none;flex-wrap:wrap;gap:6px;margin-top:6px;}
+.sources-bar.open{display:flex;}
 .source-chip{display:inline-flex;align-items:center;gap:5px;background:rgba(45,212,191,0.07);border:1px solid rgba(45,212,191,0.2);border-radius:8px;padding:4px 9px;font-size:11px;color:var(--teal);text-decoration:none;font-family:'Outfit',sans-serif;transition:background .15s;}
 .source-chip:hover{background:rgba(45,212,191,0.14);}
 
@@ -950,9 +954,10 @@ async function sendMessage() {
     }
 
     if(lastSources.length){
+      const sid1='src_'+Math.random().toString(36).slice(2);
       const srcDiv=document.createElement('div');
-      srcDiv.className='sources-bar';
-      srcDiv.innerHTML='<span style="font-size:11px;color:var(--muted);width:100%">📚 Zdroje:</span>'+lastSources.map(s=>`<a class="source-chip" href="${s.url}" target="_blank">🔗 ${escHtml(s.title)}</a>`).join('');
+      srcDiv.className='sources-wrap';
+      srcDiv.innerHTML=`<div class="sources-toggle" onclick="this.nextElementSibling.classList.toggle('open');this.textContent=this.nextElementSibling.classList.contains('open')?'📚 Skrýt zdroje (${lastSources.length})':'📚 Zdroje (${lastSources.length})'">📚 Zdroje (${lastSources.length})</div><div class="sources-bar">${lastSources.map(s=>'<a class="source-chip" href="'+s.url+'" target="_blank">🔗 '+escHtml(s.title)+'</a>').join('')}</div>`;
       aisDiv.appendChild(srcDiv);
     }
     clearSearchContext();
@@ -1011,10 +1016,10 @@ async function sendMessage() {
 
   // Show sources if available
   if(lastSources.length){
-    const srcDiv=document.createElement('div');
-    srcDiv.className='sources-bar';
-    srcDiv.innerHTML='<span style="font-size:11px;color:var(--muted);width:100%">📚 Zdroje:</span>'+lastSources.map(s=>`<a class="source-chip" href="${s.url}" target="_blank">🔗 ${escHtml(s.title)}</a>`).join('');
-    aisDiv.appendChild(srcDiv);
+    const srcDiv2=document.createElement('div');
+    srcDiv2.className='sources-wrap';
+    srcDiv2.innerHTML=`<div class="sources-toggle" onclick="this.nextElementSibling.classList.toggle('open');this.textContent=this.nextElementSibling.classList.contains('open')?'📚 Skrýt zdroje (${lastSources.length})':'📚 Zdroje (${lastSources.length})'">📚 Zdroje (${lastSources.length})</div><div class="sources-bar">${lastSources.map(s=>'<a class="source-chip" href="'+s.url+'" target="_blank">🔗 '+escHtml(s.title)+'</a>').join('')}</div>`;
+    aisDiv.appendChild(srcDiv2);
   }
   clearSearchContext();
   history.push({user:msgText,claude:claudeVerdict,...(fileSnap?{_file:fileSnap.name}:{})});
