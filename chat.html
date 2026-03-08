@@ -78,6 +78,14 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:'DM San
 .ai-chip span{font-size:12px;font-weight:600;color:var(--muted);}
 .ai-chip.selected span{color:var(--text);}
 
+
+/* THINK BLOCK */
+.think-block{margin-bottom:8px;}
+.think-toggle{background:none;border:1px solid var(--border);border-radius:8px;padding:5px 10px;font-size:11px;color:var(--muted);cursor:pointer;font-family:'DM Sans',sans-serif;display:flex;align-items:center;gap:6px;}
+.think-toggle:hover{border-color:rgba(255,255,255,0.2);}
+.think-content{background:rgba(255,255,255,0.03);border:1px solid var(--border);border-radius:0 0 8px 8px;padding:10px 12px;font-size:12px;color:var(--muted);line-height:1.6;display:none;font-style:italic;}
+.think-content.open{display:block;}
+
 /* FILE PREVIEW */
 .file-preview{background:var(--card);border:1px solid var(--border);border-radius:12px;padding:10px 14px;margin:8px 16px 0;display:none;align-items:center;gap:10px;flex-shrink:0;}
 .file-preview.visible{display:flex;}
@@ -256,12 +264,12 @@ onAuthStateChanged(auth, user => {
 <!-- CHAT -->
 <div id="chat" class="screen">
   <div class="chat-header">
-    <button class="back-btn" onclick="goBack()">←</button>
+    <button class="back-btn" onclick="goBack()" title="Nastavení">⚙</button>
     <div class="chat-header-title" id="chatTitle">AI Chat</div>
-    <button class="header-btn" onclick="newChat()">✚ Nový</button>
-    <button class="header-btn" onclick="openHistory()">📋</button>
-    <button class="header-btn" onclick="openExportModal()">⬇</button>
-    <button class="header-btn" onclick="goBack()">⚙</button>
+    <button class="header-btn" id="autoSearchToggle" onclick="toggleAutoSearch()" title="Web vyhledávání">🌐</button>
+    <button class="header-btn" onclick="openExportModal()" title="Export">⬇</button>
+    <button class="header-btn" onclick="openHistory()" title="Historie chatů" style="font-size:16px;padding:5px 9px;">📋</button>
+    <button class="header-btn" onclick="newChat()" title="Nový chat" style="font-size:16px;padding:5px 9px;">✏️</button>
   </div>
   <div class="ai-selector" id="aiSelector"></div>
   <div class="file-preview" id="filePreview">
@@ -344,7 +352,19 @@ const CLAUDE_MODELS = {
   opus:   { id:'claude-opus-4-5-20251101',   label:'Opus'   },
 };
 
-const MD_SYSTEM = 'Odpovídej stručně a přesně. Neuváděj kdo jsi, jaká je tvoje role, ani kdo jsou ostatní členové týmu. Žádné úvody ani závěry o týmu. Jen přímá odpověď na otázku. Používej Markdown – tabulky, kód, seznamy, nadpisy jen když to skutečně pomáhá srozumitelnosti.';
+const MD_SYSTEM = `Před každou odpovědí MUSÍŠ přemýšlet. Použij tento formát:
+
+<think>
+[Zde napiš své myšlenky: co otázka znamená, co víš, jaké jsou možnosti, co je nejlepší odpověď a proč]
+</think>
+
+[Zde napiš stručnou přesnou odpověď]
+
+Pravidla:
+- Vždy začni blokem <think>...</think>
+- Neuváděj kdo jsi ani jaká je tvoje role
+- Odpovídej stručně a přesně
+- Používej Markdown jen když pomáhá srozumitelnosti`;
 function getSearchPrompt(){ return webSearchContext ? '\n\n---\n' + webSearchContext + '\n---\nVyužij tato data z webu ve své odpovědi.' : ''; }
 
 // ════ INIT ════
@@ -426,6 +446,7 @@ function startChat() {
   buildSelector();
   showScreen('chat');
   document.getElementById('msgInput').focus();
+  updateAutoSearchBtn();
 }
 
 function goBack(){showScreen('setup');}
@@ -695,6 +716,11 @@ async function sendMessage() {
   isBusy=true;
   document.getElementById('sendBtn').disabled=true;
 
+  // Auto web search
+  if(autoSearchEnabled && msgText && !webSearchContext) {
+    await autoWebSearch(msgText);
+  }
+
   const msgs=document.getElementById('messages');
   const userDiv=document.createElement('div');
   userDiv.className='msg-user';
@@ -948,7 +974,20 @@ async function reviewCustom(key,originalMsg,verdict){
 
 function scrollBottom(){const m=document.getElementById('messages');setTimeout(()=>m.scrollTop=m.scrollHeight,50);}
 function escHtml(t){return String(t).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}
-function formatText(t){try{return marked.parse(t);}catch(e){return escHtml(t).replace(/\n/g,'<br>');}}
+function formatText(t){
+  // Extract think block
+  const thinkMatch = t.match(/<think>([\s\S]*?)<\/think>/i);
+  let thinkHtml = '';
+  let mainText = t;
+  if(thinkMatch){
+    const thinkContent = thinkMatch[1].trim();
+    const id = 'think_'+Math.random().toString(36).slice(2);
+    thinkHtml = `<div class="think-block"><button class="think-toggle" onclick="document.getElementById('${id}').classList.toggle('open')">🧠 Myšlenky <span style="opacity:.5">▾</span></button><div class="think-content" id="${id}">${escHtml(thinkContent).replace(/\n/g,'<br>')}</div></div>`;
+    mainText = t.replace(/<think>[\s\S]*?<\/think>/i,'').trim();
+  }
+  try{ return thinkHtml + marked.parse(mainText); }
+  catch(e){ return thinkHtml + escHtml(mainText).replace(/\n/g,'<br>'); }
+}
 
 // ════ CHAT HISTORY ════
 let currentChatId = null;
@@ -1053,6 +1092,67 @@ function downloadHtml(){
   a.href=location.href;
   a.download='chat.html';
   a.click();
+}
+
+// ════ AUTO WEB SEARCH ════
+let autoSearchEnabled = localStorage.getItem('auto-search')==='1';
+
+function toggleAutoSearch(){
+  autoSearchEnabled=!autoSearchEnabled;
+  localStorage.setItem('auto-search', autoSearchEnabled?'1':'0');
+  updateAutoSearchBtn();
+}
+
+function updateAutoSearchBtn(){
+  const btn=document.getElementById('autoSearchToggle');
+  if(!btn) return;
+  if(autoSearchEnabled){
+    btn.textContent='🌐';
+    btn.style.borderColor='#4ade80';
+    btn.style.color='#4ade80';
+    btn.title='Web: ZAP (klikni pro vypnutí)';
+  } else {
+    btn.textContent='🌐';
+    btn.style.borderColor='';
+    btn.style.color='';
+    btn.title='Web: VYP (klikni pro zapnutí)';
+  }
+}
+
+async function autoWebSearch(query){
+  const bar=document.getElementById('searchBar');
+  const status=document.getElementById('searchStatus');
+  bar.style.display='block';
+  status.style.color='var(--muted)';
+  status.textContent='🔍 Hledám: '+query.slice(0,50)+'…';
+  try{
+    const res = await fetch(`https://api.duckduckgo.com/?q=${encodeURIComponent(query)}&format=json&no_redirect=1&no_html=1&skip_disambig=1`);
+    const ddg = await res.json();
+    let results=[];
+    if(ddg.AbstractText) results.push(`**${ddg.Heading}**\n${ddg.AbstractText}`);
+    if(ddg.Answer) results.push(`**Odpověď:** ${ddg.Answer}`);
+    if(ddg.RelatedTopics?.length){
+      const topics=ddg.RelatedTopics.slice(0,5).filter(t=>t.Text).map(t=>`• ${t.Text}`);
+      if(topics.length) results.push(topics.join('\n'));
+    }
+    if(ddg.Infobox?.content?.length){
+      const info=ddg.Infobox.content.slice(0,6).map(i=>`${i.label}: ${i.value}`).join('\n');
+      results.push(info);
+    }
+    if(results.length){
+      let text=results.join('\n\n');
+      if(text.length>2500) text=text.slice(0,2500)+'…';
+      webSearchContext=`Aktuální data z webu (${new Date().toLocaleDateString('cs-CZ')}):\n\n${text}`;
+      status.textContent='✅ Web data načtena';
+      status.style.color='#4ade80';
+    } else {
+      status.textContent='ℹ️ Web: žádné výsledky';
+      webSearchContext=null;
+    }
+  } catch(e){
+    status.textContent='⚠️ Web nedostupný';
+    webSearchContext=null;
+  }
 }
 
 // ════ WEB SEARCH ════
