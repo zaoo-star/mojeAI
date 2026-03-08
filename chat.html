@@ -173,6 +173,7 @@ html,body{height:100%;height:100dvh;background:var(--bg);color:var(--text);font-
 .input-btn:hover{border-color:var(--accent);color:var(--accent);}
 .input-btn.recording{background:rgba(239,68,68,0.15);border-color:#ef4444;color:#ef4444;animation:pulse 1s infinite;}
 @keyframes pulse{0%,100%{opacity:1}50%{opacity:.5}}
+@keyframes spin{to{transform:rotate(360deg)}}
 #msgInput{width:100%;background:var(--card);border:1.5px solid var(--border);border-radius:14px;padding:11px 14px;color:var(--text);font-family:'Outfit',sans-serif;font-size:15px;outline:none;resize:none;max-height:140px;line-height:1.5;transition:border-color .2s;display:block;box-sizing:border-box;margin-bottom:7px;}
 #msgInput:focus{border-color:var(--border2);}
 #msgInput::placeholder{color:var(--muted);}
@@ -503,14 +504,14 @@ onAuthStateChanged(auth, user => {
   </div>
   <div id="searchBar" style="display:none;padding:8px 16px;background:var(--card);border-bottom:1px solid var(--border);font-size:12px;color:var(--muted);flex-shrink:0;">🔍 <span id="searchStatus"></span></div>
   <div class="pinned-bar" id="pinnedBar"><span class="pinned-label">📌</span></div>
-  <div class="messages" id="messages"></div>
+  <div class="messages" id="messages" role="log" aria-live="polite" aria-label="Konverzace"></div>
   <div class="input-area">
     <div style="flex:1;position:relative;display:flex;flex-direction:column;gap:6px;">
       <div class="slash-menu" id="slashMenu" style="display:none"></div>
-      <textarea id="msgInput" placeholder="Napiš zprávu…" rows="1" onkeydown="handleKey(event)" oninput="autoResize(this);handleSlash(this.value)"></textarea>
+      <textarea id="msgInput" placeholder="Napiš zprávu…" rows="1" onkeydown="handleKey(event)" oninput="autoResize(this);handleSlash(this.value)" aria-label="Zpráva" aria-multiline="true"></textarea>
       <div style="display:flex;align-items:center;gap:6px;">
         <label class="input-btn" title="Přiložit soubor" style="position:relative;overflow:hidden;cursor:pointer;">📎<input type="file" id="fileInput" style="position:absolute;inset:0;opacity:0;cursor:pointer;width:100%;height:100%" accept=".txt,.pdf,.md,.js,.py,.html,.css,.json,.csv,.xml,.yaml,.yml,.log,.ts,.jsx,.tsx,.c,.cpp,.h,.java,.php,.rb,.go,.rs,image/*" onchange="handleFile(event)"></label>
-        <button class="input-btn" id="voiceBtn" onclick="toggleVoice()" title="Hlasový vstup">🎙️</button>
+        <button class="input-btn" id="voiceBtn" onclick="toggleVoice()" title="Hlasový vstup" aria-label="Hlasový vstup">🎙️</button>
         <div class="model-picker-wrap" id="modelPickerWrap" style="margin-left:auto;">
           <div class="model-badge" onclick="toggleModelPicker()" id="modelBadge">🧠 <span id="modelBadgeLabel">Sonnet</span> ▾</div>
           <div class="model-picker-dropdown" id="modelPickerDropdown">
@@ -520,12 +521,12 @@ onAuthStateChanged(auth, user => {
             <div style="padding:4px 12px 2px;font-size:10px;color:var(--muted);border-top:1px solid var(--border);margin-top:2px">Ovlivňuje jen Claude</div>
           </div>
         </div>
-        <button class="send-btn" id="sendBtn" onclick="sendMessage()">
+        <button class="send-btn" id="sendBtn" onclick="sendMessage()" aria-label="Odeslat zprávu">
           <svg viewBox="0 0 24 24" fill="none" stroke="#0e0e12" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
             <line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/>
           </svg>
         </button>
-        <button class="cancel-btn" id="cancelBtn" onclick="cancelGeneration()" style="display:none">⏹</button>
+        <button class="cancel-btn" id="cancelBtn" onclick="cancelGeneration()" style="display:none" aria-label="Zrušit generování">⏹</button>
       </div>
     </div>
   </div>
@@ -721,6 +722,67 @@ const TOOL_DEFS = [
       subject: {type:'string', description:'Předmět emailu'},
       body:    {type:'string', description:'Tělo emailu'}
     }, required:['subject','body'] }
+  },
+  {
+    name: 'get_weather',
+    description: 'Zobrazí aktuální počasí a předpověď pro zadané místo. Použij kdykoliv uživatel ptá na počasí, teplotu, déšť, vítr nebo předpověď.',
+    input_schema: { type:'object', properties:{
+      location: {type:'string', description:'Město nebo místo (např. Praha, Brno, New York)'},
+      days:     {type:'number',  description:'Počet dní předpovědi (1–7, výchozí 3)'}
+    }, required:['location'] }
+  },
+  {
+    name: 'get_exchange_rate',
+    description: 'Zobrazí aktuální kurz měn nebo cenu kryptoměn. Použij pro dotazy jako "kolik je dolar", "kurz eura", "cena bitcoinu".',
+    input_schema: { type:'object', properties:{
+      from:   {type:'string', description:'Zdrojová měna nebo krypto (EUR, USD, BTC, ETH...)'},
+      to:     {type:'string', description:'Cílová měna (CZK, USD, EUR...)'},
+      amount: {type:'number',  description:'Částka k převodu (výchozí 1)'}
+    }, required:['from','to'] }
+  },
+  {
+    name: 'show_map',
+    description: 'Zobrazí interaktivní mapu místa. Použij když uživatel chce vidět kde něco je, navigaci nebo polohu.',
+    input_schema: { type:'object', properties:{
+      location: {type:'string', description:'Adresa, město nebo místo'},
+      zoom:     {type:'number',  description:'Přiblížení 1–18 (výchozí 13)'}
+    }, required:['location'] }
+  },
+  {
+    name: 'create_chart',
+    description: 'Vytvoří interaktivní graf z dat. Použij když uživatel chce vizualizovat čísla, statistiky, srovnání nebo trendy.',
+    input_schema: { type:'object', properties:{
+      type:   {type:'string', description:'Typ grafu: bar, line, pie, doughnut, radar'},
+      title:  {type:'string', description:'Nadpis grafu'},
+      labels: {type:'string', description:'Popisky oddělené čárkou (např. "Led,Úno,Bře")'},
+      values: {type:'string', description:'Čísla oddělená čárkou (např. "10,25,18")'},
+      label:  {type:'string', description:'Název datové řady'}
+    }, required:['type','title','labels','values'] }
+  },
+  {
+    name: 'get_news',
+    description: 'Načte aktuální zprávy z RSS feedu. Použij pro dotazy na novinky, zprávy, aktuální události z konkrétního zdroje.',
+    input_schema: { type:'object', properties:{
+      source: {type:'string', description:'Zdroj zpráv: ct24, idnes, aktualne, bbc, techcrunch, nebo libovolná RSS URL'},
+      count:  {type:'number',  description:'Počet článků (výchozí 5, max 10)'}
+    }, required:['source'] }
+  },
+  {
+    name: 'speak_text',
+    description: 'Přečte text nahlas pomocí hlasové syntézy. Použij když uživatel chce slyšet odpověď nebo text přečíst.',
+    input_schema: { type:'object', properties:{
+      text:  {type:'string', description:'Text k přečtení'},
+      lang:  {type:'string', description:'Jazyk hlasu: cs-CZ, en-US, sk-SK (výchozí cs-CZ)'},
+      rate:  {type:'number',  description:'Rychlost řeči 0.5–2.0 (výchozí 1.0)'}
+    }, required:['text'] }
+  },
+  {
+    name: 'generate_music',
+    description: 'Vygeneruje hudbu nebo zvuk pomocí AI. Použij když uživatel chce hudbu, melodii nebo zvukový doprovod.',
+    input_schema: { type:'object', properties:{
+      prompt: {type:'string', description:'Popis hudby anglicky (např. "calm piano jazz", "epic orchestral battle theme")'},
+      duration: {type:'number', description:'Délka v sekundách (výchozí 30, max 60)'}
+    }, required:['prompt'] }
   }
 ];
 
@@ -746,8 +808,60 @@ function getGeminiTools(){
 let taskNotes = {};
 function resetTaskNotes(){ taskNotes={}; }
 
+// ── Human-in-the-loop approval ──
+const SENSITIVE_TOOLS = {
+  'prepare_email':        { label: '📧 Odeslat email',        icon: '📧' },
+  'set_reminder':         { label: '⏰ Nastavit připomínku',   icon: '⏰' },
+  'create_calendar_event':{ label: '📅 Vytvořit událost',      icon: '📅' },
+  'save_file':            { label: '💾 Uložit soubor',         icon: '💾' },
+};
+
+function requireApproval(name, input, aisDiv){
+  return new Promise(resolve => {
+    const info = SENSITIVE_TOOLS[name];
+    if(!info){ resolve(true); return; }
+    const summary = Object.entries(input)
+      .filter(([k])=>!['mime_type','body'].includes(k))
+      .map(([k,v])=>`<b>${k}:</b> ${escHtml(String(v).slice(0,60))}`)
+      .join(' · ');
+    const id = 'approval_'+Date.now();
+    // Auto-cancel after 3 minutes
+    const autoTimer = setTimeout(() => {
+      document.getElementById(id)?.remove();
+      cleanup(false);
+    }, 180000);
+    const cleanup = (result) => {
+      clearTimeout(autoTimer);
+      delete (window._approvalResolve||{})[id];
+      resolve(result);
+    };
+    const chip = document.createElement('div');
+    chip.id = id;
+    chip.style.cssText='background:rgba(251,191,36,0.08);border:1px solid rgba(251,191,36,0.35);border-radius:12px;padding:12px 14px;margin:6px 0;display:flex;flex-direction:column;gap:8px;';
+    chip.innerHTML=`
+      <div style="font-size:13px;color:#fbbf24;font-weight:600;">✋ Čeká na schválení — ${info.label}</div>
+      <div style="font-size:12px;color:var(--muted2);">${summary}</div>
+      <div style="display:flex;gap:8px;">
+        <button style="flex:1;background:rgba(52,211,153,0.15);border:1px solid rgba(52,211,153,0.4);border-radius:8px;padding:7px;color:#34d399;cursor:pointer;font-size:13px;font-family:'Outfit',sans-serif;" 
+          onclick="document.getElementById('${id}').remove();window._approvalResolve['${id}'](true)">✅ Schválit</button>
+        <button style="flex:1;background:rgba(239,68,68,0.1);border:1px solid rgba(239,68,68,0.3);border-radius:8px;padding:7px;color:#f87171;cursor:pointer;font-size:13px;font-family:'Outfit',sans-serif;"
+          onclick="document.getElementById('${id}').remove();window._approvalResolve['${id}'](false)">❌ Zrušit</button>
+      </div>`;
+    aisDiv.appendChild(chip);
+    scrollBottom();
+    window._approvalResolve = window._approvalResolve || {};
+    window._approvalResolve[id] = cleanup;
+  });
+}
+
 // ── Tool executor ──
 async function executeTool(name, input, aisDiv){
+  // Human-in-the-loop pro citlivé akce
+  if(SENSITIVE_TOOLS[name]){
+    const approved = await requireApproval(name, input, aisDiv);
+    if(!approved) return `🚫 Akce "${name}" zrušena uživatelem`;
+  }
+
   switch(name){
 
     case 'web_search':{
@@ -953,12 +1067,299 @@ async function executeTool(name, input, aisDiv){
       aisDiv.appendChild(chip);
       return `✅ Email připraven: "${input.subject}" – klikni na chip pro otevření`;
     }
+
+    case 'get_weather':{
+      try{
+        const loc = input.location||'Praha';
+        const days = Math.min(7, Math.max(1, Number(input.days)||3));
+        logStep(`🌤️ Zjišťuji počasí pro ${loc}…`, 'active');
+        const geoRes = await fetch(`https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(loc)}&format=json&limit=1`, {headers:{'Accept-Language':'cs'}});
+        const geoData = await geoRes.json();
+        if(!geoData.length) return `⚠️ Místo "${loc}" nenalezeno`;
+        const {lat, lon, display_name} = geoData[0];
+        const cityName = display_name.split(',')[0];
+        // Weather via open-meteo
+        const wRes = await fetch(`https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&current=temperature_2m,relative_humidity_2m,wind_speed_10m,weather_code&daily=temperature_2m_max,temperature_2m_min,weather_code,precipitation_sum&timezone=auto&forecast_days=${days}`);
+        const w = await wRes.json();
+        const cur = w.current;
+        const wmoIcon = code => {
+          if(code===0)return'☀️'; if(code<=2)return'⛅'; if(code<=3)return'☁️';
+          if(code<=49)return'🌫️'; if(code<=69)return'🌧️'; if(code<=79)return'❄️';
+          if(code<=82)return'🌦️'; if(code<=99)return'⛈️'; return'🌡️';
+        };
+        const wmoText = code => {
+          if(code===0)return'Jasno'; if(code<=2)return'Polojasno'; if(code<=3)return'Zataženo';
+          if(code<=49)return'Mlha'; if(code<=69)return'Déšť'; if(code<=79)return'Sníh';
+          if(code<=82)return'Přeháňky'; if(code<=99)return'Bouřky'; return'';
+        };
+        // Render weather card
+        const card = document.createElement('div');
+        card.style.cssText='background:var(--card2);border:1px solid var(--border2);border-radius:14px;padding:14px 16px;margin:6px 0;font-size:14px;';
+        let forecastHtml = '';
+        const days_ = w.daily;
+        for(let i=0;i<Math.min(days,days_.time.length);i++){
+          const d = new Date(days_.time[i]);
+          const dayName = i===0?'Dnes':i===1?'Zítra':d.toLocaleDateString('cs-CZ',{weekday:'short'});
+          forecastHtml += `<div style="display:flex;align-items:center;gap:8px;padding:5px 0;border-top:1px solid var(--border);font-size:13px;">
+            <span style="min-width:50px;color:var(--muted2)">${dayName}</span>
+            <span style="font-size:16px">${wmoIcon(days_.weather_code[i])}</span>
+            <span style="flex:1;color:var(--muted)">${wmoText(days_.weather_code[i])}</span>
+            <span style="color:var(--text);font-weight:600">${Math.round(days_.temperature_2m_max[i])}°</span>
+            <span style="color:var(--muted)"> / ${Math.round(days_.temperature_2m_min[i])}°</span>
+            <span style="color:#60a5fa;font-size:11px">${days_.precipitation_sum[i]>0?`💧${days_.precipitation_sum[i]}mm`:''}</span>
+          </div>`;
+        }
+        card.innerHTML = `
+          <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px;">
+            <span style="font-size:36px">${wmoIcon(cur.weather_code)}</span>
+            <div>
+              <div style="font-weight:700;font-size:16px">${escHtml(cityName)}</div>
+              <div style="font-size:24px;font-weight:700;color:var(--accent)">${Math.round(cur.temperature_2m)}°C</div>
+            </div>
+            <div style="margin-left:auto;text-align:right;font-size:12px;color:var(--muted);">
+              <div>${wmoText(cur.weather_code)}</div>
+              <div>💧 ${cur.relative_humidity_2m}%</div>
+              <div>💨 ${Math.round(cur.wind_speed_10m)} km/h</div>
+            </div>
+          </div>
+          ${forecastHtml}
+          <div style="font-size:10px;color:var(--muted);margin-top:8px;opacity:.5">Open-Meteo · zdarma</div>`;
+        aisDiv.appendChild(card);
+        logStep(`🌤️ Počasí načteno ✓`, 'done');
+        return `✅ Počasí pro ${cityName}: ${Math.round(cur.temperature_2m)}°C, ${wmoText(cur.weather_code)}`;
+      }catch(e){ logStep('🌤️ Počasí selhalo','error'); return `⚠️ Počasí selhalo: ${e.message}`; }
+    }
+
+    case 'get_exchange_rate':{
+      try{
+        const from = (input.from||'EUR').toUpperCase();
+        const to   = (input.to||'CZK').toUpperCase();
+        const amount = Number(input.amount)||1;
+        logStep(`💱 Načítám kurz ${from}→${to}…`, 'active');
+        const cryptos = ['BTC','ETH','BNB','SOL','ADA','DOGE','XRP','USDT','USDC','DOT'];
+        let rate, result, source;
+        if(cryptos.includes(from)){
+          // CoinGecko free API
+          const coinMap = {BTC:'bitcoin',ETH:'ethereum',BNB:'binancecoin',SOL:'solana',ADA:'cardano',DOGE:'dogecoin',XRP:'ripple',USDT:'tether',USDC:'usd-coin',DOT:'polkadot'};
+          const coinId = coinMap[from]||from.toLowerCase();
+          const toCur = to.toLowerCase();
+          const r = await fetch(`https://api.coingecko.com/api/v3/simple/price?ids=${coinId}&vs_currencies=${toCur}`);
+          const d = await r.json();
+          rate = d[coinId]?.[toCur];
+          source = 'CoinGecko';
+        } else {
+          // Frankfurter free FX API
+          const r = await fetch(`https://api.frankfurter.app/latest?from=${from}&to=${to}`);
+          const d = await r.json();
+          rate = d.rates?.[to];
+          source = 'Frankfurter';
+        }
+        if(!rate) return `⚠️ Kurz ${from}→${to} nenalezen`;
+        result = amount * rate;
+        const chip = document.createElement('div');
+        chip.style.cssText='background:var(--card2);border:1px solid var(--border2);border-radius:14px;padding:12px 16px;margin:6px 0;display:flex;align-items:center;gap:10px;flex-wrap:wrap;';
+        chip.innerHTML=`
+          <span style="font-size:22px">${cryptos.includes(from)?'🪙':'💱'}</span>
+          <div>
+            <div style="font-size:18px;font-weight:700;color:var(--accent)">${amount} ${from} = <strong>${result.toLocaleString('cs-CZ',{maximumFractionDigits:4})} ${to}</strong></div>
+            <div style="font-size:11px;color:var(--muted)">1 ${from} = ${rate.toLocaleString('cs-CZ',{maximumFractionDigits:6})} ${to} · ${source} · ${new Date().toLocaleTimeString('cs-CZ',{hour:'2-digit',minute:'2-digit'})}</div>
+          </div>`;
+        aisDiv.appendChild(chip);
+        logStep(`💱 Kurz načten ✓`, 'done');
+        return `✅ ${amount} ${from} = ${result.toLocaleString('cs-CZ',{maximumFractionDigits:4})} ${to} (kurz: ${rate})`;
+      }catch(e){ logStep('💱 Kurz selhalo','error'); return `⚠️ Kurz selhalo: ${e.message}`; }
+    }
+
+    case 'show_map':{
+      try{
+        const loc = input.location||'Praha';
+        const zoom = Math.min(18, Math.max(1, Number(input.zoom)||13));
+        logStep(`🗺️ Hledám ${loc} na mapě…`, 'active');
+        const geoRes = await fetch(`https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(loc)}&format=json&limit=1`,{headers:{'Accept-Language':'cs'}});
+        const geoData = await geoRes.json();
+        if(!geoData.length) return `⚠️ Místo "${loc}" nenalezeno`;
+        const {lat, lon, display_name} = geoData[0];
+        const mapUrl = `https://www.openstreetmap.org/export/embed.html?bbox=${(+lon-0.05).toFixed(4)},${(+lat-0.03).toFixed(4)},${(+lon+0.05).toFixed(4)},${(+lat+0.03).toFixed(4)}&layer=mapnik&marker=${lat},${lon}`;
+        const wrap = document.createElement('div');
+        wrap.style.cssText='border-radius:14px;overflow:hidden;border:1px solid var(--border2);margin:6px 0;';
+        wrap.innerHTML=`
+          <div style="background:var(--card2);padding:8px 12px;font-size:13px;color:var(--muted2);display:flex;align-items:center;gap:6px;">
+            🗺️ <strong>${escHtml(display_name.split(',').slice(0,2).join(', '))}</strong>
+            <a href="https://www.openstreetmap.org/?mlat=${lat}&mlon=${lon}#map=${zoom}/${lat}/${lon}" target="_blank" style="margin-left:auto;color:var(--accent);font-size:11px;text-decoration:none">↗ Otevřít</a>
+          </div>
+          <iframe src="${mapUrl}" width="100%" height="260" style="border:none;display:block;" loading="lazy"></iframe>`;
+        aisDiv.appendChild(wrap);
+        logStep(`🗺️ Mapa zobrazena ✓`, 'done');
+        return `✅ Mapa zobrazena: ${display_name.split(',')[0]}`;
+      }catch(e){ logStep('🗺️ Mapa selhala','error'); return `⚠️ Mapa selhala: ${e.message}`; }
+    }
+
+    case 'create_chart':{
+      try{
+        const chartId = 'chart_'+Date.now();
+        const labels = (input.labels||'').split(',').map(s=>s.trim());
+        const values = (input.values||'').split(',').map(s=>parseFloat(s.trim())).filter(n=>!isNaN(n));
+        const type   = input.type||'bar';
+        const title  = input.title||'Graf';
+        const label  = input.label||'Data';
+        logStep(`📊 Renderuji graf "${title}"…`, 'active');
+        const colors = ['rgba(99,179,237,0.8)','rgba(154,230,180,0.8)','rgba(251,191,36,0.8)','rgba(252,129,129,0.8)','rgba(167,139,250,0.8)','rgba(45,212,191,0.8)'];
+        const wrap = document.createElement('div');
+        wrap.style.cssText='background:var(--card2);border:1px solid var(--border2);border-radius:14px;padding:14px;margin:6px 0;';
+        wrap.innerHTML=`<div style="font-size:13px;font-weight:600;color:var(--text);margin-bottom:10px;">${escHtml(title)}</div><canvas id="${chartId}" style="max-height:300px;"></canvas>`;
+        aisDiv.appendChild(wrap);
+        // Load Chart.js dynamically
+        await new Promise((res,rej)=>{
+          if(window.Chart){res();return;}
+          const s=document.createElement('script');
+          s.src='https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js';
+          s.onload=res; s.onerror=rej;
+          document.head.appendChild(s);
+        });
+        const ctx = document.getElementById(chartId).getContext('2d');
+        const isMultiColor = ['pie','doughnut'].includes(type);
+        new window.Chart(ctx,{
+          type,
+          data:{
+            labels,
+            datasets:[{
+              label,
+              data:values,
+              backgroundColor: isMultiColor ? colors.slice(0,values.length) : colors[0],
+              borderColor: isMultiColor ? colors.slice(0,values.length).map(c=>c.replace('0.8','1')) : colors[0].replace('0.8','1'),
+              borderWidth:1.5,
+              tension:0.4
+            }]
+          },
+          options:{
+            responsive:true,
+            plugins:{legend:{labels:{color:'rgba(255,255,255,0.7)',font:{family:'Outfit'}}},
+              tooltip:{callbacks:{label:ctx=>`${ctx.dataset.label}: ${ctx.parsed.y??ctx.parsed}`}}},
+            scales: ['pie','doughnut','radar'].includes(type)?{}:{
+              x:{ticks:{color:'rgba(255,255,255,0.5)'},grid:{color:'rgba(255,255,255,0.05)'}},
+              y:{ticks:{color:'rgba(255,255,255,0.5)'},grid:{color:'rgba(255,255,255,0.05)'}}
+            }
+          }
+        });
+        logStep(`📊 Graf vytvořen ✓`, 'done');
+        return `✅ Graf "${title}" vytvořen (${type}, ${values.length} hodnot)`;
+      }catch(e){ logStep('📊 Graf selhal','error'); return `⚠️ Graf selhal: ${e.message}`; }
+    }
+
+    case 'get_news':{
+      try{
+        const count = Math.min(10, Math.max(1, Number(input.count)||5));
+        const rssSources = {
+          'ct24':    'https://ct24.ceskatelevize.cz/rss/hlavni-zpravy',
+          'idnes':   'https://servis.idnes.cz/rss.aspx?c=zpravodajstvi',
+          'aktualne':'https://aktualne.cz/rss/',
+          'bbc':     'https://feeds.bbci.co.uk/news/rss.xml',
+          'techcrunch':'https://techcrunch.com/feed/',
+          'reuters': 'https://feeds.reuters.com/reuters/topNews',
+        };
+        const url = rssSources[input.source?.toLowerCase()] || input.source;
+        if(!url) return `⚠️ Neznámý zdroj "${input.source}"`;
+        logStep(`📰 Načítám zprávy z ${input.source||url}…`, 'active');
+        // CORS proxy s timeoutem
+        const proxyUrl = `https://api.allorigins.win/get?url=${encodeURIComponent(url)}`;
+        const ctrl = new AbortController();
+        const tid = setTimeout(()=>ctrl.abort(), 8000);
+        let res;
+        try {
+          res = await fetch(proxyUrl, {signal: ctrl.signal});
+        } finally { clearTimeout(tid); }
+        const data = await res.json();
+        const parser = new DOMParser();
+        const xml = parser.parseFromString(data.contents, 'text/xml');
+        const items = Array.from(xml.querySelectorAll('item')).slice(0, count);
+        if(!items.length) return `⚠️ Žádné zprávy nenalezeny (zkontroluj URL nebo zkus jiný zdroj)`;
+        const sourceName = input.source?.toLowerCase();
+        const card = document.createElement('div');
+        card.style.cssText='background:var(--card2);border:1px solid var(--border2);border-radius:14px;padding:12px 14px;margin:6px 0;display:flex;flex-direction:column;gap:0;';
+        const feedTitle = xml.querySelector('channel > title')?.textContent||sourceName;
+        card.innerHTML=`<div style="font-size:12px;font-weight:700;color:var(--muted2);margin-bottom:8px;text-transform:uppercase;letter-spacing:1px;">📰 ${escHtml(feedTitle)}</div>`;
+        items.forEach((item,i)=>{
+          const title = item.querySelector('title')?.textContent||'';
+          const link  = item.querySelector('link')?.textContent || item.querySelector('link')?.nextSibling?.textContent||'#';
+          const pubDate = item.querySelector('pubDate')?.textContent;
+          const date = pubDate ? new Date(pubDate).toLocaleDateString('cs-CZ',{day:'numeric',month:'short',hour:'2-digit',minute:'2-digit'}) : '';
+          const row = document.createElement('div');
+          row.style.cssText=`padding:7px 0;${i>0?'border-top:1px solid var(--border);':''}display:flex;flex-direction:column;gap:2px;`;
+          row.innerHTML=`<a href="${escHtml(link)}" target="_blank" style="color:var(--text);text-decoration:none;font-size:13px;line-height:1.4;font-weight:500;">${escHtml(title)}</a>${date?`<span style="font-size:11px;color:var(--muted)">${date}</span>`:''}`;
+          card.appendChild(row);
+        });
+        aisDiv.appendChild(card);
+        logStep(`📰 Zprávy načteny ✓`, 'done');
+        return `✅ Načteno ${items.length} zpráv z ${feedTitle}`;
+      }catch(e){
+        const msg = e.name==='AbortError' ? 'Proxy timeout (8s) — zkus znovu' : e.message;
+        logStep('📰 Zprávy selhaly','error');
+        return `⚠️ Zprávy selhaly: ${msg}`;
+      }
+    }
+
+    case 'speak_text':{
+      const text = input.text||'';
+      const lang = input.lang||'cs-CZ';
+      const rate = Math.min(2, Math.max(0.5, Number(input.rate)||1));
+      if(!('speechSynthesis' in window)) return '⚠️ Hlasová syntéza není dostupná v tomto prohlížeči';
+      window.speechSynthesis.cancel();
+      const utter = new SpeechSynthesisUtterance(text);
+      utter.lang = lang;
+      utter.rate = rate;
+      // Chrome načítá hlasy async — čekáme na ně
+      const assignVoice = () => {
+        const voices = window.speechSynthesis.getVoices();
+        const preferred = voices.find(v=>v.lang.startsWith(lang.split('-')[0])&&v.localService)
+          || voices.find(v=>v.lang.startsWith(lang.split('-')[0]));
+        if(preferred) utter.voice = preferred;
+      };
+      if(window.speechSynthesis.getVoices().length > 0){
+        assignVoice();
+        window.speechSynthesis.speak(utter);
+      } else {
+        window.speechSynthesis.onvoiceschanged = () => {
+          assignVoice();
+          window.speechSynthesis.speak(utter);
+          window.speechSynthesis.onvoiceschanged = null;
+        };
+        // Fallback — Chrome někdy nevolá onvoiceschanged po prvním načtení
+        setTimeout(() => { if(!utter.voice) { assignVoice(); window.speechSynthesis.speak(utter); } }, 500);
+      }
+      // Chip s ovládáním
+      const chip = document.createElement('div');
+      chip.style.cssText='display:inline-flex;align-items:center;gap:8px;background:rgba(96,165,250,0.1);border:1px solid rgba(96,165,250,0.3);border-radius:10px;padding:6px 12px;font-size:12px;color:#60a5fa;margin:6px 0;';
+      chip.innerHTML=`🔊 Přehrávám… "${escHtml(text.slice(0,50))}${text.length>50?'…':''}" 
+        <button onclick="window.speechSynthesis.cancel();this.parentElement.remove();" style="background:rgba(239,68,68,0.2);border:1px solid rgba(239,68,68,0.4);border-radius:6px;color:#f87171;cursor:pointer;font-size:11px;padding:1px 6px;">⏹ Stop</button>`;
+      utter.onend = ()=>{ if(chip.parentElement) chip.innerHTML=`✅ Přečteno · "${escHtml(text.slice(0,50))}${text.length>50?'…':''}"` ; };
+      aisDiv.appendChild(chip);
+      return `✅ Přehrávám text (${text.length} znaků, ${lang}, rychlost ${rate}×)`;
+    }
+
+    case 'generate_music':{
+      const prompt = input.prompt||'ambient music';
+      const duration = Math.min(60, Math.max(5, Number(input.duration)||30));
+      logStep(`🎵 Generuji hudbu: "${prompt.slice(0,40)}"…`, 'active');
+      // Pollinations audio API
+      const audioUrl = `https://audio.pollinations.ai/${encodeURIComponent(prompt)}?duration=${duration}&seed=${Math.floor(Math.random()*9999)}`;
+      const wrap = document.createElement('div');
+      wrap.style.cssText='background:var(--card2);border:1px solid var(--border2);border-radius:14px;padding:12px 14px;margin:6px 0;';
+      wrap.innerHTML=`
+        <div style="font-size:12px;color:var(--muted2);margin-bottom:8px;">🎵 <strong>${escHtml(prompt)}</strong> · ${duration}s</div>
+        <audio controls style="width:100%;height:36px;accent-color:var(--accent);" src="${audioUrl}">
+          Tvůj prohlížeč nepodporuje audio.
+        </audio>
+        <div style="font-size:10px;color:var(--muted);margin-top:6px;opacity:.5">Pollinations Audio · generování může trvat chvíli</div>`;
+      aisDiv.appendChild(wrap);
+      logStep(`🎵 Hudba připravena ✓`, 'done');
+      return `✅ Hudba generována: "${prompt}" (${duration}s) – přehrávač zobrazen`;
+    }
   }
 }
 
 // ── Render collapsible tool step in UI ──
 function renderToolStep(name, input, result, aisDiv){
-  const icons={web_search:'🔍',fetch_url:'🌐',run_code:'⚡',save_note:'📌',recall_notes:'🗂️',delegate_task:'🤝',generate_image:'🎨',set_reminder:'⏰',create_calendar_event:'📅',save_file:'💾',prepare_email:'📧'};
+  const icons={web_search:'🔍',fetch_url:'🌐',run_code:'⚡',save_note:'📌',recall_notes:'🗂️',delegate_task:'🤝',generate_image:'🎨',set_reminder:'⏰',create_calendar_event:'📅',save_file:'💾',prepare_email:'📧',get_weather:'🌤️',get_exchange_rate:'💱',show_map:'🗺️',create_chart:'📊',get_news:'📰',speak_text:'🔊',generate_music:'🎵'};
   const icon=icons[name]||'🔧';
   const summary=typeof input==='object'?Object.values(input).filter(Boolean).join(' · ').slice(0,80):String(input).slice(0,80);
   const preview=String(result).slice(0,500)+(String(result).length>500?'\n[...]':'');
@@ -1237,11 +1638,117 @@ function addCustomReaction(bubbleId, emoji){
   toggleReaction(bubbleId, emoji, bar.querySelector(`[data-emoji="${emoji}"]`));
 }
 
-// ════ IMAGE GENERATION (DALL-E) ════
+// ════ IMAGE GENERATION ════
 async function generateImage(prompt, container){
+  const dalleKey = localStorage.getItem('key-chatgpt');
+  const pickerId = 'imgPicker_' + Date.now();
+
+  // Zeptej se uživatele co chce použít
+  return new Promise(resolve => {
+    const picker = document.createElement('div');
+    picker.id = pickerId;
+    picker.style.cssText = 'background:var(--card2);border:1px solid var(--border2);border-radius:14px;padding:14px 16px;margin:4px 0;display:flex;flex-direction:column;gap:10px;';
+    picker.innerHTML = `
+      <div style="font-size:13px;color:var(--muted2);font-weight:600;">🎨 Jak vygenerovat obrázek?</div>
+      <div style="display:flex;flex-wrap:wrap;gap:8px;">
+        <button onclick="imgPickPollinations(${JSON.stringify(JSON.stringify(prompt))}, '${pickerId}', this.closest('.img-gen-result')||this.parentElement.parentElement.parentElement)"
+          style="flex:1;min-width:140px;background:rgba(52,211,153,0.1);border:1px solid rgba(52,211,153,0.35);border-radius:10px;padding:10px 14px;color:#34d399;cursor:pointer;font-size:13px;font-family:'Outfit',sans-serif;text-align:left;line-height:1.4;">
+          🆓 <strong>Pollinations</strong><br><span style="font-size:11px;opacity:.7">Zdarma · Flux model · ~10s</span>
+        </button>
+        ${dalleKey
+          ? `<button onclick="imgPickDalle(${JSON.stringify(JSON.stringify(prompt))}, '${pickerId}', this.closest('.img-gen-result')||this.parentElement.parentElement.parentElement)"
+              style="flex:1;min-width:140px;background:rgba(251,191,36,0.1);border:1px solid rgba(251,191,36,0.35);border-radius:10px;padding:10px 14px;color:#fbbf24;cursor:pointer;font-size:13px;font-family:'Outfit',sans-serif;text-align:left;line-height:1.4;">
+              ✨ <strong>DALL-E 3</strong><br><span style="font-size:11px;opacity:.7">Placené · Nejvyšší kvalita</span>
+            </button>`
+          : `<div style="flex:1;min-width:140px;background:rgba(255,255,255,0.03);border:1px solid var(--border);border-radius:10px;padding:10px 14px;color:var(--muted);font-size:12px;line-height:1.4;">
+              ✨ <strong>DALL-E 3</strong><br><span style="opacity:.6">Potřebuje OpenAI klíč v ⚙️</span>
+            </div>`
+        }
+      </div>`;
+    container.appendChild(picker);
+    scrollBottom();
+    window._imgPickResolve = window._imgPickResolve || {};
+    window._imgPickResolve[pickerId] = resolve;
+  });
+}
+
+async function imgPickPollinations(promptJson, pickerId, container){
+  const prompt = JSON.parse(promptJson);
+  document.getElementById(pickerId)?.remove();
+  const resolve = window._imgPickResolve?.[pickerId];
+  delete (window._imgPickResolve||{})[pickerId]; // cleanup
+  const url = await generateWithPollinations(prompt, container);
+  resolve?.(url);
+}
+
+async function imgPickDalle(promptJson, pickerId, container){
+  const prompt = JSON.parse(promptJson);
+  document.getElementById(pickerId)?.remove();
+  const resolve = window._imgPickResolve?.[pickerId];
+  delete (window._imgPickResolve||{})[pickerId]; // cleanup
+  const url = await generateWithDalle(prompt, container);
+  resolve?.(url);
+}
+
+async function generateWithPollinations(prompt, container){
+  const seed = Math.floor(Math.random() * 999999);
+  const url = `https://image.pollinations.ai/prompt/${encodeURIComponent(prompt.slice(0,500))}?width=1024&height=1024&seed=${seed}&nologo=true&enhance=true`;
+  logStep('🆓 Generuji… (Pollinations)', 'active');
+  const wrap = document.createElement('div');
+  wrap.className = 'img-gen-result';
+  const loadId = 'imgLoad_' + seed;
+  wrap.innerHTML = `<div id="${loadId}" style="display:flex;align-items:center;justify-content:center;height:180px;background:var(--card2);color:var(--muted);font-size:13px;gap:8px;"><span style="animation:spin 1s linear infinite;display:inline-block">⏳</span> Generuji…</div>`;
+  container.appendChild(wrap);
+  scrollBottom();
+  return new Promise(resolve => {
+    const TIMEOUT_MS = 45000;
+    const timer = setTimeout(() => {
+      logStep('🆓 Pollinations timeout (45s)', 'error');
+      const el = document.getElementById(loadId);
+      if(el) el.innerHTML = '⏱️ Pollinations timeout — zkus znovu nebo použij DALL-E';
+      resolve(null);
+    }, TIMEOUT_MS);
+    const img = new Image();
+    img.alt = prompt.slice(0,60);
+    img.style.cssText = 'width:100%;display:block;';
+    img.onload = () => {
+      clearTimeout(timer);
+      document.getElementById(loadId)?.replaceWith(img);
+      const footer = document.createElement('div');
+      footer.className = 'img-gen-footer';
+      const upgradeBtn = localStorage.getItem('key-chatgpt')
+        ? `<button onclick="imgUpgradeDalle(${JSON.stringify(prompt)},this.closest('.img-gen-result'))" style="background:rgba(251,191,36,0.15);border:1px solid rgba(251,191,36,0.4);border-radius:6px;color:#fbbf24;cursor:pointer;font-size:11px;padding:2px 8px;margin-left:auto">✨ Vylepšit → DALL-E 3</button>`
+        : '';
+      footer.innerHTML = `🆓 Pollinations · <a href="${url}" target="_blank">↗ Otevřít</a>
+        <button onclick="downloadImg('${url}','pollinations-${seed}.jpg')" style="background:none;border:none;color:var(--accent);cursor:pointer;font-size:11px">⬇ Stáhnout</button>
+        ${upgradeBtn}`;
+      wrap.appendChild(footer);
+      logStep('🆓 Pollinations hotovo ✓', 'done');
+      scrollBottom();
+      resolve(url);
+    };
+    img.onerror = async () => {
+      clearTimeout(timer);
+      logStep('🆓 Pollinations selhalo', 'error');
+      const el = document.getElementById(loadId);
+      if(el) el.innerHTML = '⚠️ Pollinations selhalo' + (localStorage.getItem('key-chatgpt') ? ' — zkouším DALL-E…' : '');
+      if(localStorage.getItem('key-chatgpt')){
+        resolve(await generateWithDalle(prompt, wrap));
+      } else resolve(null);
+    };
+    img.src = url;
+  });
+}
+
+async function imgUpgradeDalle(prompt, div){
+  div.innerHTML = `<div style="display:flex;align-items:center;justify-content:center;height:180px;background:var(--card2);color:var(--muted);font-size:13px;gap:8px;"><span style="animation:spin 1s linear infinite;display:inline-block">⏳</span> Generuji DALL-E 3…</div>`;
+  await generateWithDalle(prompt, div);
+}
+// ── DALL-E 3 upgrade/fallback ──
+async function generateWithDalle(prompt, replaceDiv){
   const key = localStorage.getItem('key-chatgpt');
-  if(!key) { container.innerHTML += `<div style="color:#f87171;font-size:13px">⚠️ Pro generování obrázků potřebuješ OpenAI klíč (DALL-E)</div>`; return null; }
-  logStep('🎨 Generuji obrázek…', 'active');
+  if(!key) return null;
+  logStep('✨ Generuji DALL-E 3…', 'active');
   try {
     const r = await fetchWithRetry('https://api.openai.com/v1/images/generations', {
       method:'POST', signal:currentAbortController?.signal,
@@ -1251,20 +1758,25 @@ async function generateImage(prompt, container){
     if(!r.ok){ const e=await r.json(); throw new Error(e.error?.message||r.status); }
     const d = await r.json();
     const url = d.data?.[0]?.url;
-    if(!url) throw new Error('No image URL returned');
-    const div = document.createElement('div');
-    div.className = 'img-gen-result';
-    div.innerHTML = `<img src="${url}" alt="${escHtml(prompt.slice(0,60))}" loading="lazy">
-      <div class="img-gen-footer">🎨 DALL-E 3 · <a href="${url}" target="_blank">↗ Otevřít</a>
+    if(!url) throw new Error('No image URL');
+    const target = replaceDiv || document.createElement('div');
+    target.className = 'img-gen-result';
+    target.innerHTML = `<img src="${url}" alt="${escHtml(prompt.slice(0,60))}" style="width:100%;display:block;" loading="lazy">
+      <div class="img-gen-footer">✨ DALL-E 3 · <a href="${url}" target="_blank">↗ Otevřít</a>
         <button onclick="downloadImg('${url}','dalle-${Date.now()}.png')" style="background:none;border:none;color:var(--accent);cursor:pointer;font-size:11px">⬇ Stáhnout</button>
       </div>`;
-    container.appendChild(div);
-    logStep('🎨 Obrázek vygenerován ✓', 'done');
+    logStep('✨ DALL-E 3 hotovo ✓', 'done');
+    scrollBottom();
     return url;
   } catch(e) {
-    logStep(`🎨 Chyba: ${e.message.slice(0,60)}`, 'error');
+    logStep(`✨ DALL-E chyba: ${e.message.slice(0,50)}`, 'error');
     return null;
   }
+}
+
+async function upgradeWithDalle(prompt, div){
+  div.innerHTML = `<div style="display:flex;align-items:center;justify-content:center;height:200px;background:var(--card2);color:var(--muted);font-size:13px;gap:8px;"><span style="animation:spin 1s linear infinite;display:inline-block">⏳</span> Generuji DALL-E 3…</div>`;
+  await generateWithDalle(prompt, div);
 }
 function downloadImg(url, name){
   const a = document.createElement('a'); a.href=url; a.download=name; a.click();
@@ -2506,6 +3018,44 @@ async function callAgentQuick(key, systemPrompt, userPrompt, maxTokens=500){
   return null;
 }
 
+// ════ PM ROUTING (Lana) ════
+// Analyzuje úkol a přidělí worker typ každému agentovi
+const WORKER_TYPES = {
+  research:  { label: '🔬 Výzkum',    desc: 'Hledej fakta, zdroje, data, ověřuj tvrzení' },
+  creative:  { label: '🎨 Kreativa',  desc: 'Generuj nápady, alternativy, kreativní přístupy' },
+  code:      { label: '💻 Kód',       desc: 'Technická implementace, algoritmy, debugging' },
+  analysis:  { label: '📊 Analýza',   desc: 'Rozeber strukturu, pros/cons, dopady, rizika' },
+  critic:    { label: '🔴 Kritik',    desc: 'Hledej slabiny, chyby, co může selhat' },
+  synthesis: { label: '🔗 Syntéza',   desc: 'Integruj pohledy, najdi společný základ' },
+};
+
+async function pmRoute(msg, agents){
+  if(agents.length < 2) return {}; // PM má smysl jen pro 2+ agenty
+  const claudeKey = localStorage.getItem('key-claude');
+  if(!claudeKey) return {};
+  const workerKeys = Object.keys(WORKER_TYPES);
+  const workerList = workerKeys.map(k=>`${k}: ${WORKER_TYPES[k].desc}`).join('\n');
+  const result = await callAgentQuick('claude',
+    `Jsi PM manažer (Lana). Přiděluješ worker typy agentům pro co nejlepší výsledek.
+Dostupné worker typy:\n${workerList}
+Odpověz POUZE jako JSON: {"agent0":"typ","agent1":"typ",...} kde agentN jsou indexy agentů 0,1,2...
+Každý agent musí mít jiný typ. Maximálně ${agents.length} typů.`,
+    `Úkol: "${msg.slice(0,400)}"\nAgenti (${agents.length}): ${agents.map((k,i)=>`agent${i}=${AI[k]?.name||k}`).join(', ')}\nPřiděl nejvhodnější worker typy.`,
+    150
+  );
+  if(!result) return {};
+  try{
+    const clean = result.replace(/```json|```/g,'').trim();
+    const parsed = JSON.parse(clean);
+    const roles = {};
+    agents.forEach((key,i)=>{
+      const type = parsed[`agent${i}`] || parsed[key] || workerKeys[i % workerKeys.length];
+      if(WORKER_TYPES[type]) roles[key] = WORKER_TYPES[type];
+    });
+    return roles;
+  }catch{ return {}; }
+}
+
 // ════ PŘIDĚLENÍ ROLÍ ════
 // Přidělí každému agentovi konkrétní perspektivu před diskuzí
 async function assignRoles(msg, agents){
@@ -2612,17 +3162,21 @@ function analyzeMsg(txt) {
   const needsDebate = words >= 4 && /proč|jak|vysvětli|porovnej|rozdíl|doporuč|analyz|napiš|vytvoř|pomoz|lepší|horší|vs\.?|versus|výhody|nevýhody|hodnocení|srovn|opinion|názor|měl bych|stojí za/.test(t);
   // Kdy tým OPRAVDU pomáhá: debate/srovnání, research, kreativní brainstorming
   // Kdy tým BRZDÍ: kód, matematika, překlad — Claude to zvládne líp a rychleji sám
-  const teamHurts = /^(napiš kód|napiš funkci|napiš skript|napiš program|napiš třídu|napiš metodu|write code|write a function|oprav kód|debug|refactor|přelož|translate|spočítej|calculate)/.test(t)
-    || /```[\s\S]|def \w+\(|class \w+|import \w|SELECT .* FROM|INSERT INTO|function \w+\(/.test(txt);
+  const isImageRequest = /nakresli|vytvoř obrázek|vygeneruj obrázek|generuj obrázek|udělej obrázek|draw|generate image|create image/i.test(t);
+  const teamHurts = !isImageRequest && (
+    /^(napiš kód|napiš funkci|napiš skript|napiš program|napiš třídu|napiš metodu|write code|write a function|oprav kód|debug|refactor|přelož|translate|spočítej|calculate)/.test(t)
+    || /```[\s\S]|def \w+\(|class \w+|import \w|SELECT .* FROM|INSERT INTO|function \w+\(/.test(txt)
+  );
   const teamBenefits = !teamHurts && needsDebate;
   return {
     isSimple: words <= 2 || /^(ahoj|čau|hey|hi|hello|dobrý den|díky|ok|jo|super|👍|🙏|haha)/.test(t),
     needsDebate,
+    isImageRequest,
     needsSubtasks: words > 7 && /a (také|navíc|zároveň)|za (prvé|druhé)|jednak|několik|více věcí|krok za krokem|kompletní|celý plán|zahrnuj|includu|plus|kromě|obsahuj/.test(t),
     needsPlan: words > 25 && /jak|napiš|vytvoř|navrhni|pomoz mi|co bych měl|jak bych/.test(t),
     hasMath: /[\d]+[\s]*[\+\-\*\/][\s]*[\d]+/.test(txt),
     outputFormat: detectOutputFormat(txt),
-    teamBenefits, // true = tým přidává hodnotu, false = Claude sám je lepší
+    teamBenefits,
   };
 }
 
@@ -2939,6 +3493,19 @@ Tvůj úkol jako syntetizátor:
     addDivider(aisDiv,`🎯 Specializace → ${routed.map(k=>AI[k].name).join(', ')} (${skipped} přeskočen)`);
   }
 
+  // 🎭 PM ROUTING (Lana) — přidělí worker typy před diskuzí
+  let workerRoles = {};
+  if(!task.isSimple && routed.length >= 2){
+    addDivider(aisDiv, '👩‍💼 Lana přiděluje worker typy…');
+    workerRoles = await pmRoute(msgText, routed);
+    if(Object.keys(workerRoles).length >= 2){
+      const roleList = Object.entries(workerRoles).map(([k,v])=>`${AI[k]?.name}: ${v.label}`).join(' · ');
+      const d=document.createElement('div');d.className='round-divider';
+      d.innerHTML=`<span>👩‍💼 PM: ${escHtml(roleList.slice(0,140))}</span>`;
+      aisDiv.appendChild(d);
+    }
+  }
+
   // 🎭 PŘIDĚLENÍ ROLÍ (jen pro komplexní dotazy s 2+ agenty)
   let agentRoles = {};
   if(!task.isSimple && routed.length >= 2){
@@ -2971,7 +3538,8 @@ Tvůj úkol jako syntetizátor:
       const bubble = addBubble(aisDiv, key, `${AI[key].name.toUpperCase()} · asistent`);
       try {
         const roleHint = agentRoles[key] ? `\n\nTvoje perspektiva v této diskuzi: ${agentRoles[key]}` : '';
-        const assignedTask = (subtasks ? `${enrichedMsg}\n\nTvůj konkrétní podúkol: ${subtasks[i % subtasks.length]}` : enrichedMsg) + projPrompt + roleHint;
+        const workerHint = workerRoles[key] ? `\n\n👷 Worker role: ${workerRoles[key].label} — ${workerRoles[key].desc}` : '';
+        const assignedTask = (subtasks ? `${enrichedMsg}\n\nTvůj konkrétní podúkol: ${subtasks[i % subtasks.length]}` : enrichedMsg) + projPrompt + roleHint + workerHint;
         const sys = getMdSystem(key)+getDatePrompt()+getMemoryPrompt()+getSearchPrompt()+getTeamHistoryContext();
         let reply;
         if(key==='gemini') reply = await geminiAgentLoop(assignedTask, sys, aisDiv, fileSnap);
@@ -3029,6 +3597,9 @@ Tvůj úkol jako syntetizátor:
     startStatusLog(aisDiv);
     const soloBubble = addBubble(aisDiv, 'claude', 'Claude · přemýšlí...', true);
 
+    // Detekce záměru generovat obrázek — Pollinations funguje bez klíče
+    const wantsImage = /nakresli|vytvoř obrázek|vygeneruj obrázek|generuj obrázek|udělej obrázek|draw|generate image|create image|dall-e|obrázek (ve stylu|jako|ukazující|zachycující)/i.test(fullMsg);
+
     // Sestav bohatý system prompt který nahrazuje týmovou diskuzi
     let soloSys = getMdSystem('claude') + getDatePrompt() + getMemoryPrompt() + getSearchPrompt();
 
@@ -3037,7 +3608,7 @@ Tvůj úkol jako syntetizátor:
 Pracuješ sám, ale přemýšlej strukturovaně jako tým:
 ${task.needsDebate ? '1. Zvaž aspoň 2 různé perspektivy nebo přístupy\n2. Najdi slabiny svého prvního nápadu\n3. Integruj nejlepší insights do finální odpovědi' : ''}
 ${task.needsPlan ? '→ Nejdřív si v hlavě udělej plán, pak ho proveď.' : ''}
-Máš přístup k nástrojům (web_search, fetch_url, run_code) – použij je pokud jsou potřeba.`;
+Máš přístup k nástrojům: web_search, fetch_url, run_code, save_note, recall_notes, delegate_task, generate_image, set_reminder, create_calendar_event, save_file, prepare_email, get_weather, get_exchange_rate, show_map, create_chart, get_news, speak_text, generate_music – použij je pokud jsou potřeba.`;
     }
 
     try{
@@ -3068,7 +3639,7 @@ Máš přístup k nástrojům (web_search, fetch_url, run_code) – použij je p
       const devilSection = hasDevil ? `\n\n🔴 ĎÁBLŮV ADVOKÁT (kritická perspektiva):\n${assistantAnswers['_devil']}` : '';
       const claudeSys=getMdSystem('claude')+getDatePrompt()+getMemoryPrompt()+getSearchPrompt()+(round===1
         ? '\nJsi šéf týmu. Tým provedl strukturovanou diskuzi včetně vzájemných reakcí. Vezmi v úvahu VŠECHNY perspektivy včetně kritiky ďáblova advokáta. Oprav chyby, integruj nejlepší insights, dej finální odpověď. Máš přístup k nástrojům – použij je pokud potřebuješ ověřit fakta.'
-        : '\nZohledni výhrady asistentů a dej revidovanou odpověď.');
+        : `\nZohledni KONKRÉTNÍ výhrady asistentů a oprav je v revidované odpovědi. Toto musíš opravit:\n${assistantAnswers._rework||'viz komentáře níže'}`);
       const claudePrompt=hasA
         ?`Otázka: ${fullMsg}\n\nDiskuze týmu:\n${summary}${devilSection}\n\nTvoje${round===1?'finální':'revidovaná'} odpověď:`
         :`${fullMsg}`;
@@ -3091,18 +3662,33 @@ Máš přístup k nástrojům (web_search, fetch_url, run_code) – použij je p
           :key==='chatgpt'?await reviewChatGPT(msgText,claudeVerdict)
           :await reviewCustom(key,msgText,claudeVerdict);
         reviews[key]=review;
-        finishBubble(bubble,`${review.approved?'✅':'❌'} ${review.comment}`);
-      }catch(e){reviews[key]={approved:true,comment:''};finishBubble(bubble,null,e.message);}
+        const score = review.score ?? (review.approved ? 0.8 : 0.4);
+        const scoreColor = score>=0.75?'#34d399':score>=0.5?'#fbbf24':'#f87171';
+        const scoreBar = `<span style="display:inline-block;background:${scoreColor};color:#000;border-radius:4px;padding:1px 6px;font-size:11px;font-weight:700;margin-right:6px">${score.toFixed(2)}</span>`;
+        finishBubble(bubble,`${scoreBar}${review.approved?'✅':'🔄'} ${review.comment}`);
+      }catch(e){reviews[key]={score:0.8,approved:true,comment:''};finishBubble(bubble,null,e.message);}
       scrollBottom();
     }
 
+    const scores = Object.values(reviews).map(r=>r.score ?? (r.approved?0.8:0.4));
+    const avgScore = scores.reduce((a,b)=>a+b,0) / scores.length;
     const approveCount=Object.values(reviews).filter(r=>r.approved).length;
     const total=routed.length;
+
+    // Zobraz průměrné skóre
+    const scoreColor = avgScore>=0.75?'#34d399':avgScore>=0.5?'#fbbf24':'#f87171';
+    addDivider(aisDiv, `📊 Průměrné skóre: <span style="color:${scoreColor};font-weight:700">${avgScore.toFixed(2)}</span> · ${approveCount}/${total} schváleno`);
+
     if(approveCount>=Math.ceil(total/2)){
       addDivider(aisDiv,approveCount===total?'✅ KONSENZUS':'✅ VĚTŠINA SOUHLASÍ ('+approveCount+'/'+total+')');
       break;
     }
-    assistantAnswers={...assistantAnswers,...Object.fromEntries(Object.entries(reviews).filter(([,v])=>!v.approved).map(([k,v])=>[k,v.comment]))};
+    // Rework: dej Claudovi konkrétní feedback co opravit
+    const reworkFeedback = Object.entries(reviews)
+      .filter(([,v])=>!v.approved)
+      .map(([k,v])=>`${AI[k]?.name||k} (skóre ${(v.score??0.4).toFixed(2)}): ${v.comment}`)
+      .join('\n');
+    assistantAnswers={...assistantAnswers,_rework: reworkFeedback, ...Object.fromEntries(Object.entries(reviews).filter(([,v])=>!v.approved).map(([k,v])=>[k,v.comment]))};
   }
 
   } // end else (team mode)
@@ -3256,26 +3842,39 @@ Zkontroluj konkrétně:
 4. Logické mezery nebo nesrovnalosti?
 
 Odpověz POUZE jako JSON (bez markdown):
-{"approved": true/false, "comment": "konkrétní komentář – co přesně chybí nebo je špatně, nebo proč je OK"}
+{"score": 0.0-1.0, "comment": "konkrétní komentář – co přesně chybí nebo je špatně, nebo proč je OK"}
 
-Pravidlo: approved=false POUZE pokud je skutečný problém. Neschvaluj jen proto, aby byl nesouhlas.`;
+Škála: 1.0=perfektní, 0.75=dobré, 0.5=průměrné, 0.25=špatné, 0.0=chybné
+Pravidlo: score<0.75 POUZE pokud je skutečný problém. V comment vždy uveď CO konkrétně opravit.`;
   const r=await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${AI.gemini.key}`,{method:'POST',signal:sig,headers:{'Content-Type':'application/json'},body:JSON.stringify({contents:[{role:'user',parts:[{text:prompt}]}],generationConfig:{maxOutputTokens:300}})});
   if(!r.ok){const e=await r.json();throw new Error(e.error?.message||r.status);}
   const d=await r.json();
   const raw=(d.candidates?.[0]?.content?.parts?.[0]?.text||'{}').replace(/```json|```/g,'').trim();
-  try{return JSON.parse(raw);}catch{return{approved:true,comment:raw};}
+  try{
+    const parsed=JSON.parse(raw);
+    if(parsed.score===undefined) parsed.score = parsed.approved ? 0.8 : 0.4;
+    parsed.score = Math.min(1, Math.max(0, Number(parsed.score)||0));
+    parsed.approved = parsed.score >= 0.75;
+    return parsed;
+  }catch{return{score:0.8,approved:true,comment:raw};}
 }
 
 async function reviewChatGPT(originalMsg, verdict){
   const sig=currentAbortController?.signal;
   const r=await fetch('https://api.openai.com/v1/chat/completions',{method:'POST',signal:sig,headers:{'Content-Type':'application/json','Authorization':`Bearer ${AI.chatgpt.key}`},body:JSON.stringify({model:'gpt-4o',max_tokens:300,messages:[
-    {role:'system',content:'Jsi přísný recenzent. Odpovídej POUZE jako JSON bez markdown: {"approved":true/false,"comment":"konkrétní komentář"}'},
-    {role:'user',content:`Otázka: "${originalMsg.slice(0,500)}"\n\nClaude odpověděl:\n"${verdict.slice(0,1500)}"\n\nZkontroluj: faktické chyby, chybějící perspektivy, povrchnost, logické mezery. Schval jen pokud je opravdu OK.`}
+    {role:'system',content:'Jsi přísný recenzent. Odpovídej POUZE jako JSON bez markdown: {"score":0.0-1.0,"comment":"konkrétní komentář"}. Škála: 1.0=perfektní, 0.75=dobré, 0.5=průměrné, 0.25=špatné. V comment vždy uveď CO konkrétně opravit pokud score<0.75.'},
+    {role:'user',content:`Otázka: "${originalMsg.slice(0,500)}"\n\nClaude odpověděl:\n"${verdict.slice(0,1500)}"\n\nZkontroluj: faktické chyby, chybějící perspektivy, povrchnost, logické mezery.`}
   ]})});
   if(!r.ok){const e=await r.json();throw new Error(e.error?.message||r.status);}
   const d=await r.json();
   const raw=(d.choices[0].message.content||'{}').replace(/```json|```/g,'').trim();
-  try{return JSON.parse(raw);}catch{return{approved:true,comment:raw};}
+  try{
+    const parsed=JSON.parse(raw);
+    if(parsed.score===undefined) parsed.score = parsed.approved ? 0.8 : 0.4;
+    parsed.score = Math.min(1, Math.max(0, Number(parsed.score)||0));
+    parsed.approved = parsed.score >= 0.75;
+    return parsed;
+  }catch{return{score:0.8,approved:true,comment:raw};}
 }
 
 function normalizeModel(ai){
@@ -3298,12 +3897,17 @@ async function reviewCustom(key,originalMsg,verdict){
   const ai=AI[key]; const model=normalizeModel(ai);
   const sig=currentAbortController?.signal;
   if(ai.url?.includes('openrouter')) await new Promise(r=>setTimeout(r,900));
-  const r=await fetch(`${ai.url}/chat/completions`,{method:'POST',signal:sig,headers:{'Content-Type':'application/json','Authorization':`Bearer ${ai.key}`},body:JSON.stringify({model,max_tokens:200,messages:[{role:'system',content:'Zkontroluj odpověď. Odpověz POUZE jako JSON: {"approved":true/false,"comment":"komentář"}'},{role:'user',content:`Otázka: "${originalMsg}"\nClaude odpověděl: "${verdict}"\nJe správná a úplná?`}]})});
+  const r=await fetch(`${ai.url}/chat/completions`,{method:'POST',signal:sig,headers:{'Content-Type':'application/json','Authorization':`Bearer ${ai.key}`},body:JSON.stringify({model,max_tokens:200,messages:[{role:'system',content:'Zkontroluj odpověď. Odpověz POUZE jako JSON: {"score":0.0-1.0,"comment":"komentář"}. Škála: 1.0=perfektní, 0.75=dobré, 0.5=průměrné.'},{role:'user',content:`Otázka: "${originalMsg}"\nClaude odpověděl: "${verdict}"\nJe správná a úplná?`}]})});
   if(!r.ok){let em=`${r.status}`;try{const e=await r.json();em=e.error?.message||em;}catch{}throw new Error(em);}
   const d=await r.json();
   const raw=d.choices?.[0]?.message?.content||'';
-  try{return JSON.parse(raw.replace(/```json|```/g,''));}
-  catch{return{approved:true,comment:raw};}
+  try{
+    const parsed=JSON.parse(raw.replace(/```json|```/g,''));
+    if(parsed.score===undefined) parsed.score = parsed.approved ? 0.8 : 0.4;
+    parsed.score = Math.min(1, Math.max(0, Number(parsed.score)||0));
+    parsed.approved = parsed.score >= 0.75;
+    return parsed;
+  }catch{return{score:0.8,approved:true,comment:raw};}
 }
 
 function scrollBottom(){const m=document.getElementById('messages');setTimeout(()=>m.scrollTop=m.scrollHeight,50);}
