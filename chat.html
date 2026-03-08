@@ -146,7 +146,14 @@ html,body{height:100%;height:100dvh;background:var(--bg);color:var(--text);font-
 .msg-ai.log-item .ai-bubble{background:none!important;border:none!important;padding:2px 0!important;box-shadow:none!important;font-size:12px;color:var(--muted);}
 .msg-ai.log-item .ai-avatar{width:18px;height:18px;font-size:8px;border-radius:5px;flex-shrink:0;}
 .msg-ai.log-item .ai-name{font-size:10px;display:none;}
-.ai-status-log{display:flex;flex-direction:column;gap:3px;padding:6px 0 6px 12px;border-left:2px solid var(--border);margin:6px 0 10px 8px;}
+.ai-status-log{margin:6px 0 10px 8px;border-left:2px solid var(--border);}
+.ai-status-log .log-header{display:flex;align-items:center;gap:6px;padding:4px 0 4px 10px;cursor:pointer;user-select:none;font-size:11px;color:var(--muted);transition:color .2s;}
+.ai-status-log .log-header:hover{color:var(--text);}
+.ai-status-log .log-header .log-arrow{font-size:9px;transition:transform .2s;display:inline-block;}
+.ai-status-log .log-header .log-summary{flex:1;}
+.ai-status-log.collapsed .log-arrow{transform:rotate(-90deg);}
+.ai-status-log .log-body{display:flex;flex-direction:column;gap:3px;padding:4px 0 6px 10px;max-height:220px;overflow-y:auto;}
+.ai-status-log.collapsed .log-body{display:none;}
 .ai-status-log .log-line{font-size:11px;color:var(--muted);display:flex;align-items:center;gap:6px;line-height:1.5;transition:opacity .2s;}
 .ai-status-log .log-line.done{opacity:.5;}
 .ai-status-log .log-line .log-dot{width:6px;height:6px;border-radius:50%;flex-shrink:0;background:var(--muted);transition:background .3s;}
@@ -154,6 +161,8 @@ html,body{height:100%;height:100dvh;background:var(--bg);color:var(--text);font-
 .ai-status-log .log-line.done .log-dot{background:#4ade8066;}
 .ai-status-log .log-line.error{color:#f87171;}
 .ai-status-log .log-line.error .log-dot{background:#f87171;}
+.ai-status-log .log-body::-webkit-scrollbar{width:3px;}
+.ai-status-log .log-body::-webkit-scrollbar-thumb{background:var(--border2);border-radius:2px;}
 @keyframes fadeSlide{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:translateY(0)}}
 .ai-avatar{width:32px;height:32px;border-radius:10px;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;font-family:'JetBrains Mono',monospace;flex-shrink:0;margin-top:2px;border:1px solid rgba(255,255,255,0.08);}
 .ai-bubble-wrap{flex:1;min-width:0;}
@@ -531,7 +540,7 @@ onAuthStateChanged(auth, user => {
   <div class="input-area">
     <div style="flex:1;position:relative;display:flex;flex-direction:column;gap:6px;">
       <div class="slash-menu" id="slashMenu" style="display:none"></div>
-      <textarea id="msgInput" placeholder="Napiš zprávu…" rows="1" onkeydown="handleKey(event)" oninput="autoResize(this);handleSlash(this.value)" aria-label="Zpráva" aria-multiline="true"></textarea>
+      <textarea id="msgInput" placeholder="Napiš zprávu… (nebo @Claude, @Gemini pro konkrétního agenta)" rows="1" onkeydown="handleKey(event)" oninput="autoResize(this);handleSlash(this.value)" aria-label="Zpráva" aria-multiline="true"></textarea>
       <div style="display:flex;align-items:center;gap:6px;">
         <label class="input-btn" title="Přiložit soubor" style="position:relative;overflow:hidden;cursor:pointer;">📎<input type="file" id="fileInput" style="position:absolute;inset:0;opacity:0;cursor:pointer;width:100%;height:100%" accept=".txt,.pdf,.md,.js,.py,.html,.css,.json,.csv,.xml,.yaml,.yml,.log,.ts,.jsx,.tsx,.c,.cpp,.h,.java,.php,.rb,.go,.rs,image/*" onchange="handleFile(event)"></label>
         <button class="input-btn" id="voiceBtn" onclick="toggleVoice()" title="Hlasový vstup" aria-label="Hlasový vstup">🎙️</button>
@@ -622,6 +631,14 @@ onAuthStateChanged(auth, user => {
     <div class="export-option" onclick="exportAs('html')">
       <span class="export-icon">🌐</span>
       <div class="export-info"><strong>HTML stránka (.html)</strong><span>Hezky naformátovaná stránka</span></div>
+    </div>
+    <div class="export-option" onclick="exportAs('docx')">
+      <span class="export-icon">📄</span>
+      <div class="export-info"><strong>Word dokument (.docx)</strong><span>Formátovaný dokument pro Office</span></div>
+    </div>
+    <div class="export-option" onclick="exportAs('pdf')">
+      <span class="export-icon">🖨️</span>
+      <div class="export-info"><strong>PDF (tisk)</strong><span>Otevře tiskový dialog</span></div>
     </div>
     <div class="export-option" onclick="exportAs('json')">
       <span class="export-icon">💾</span>
@@ -984,7 +1001,7 @@ async function executeTool(name, input, aisDiv){
         const prompt=`Podúkol: ${input.task}\n\nKontext:\n${input.context||'(žádný)'}`;
         let result='';
         if(agentKey==='gemini'){
-          const r=await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${ai.key}`,{method:'POST',signal:getSignal(),headers:{'Content-Type':'application/json'},body:JSON.stringify({systemInstruction:{parts:[{text:sys}]},contents:[{role:'user',parts:[{text:prompt}]}],generationConfig:{maxOutputTokens:2000}})});
+          const r=await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-lite:generateContent?key=${ai.key}`,{method:'POST',signal:getSignal(),headers:{'Content-Type':'application/json'},body:JSON.stringify({systemInstruction:{parts:[{text:sys}]},contents:[{role:'user',parts:[{text:prompt}]}],generationConfig:{maxOutputTokens:2000}})});
           const d=await r.json();result=d.candidates?.[0]?.content?.parts?.[0]?.text||'Prázdná odpověď';
         } else if(agentKey==='chatgpt'){
           const r=await fetch('https://api.openai.com/v1/chat/completions',{method:'POST',signal:getSignal(),headers:{'Content-Type':'application/json','Authorization':`Bearer ${ai.key}`},body:JSON.stringify({model:'gpt-4o',max_tokens:2000,messages:[{role:'system',content:sys},{role:'user',content:prompt}]})});
@@ -1523,7 +1540,7 @@ async function geminiAgentLoop(userMsg, systemPrompt, aisDiv, fileSnap=null){
 
   for(let step=0;step<MAX_STEPS;step++){
     if(signal?.aborted) throw new Error('Zrušeno');
-    const r=await fetchWithRetry(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${AI.gemini.key}`,{
+    const r=await fetchWithRetry(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-lite:generateContent?key=${AI.gemini.key}`,{
       method:'POST',signal,headers:{'Content-Type':'application/json'},
       body:JSON.stringify({systemInstruction:{parts:[{text:fullSystem}]},contents,tools:getGeminiTools(),toolConfig:{functionCallingConfig:{mode:'AUTO'}},generationConfig:{maxOutputTokens:2048}})
     });
@@ -1536,7 +1553,7 @@ async function geminiAgentLoop(userMsg, systemPrompt, aisDiv, fileSnap=null){
     contents.push({role:'model',parts:respParts});
     const funcCalls=respParts.filter(p=>p.functionCall);
     if(!funcCalls.length){
-      renderStats(aisDiv,Date.now()-t0,totalOut,'gemini-2.0-flash');
+      renderStats(aisDiv,Date.now()-t0,totalOut,'gemini-2.0-flash-lite');
       return respParts.filter(p=>p.text).map(p=>p.text).join('')||'';
     }
     const funcResults=[];
@@ -1550,7 +1567,7 @@ async function geminiAgentLoop(userMsg, systemPrompt, aisDiv, fileSnap=null){
     }
     contents.push({role:'user',parts:funcResults});
   }
-  renderStats(aisDiv,Date.now()-t0,totalOut,'gemini-2.0-flash');
+  renderStats(aisDiv,Date.now()-t0,totalOut,'gemini-2.0-flash-lite');
   const last=contents.filter(c=>c.role==='model').pop();
   return last?.parts?.filter(p=>p.text).map(p=>p.text).join('')||'(Max kroků)';
 }
@@ -1575,7 +1592,7 @@ const COST_PER_TOKEN = { // USD per output token
   'claude-haiku-4-5-20251001': 1.25/1e6,
   'claude-opus-4-6': 75/1e6,
   'gpt-4o': 10/1e6,
-  'gemini-2.0-flash': 0,
+  'gemini-2.0-flash-lite': 0,
   '_default': 2/1e6
 };
 function getCost(model, tokens){ return (COST_PER_TOKEN[model]||COST_PER_TOKEN._default)*tokens; }
@@ -1617,7 +1634,22 @@ function toggleReaction(bubbleId, emoji, btn){
   const key = `${bubbleId}_${emoji}_me`;
   const myVote = sessionStorage.getItem(key);
   if(myVote){ delete msgReactions[bubbleId][emoji]; sessionStorage.removeItem(key); }
-  else { msgReactions[bubbleId][emoji] = (msgReactions[bubbleId][emoji]||0)+1; sessionStorage.setItem(key,'1'); }
+  else {
+    msgReactions[bubbleId][emoji] = (msgReactions[bubbleId][emoji]||0)+1;
+    sessionStorage.setItem(key,'1');
+    // 🧠 Agent style memory – sleduj 👍/👎
+    if(emoji==='👍'||emoji==='👎'){
+      const bubbleEl = document.querySelector(`.bubble-${bubbleId}`);
+      const wrap = bubbleEl?.closest('.msg-ais');
+      // Najdi klíč agenta z barvy nebo jména v bubbleu
+      const aiName = bubbleEl?.closest('.msg-ai')?.querySelector('.ai-name')?.textContent||'';
+      const agentKey = Object.keys(AI).find(k => aiName.includes(AI[k].name.split(' ')[0]));
+      if(agentKey){
+        const textLen = (bubbleEl?.textContent||'').length;
+        updateAgentStyle(agentKey, emoji==='👍', textLen);
+      }
+    }
+  }
   renderReactions(bubbleId);
 }
 function renderReactions(bubbleId){
@@ -2263,7 +2295,7 @@ async function selfReflect(key, question, answer, signal){
       if(!r.ok) return null;
       const d=await r.json(); return d.choices?.[0]?.message?.content?.trim()||null;
     } else if(key==='gemini'){
-      const r=await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${AI.gemini.key}`,{method:'POST',signal,headers:{'Content-Type':'application/json'},body:JSON.stringify({contents:[{role:'user',parts:[{text:prompt}]}],generationConfig:{maxOutputTokens:80}})});
+      const r=await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-lite:generateContent?key=${AI.gemini.key}`,{method:'POST',signal,headers:{'Content-Type':'application/json'},body:JSON.stringify({contents:[{role:'user',parts:[{text:prompt}]}],generationConfig:{maxOutputTokens:80}})});
       if(!r.ok) return null;
       const d=await r.json(); return d.candidates?.[0]?.content?.parts?.[0]?.text?.trim()||null;
     }
@@ -2274,8 +2306,10 @@ async function selfReflect(key, question, answer, signal){
 // MD_SYSTEM je nyní funkce – injectuje persónu každého AI
 function getMdSystem(key='') {
   const persona = key ? getPersona(key) : '';
+  const styleHint = key ? getAgentStyleHint(key) : '';
   return `Jsi člen AI týmu – odborník se svou rolí a charakterem.
 ${persona ? '\nTVOJE ROLE: '+persona : ''}
+${styleHint ? '\n'+styleHint : ''}
 
 Před každou odpovědí se zamysli:
 <think>
@@ -3001,7 +3035,58 @@ function exportAs(format) {
     download('konverzace.md', out, 'text/markdown');
     return;
   }
-  if(format==='html'){
+  // ── DOCX export (html-docx-js) ──
+  if(format==='docx'){
+    const script = document.createElement('script');
+    script.src = 'https://cdnjs.cloudflare.com/ajax/libs/html-docx-js/0.3.1/html-docx.js';
+    script.onload = () => {
+      const title = chatLog[0]?.user?.slice(0,60) || 'Chat';
+      let body = `<h1>AI Chat – ${date}</h1>`;
+      for(const h of chatLog){
+        if(h._compressedSummary){ body += `<p style="color:#888;font-style:italic">📦 [Starší část zkomprimována: ${escHtml(h._compressedSummary.slice(0,120))}…]</p><hr/>`; continue; }
+        body += `<h2 style="color:#1a1a2e">💬 ${escHtml(h.user)}</h2>`;
+        for(const [k,v] of Object.entries(h)){
+          if(k==='user'||k.startsWith('_')||typeof v!=='string') continue;
+          const ai = AI[k];
+          const color = ai?.rawColor||'#333';
+          body += `<h3 style="color:${color}">${escHtml(ai?.name||k)}</h3><div>${(v||'').replace(/\n/g,'<br/>')}</div>`;
+        }
+        body += '<hr/>';
+      }
+      const html = `<!DOCTYPE html><html><head><meta charset="UTF-8"><title>${escHtml(title)}</title></head><body style="font-family:Calibri,sans-serif;max-width:800px;margin:auto">${body}</body></html>`;
+      const blob = window.htmlDocx.asBlob(html);
+      const a = document.createElement('a'); a.href = URL.createObjectURL(blob);
+      a.download = 'konverzace.docx'; a.click();
+    };
+    script.onerror = () => alert('Nepodařilo se načíst html-docx-js knihovnu. Zkus exportovat jako HTML.');
+    document.head.appendChild(script);
+    return;
+  }
+  // ── PDF (tisk) ──
+  if(format==='pdf'){
+    let msgs = '';
+    for(const h of chatLog){
+      if(h._compressedSummary){ msgs += `<div class="compressed">📦 ${escHtml(h._compressedSummary)}</div>`; continue; }
+      msgs += `<div class="msg-user"><strong>💬 ${escHtml(h.user)}</strong></div>`;
+      for(const [k,v] of Object.entries(h)){
+        if(k==='user'||k.startsWith('_')||typeof v!=='string') continue;
+        const ai = AI[k]; const color = ai?.rawColor||'#333';
+        msgs += `<div class="msg-ai" style="border-left:3px solid ${color}"><span class="ai-name" style="color:${color}">${escHtml(ai?.name||k)}</span><div class="ai-body">${(v||'').replace(/\n/g,'<br/>')}</div></div>`;
+      }
+    }
+    const w = window.open('','_blank');
+    w.document.write(`<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Chat – ${date}</title><style>
+      *{box-sizing:border-box}body{font-family:Calibri,Georgia,serif;max-width:800px;margin:40px auto;padding:20px;color:#111;font-size:13px}
+      h1{font-size:20px;border-bottom:2px solid #333;padding-bottom:8px;margin-bottom:24px}
+      .msg-user{background:#f0f4ff;border-radius:8px;padding:12px 16px;margin:16px 0 4px;font-weight:600}
+      .msg-ai{background:#fff;border-radius:8px;padding:12px 16px;margin:4px 0 12px 20px;box-shadow:0 1px 3px rgba(0,0,0,.1)}
+      .ai-name{font-weight:700;font-size:11px;text-transform:uppercase;display:block;margin-bottom:4px}
+      .ai-body{line-height:1.6}.compressed{background:#fffbe6;border-left:3px solid #f59e0b;padding:8px 12px;margin:8px 0;font-style:italic;font-size:11px;color:#92400e}
+      @media print{body{margin:0}@page{margin:2cm}}
+    </style></head><body><h1>AI Chat – ${date}</h1>${msgs}<script>window.onload=()=>window.print()<\/script></body></html>`);
+    w.document.close();
+    return;
+  }
     let msgs='';
     for(const h of chatLog){
       msgs+=`<div class="msg-user"><strong>Ty:</strong> ${escHtml(h.user)}</div>`;
@@ -3022,6 +3107,123 @@ function download(filename, content, type) {
   a.download=filename;
   a.click();
 }
+
+// ════ AGENT STYLE MEMORY ════
+// Každý agent si pamatuje co uživatel oceňuje — délku, tón, styl
+
+function getAgentStyles(){
+  return JSON.parse(localStorage.getItem('agent-styles')||'{}');
+}
+function saveAgentStyles(styles){
+  localStorage.setItem('agent-styles', JSON.stringify(styles));
+}
+function updateAgentStyle(agentKey, liked, responseLen){
+  const styles = getAgentStyles();
+  if(!styles[agentKey]) styles[agentKey] = { likes:0, dislikes:0, avgLenLiked:0, avgLenDisliked:0, evolved:false };
+  const s = styles[agentKey];
+  if(liked){
+    s.likes++;
+    s.avgLenLiked = Math.round((s.avgLenLiked * (s.likes-1) + responseLen) / s.likes);
+  } else {
+    s.dislikes++;
+    s.avgLenDisliked = Math.round((s.avgLenDisliked * (s.dislikes-1) + responseLen) / s.dislikes);
+  }
+  s.evolved = (s.likes + s.dislikes) >= 3;
+  saveAgentStyles(styles);
+}
+function getAgentStyleHint(agentKey){
+  const styles = getAgentStyles();
+  const s = styles[agentKey];
+  if(!s || !s.evolved) return ''; // nestačí zpětná vazba
+  const total = s.likes + s.dislikes;
+  const likeRatio = s.likes / total;
+  let hints = [];
+  // Délka odpovědi
+  if(s.avgLenLiked > 0 && s.avgLenDisliked > 0){
+    if(s.avgLenLiked < s.avgLenDisliked * 0.7) hints.push('Uživatel preferuje kratší, stručné odpovědi.');
+    else if(s.avgLenLiked > s.avgLenDisliked * 1.4) hints.push('Uživatel oceňuje detailní, delší odpovědi.');
+  } else if(s.avgLenLiked > 0){
+    if(s.avgLenLiked < 300) hints.push('Uživatel preferuje stručné odpovědi (do 300 znaků).');
+    else if(s.avgLenLiked > 1200) hints.push('Uživatel oceňuje podrobné odpovědi.');
+  }
+  // Spokojenost
+  if(likeRatio < 0.4) hints.push('Uživatel byl dosud spíše nespokojen — zkus jiný přístup, buď konkrétnější a přímočařejší.');
+  else if(likeRatio > 0.8) hints.push('Uživatel je spokojený s tvým stylem — pokračuj stejným způsobem.');
+  if(!hints.length) return '';
+  return `\n\n🧠 Zpětná vazba od uživatele (${s.likes}👍 / ${s.dislikes}👎): ${hints.join(' ')}`;
+}
+
+// ════ AUTO-KOMPRESE STARÝCH ZPRÁV ════
+// Když chatLog > 15 zpráv, zkomprimuj nejstarší třetinu do shrnutí
+
+const COMPRESS_THRESHOLD = 15;
+const COMPRESS_KEEP = 8; // kolik nejnovějších ponechat netknutých
+
+async function autoCompressChat(){
+  if(chatLog.length <= COMPRESS_THRESHOLD) return;
+  // Jak mnoho lze komprimovat
+  const compressCount = chatLog.length - COMPRESS_KEEP;
+  const toCompress = chatLog.slice(0, compressCount);
+  // Přeskoč pokud jsou tam jen compressed entries
+  if(toCompress.every(h => h._compressedSummary)) return;
+
+  const claudeKey = localStorage.getItem('key-claude');
+  const groqAI = Object.values(AI).find(a => a.url?.includes('groq') && a.key);
+  if(!claudeKey && !groqAI) return; // bez AI klíče nelze komprimovat
+
+  // Zobraz notifikaci
+  const notif = document.createElement('div');
+  notif.style.cssText = 'position:fixed;bottom:80px;left:50%;transform:translateX(-50%);background:var(--card2);border:1px solid var(--border2);border-radius:10px;padding:8px 16px;font-size:12px;color:var(--muted);z-index:50;';
+  notif.textContent = '🗜️ Komprimuji starší zprávy…';
+  document.body.appendChild(notif);
+
+  try{
+    const convText = toCompress.map(h => {
+      const aiParts = Object.entries(h).filter(([k])=>k!=='user'&&!k.startsWith('_')&&typeof h[k]==='string').map(([k,v])=>`${AI[k]?.name||k}: ${v.slice(0,300)}`).join('\n');
+      return `Uživatel: ${h.user}\n${aiParts}`;
+    }).join('\n\n---\n\n');
+
+    const prompt = `Shrň tuto část konverzace do 3-5 vět. Zaměř se na klíčová témata, rozhodnutí a závěry. Buď konkrétní — co bylo řečeno, co bylo rozhodnuto:\n\n${convText.slice(0,6000)}`;
+    let summary = '';
+
+    if(claudeKey){
+      const r = await fetch('https://api.anthropic.com/v1/messages',{method:'POST',headers:{'Content-Type':'application/json','x-api-key':claudeKey,'anthropic-version':'2023-06-01','anthropic-dangerous-direct-browser-access':'true'},body:JSON.stringify({model:'claude-haiku-4-5-20251001',max_tokens:300,messages:[{role:'user',content:prompt}]})});
+      const d = await r.json(); summary = d.content?.[0]?.text?.trim()||'';
+    } else if(groqAI){
+      const r = await fetch(`${groqAI.url}/chat/completions`,{method:'POST',headers:{'Content-Type':'application/json','Authorization':`Bearer ${groqAI.key}`},body:JSON.stringify({model:'llama-3.1-8b-instant',max_tokens:300,messages:[{role:'user',content:prompt}]})});
+      const d = await r.json(); summary = d.choices?.[0]?.message?.content?.trim()||'';
+    }
+
+    if(summary){
+      // Nahraď komprimované zprávy jedním záznamem
+      chatLog.splice(0, compressCount, { _compressedSummary: summary, _compressedCount: compressCount });
+      // Zobraz v chatu
+      const msgs = document.getElementById('messages');
+      const allUserDivs = msgs.querySelectorAll('.msg-user');
+      // Schuj staré zprávy v DOM (jednoduché řešení)
+      let hidden = 0;
+      allUserDivs.forEach(div => {
+        if(hidden < compressCount){
+          div.style.display = 'none';
+          const next = div.nextElementSibling;
+          if(next?.classList.contains('msg-ais')) next.style.display = 'none';
+          hidden++;
+        }
+      });
+      // Vlož compressed badge na začátek
+      const badge = document.createElement('div');
+      badge.className = 'round-divider';
+      badge.style.cssText = 'background:rgba(245,158,11,0.08);border:1px solid rgba(245,158,11,0.25);border-radius:10px;padding:8px 12px;margin:8px 0;font-size:11px;color:#f59e0b;cursor:pointer;';
+      badge.innerHTML = `<span>🗜️ ${compressCount} starších zpráv zkomprimováno · <em>${summary.slice(0,90)}…</em></span>`;
+      badge.title = 'Klikni pro zobrazení celého shrnutí';
+      badge.onclick = () => alert(summary);
+      msgs.insertBefore(badge, msgs.firstChild);
+      notif.textContent = `✅ Zkomprimováno ${compressCount} zpráv`;
+    }
+  } catch(e){ console.log('Compress error:', e); }
+  setTimeout(() => notif.remove(), 3000);
+}
+
 
 // ════ CHAT LOGIC ════
 function handleKey(e){if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();sendMessage();}}
@@ -3130,7 +3332,7 @@ async function makePlan(msg, key){
       const r=await fetch('https://api.anthropic.com/v1/messages',{method:'POST',signal:sig,headers:{'Content-Type':'application/json','x-api-key':ai.key,'anthropic-version':'2023-06-01','anthropic-dangerous-direct-browser-access':'true'},body:JSON.stringify({model:'claude-haiku-4-5-20251001',max_tokens:200,messages:[{role:'user',content:prompt}]})});
       const d=await r.json(); text=d.content?.[0]?.text||'';
     } else if(key==='gemini'){
-      const r=await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${ai.key}`,{method:'POST',signal:sig,headers:{'Content-Type':'application/json'},body:JSON.stringify({contents:[{parts:[{text:prompt}]}],generationConfig:{maxOutputTokens:200}})});
+      const r=await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-lite:generateContent?key=${ai.key}`,{method:'POST',signal:sig,headers:{'Content-Type':'application/json'},body:JSON.stringify({contents:[{parts:[{text:prompt}]}],generationConfig:{maxOutputTokens:200}})});
       const d=await r.json(); text=d.candidates?.[0]?.content?.parts?.[0]?.text||'';
     } else if(ai.url){
       if(ai.url?.includes('openrouter')) await new Promise(r=>setTimeout(r,900));
@@ -3152,7 +3354,7 @@ async function decomposeTask(msg, assistants) {
       const r=await fetch('https://api.openai.com/v1/chat/completions',{method:'POST',signal:sig,headers:{'Content-Type':'application/json','Authorization':`Bearer ${ai.key}`},body:JSON.stringify({model:'gpt-4o',max_tokens:200,messages:[{role:'user',content:prompt}]})});
       const d=await r.json(); text=d.choices?.[0]?.message?.content||'';
     } else if(key==='gemini'){
-      const r=await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${ai.key}`,{method:'POST',signal:sig,headers:{'Content-Type':'application/json'},body:JSON.stringify({contents:[{parts:[{text:prompt}]}]})});
+      const r=await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-lite:generateContent?key=${ai.key}`,{method:'POST',signal:sig,headers:{'Content-Type':'application/json'},body:JSON.stringify({contents:[{parts:[{text:prompt}]}]})});
       const d=await r.json(); text=d.candidates?.[0]?.content?.parts?.[0]?.text||'';
     } else if(ai.url){
       if(ai.url?.includes('openrouter')) await new Promise(r=>setTimeout(r,900));
@@ -3176,7 +3378,7 @@ async function selfCritique(key, originalMsg, reply) {
       const r=await fetch('https://api.openai.com/v1/chat/completions',{method:'POST',signal:sig,headers:{'Content-Type':'application/json','Authorization':`Bearer ${ai.key}`},body:JSON.stringify({model:'gpt-4o',max_tokens:400,messages:[{role:'system',content:'Odpovídej POUZE jako JSON.'},{role:'user',content:prompt}]})});
       const d=await r.json(); text=d.choices?.[0]?.message?.content||'';
     } else if(key==='gemini'){
-      const r=await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${ai.key}`,{method:'POST',signal:sig,headers:{'Content-Type':'application/json'},body:JSON.stringify({contents:[{parts:[{text:'Odpovídej POUZE jako JSON.\n\n'+prompt}]}]})});
+      const r=await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-lite:generateContent?key=${ai.key}`,{method:'POST',signal:sig,headers:{'Content-Type':'application/json'},body:JSON.stringify({contents:[{parts:[{text:'Odpovídej POUZE jako JSON.\n\n'+prompt}]}]})});
       const d=await r.json(); text=d.candidates?.[0]?.content?.parts?.[0]?.text||'';
     } else if(key==='claude'){
       const r=await fetch('https://api.anthropic.com/v1/messages',{method:'POST',signal:sig,headers:{'Content-Type':'application/json','x-api-key':ai.key,'anthropic-version':'2023-06-01','anthropic-dangerous-direct-browser-access':'true'},body:JSON.stringify({model:'claude-haiku-4-5-20251001',max_tokens:400,system:'Odpovídej POUZE jako JSON.',messages:[{role:'user',content:prompt}]})});
@@ -3216,7 +3418,7 @@ async function callAgentQuick(key, systemPrompt, userPrompt, maxTokens=500){
       const r=await fetchWithRetry('https://api.anthropic.com/v1/messages',{method:'POST',signal:sig,headers:{'Content-Type':'application/json','x-api-key':ai.key,'anthropic-version':'2023-06-01','anthropic-dangerous-direct-browser-access':'true'},body:JSON.stringify({model:'claude-haiku-4-5-20251001',max_tokens:maxTokens,system:systemPrompt,messages:[{role:'user',content:userPrompt}]})});
       const d=await r.json(); return d.content?.[0]?.text?.trim()||null;
     } else if(key==='gemini'){
-      const r=await fetchWithRetry(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${ai.key}`,{method:'POST',signal:sig,headers:{'Content-Type':'application/json'},body:JSON.stringify({systemInstruction:{parts:[{text:systemPrompt}]},contents:[{role:'user',parts:[{text:userPrompt}]}],generationConfig:{maxOutputTokens:maxTokens}})});
+      const r=await fetchWithRetry(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-lite:generateContent?key=${ai.key}`,{method:'POST',signal:sig,headers:{'Content-Type':'application/json'},body:JSON.stringify({systemInstruction:{parts:[{text:systemPrompt}]},contents:[{role:'user',parts:[{text:userPrompt}]}],generationConfig:{maxOutputTokens:maxTokens}})});
       const d=await r.json(); return d.candidates?.[0]?.content?.parts?.[0]?.text?.trim()||null;
     } else if(key==='chatgpt' || ai.url){
       const url = ai.url ? `${ai.url}/chat/completions` : 'https://api.openai.com/v1/chat/completions';
@@ -3416,17 +3618,33 @@ async function sendMessage() {
   // Add edit/regenerate actions to user bubble (after aisDiv is created)
   makeUserActions(msgText, userDiv, aisDiv);
 
-  // 🌐 Web search – vždy hned na začátku pokud je zapnutý
+  // 🌐 Web search – jen pokud shouldSearch() říká ano
   if(autoSearchEnabled && msgText && !webSearchContext) {
-    startStatusLog(aisDiv);
-    logStep('🌐 Hledám na webu...', 'active');
-    await autoWebSearch(msgText);
-    logStep('🌐 Web search dokončen ✓', 'done');
-    finishLog();
+    const needsWeb = await shouldSearch(msgText);
+    if(needsWeb) {
+      startStatusLog(aisDiv);
+      logStep('🌐 Hledám na webu...', 'active');
+      await autoWebSearch(msgText);
+      logStep('🌐 Web search dokončen ✓', 'done');
+      finishLog();
+    }
   }
   scrollBottom();
 
-  const currentSelected=[...selected];
+  // 📣 @mention – adresuj konkrétního agenta (@Claude, @Gemini, @ChatGPT nebo vlastní jméno)
+  const mentionMatch = msgText.match(/^@(\S+)/i);
+  let mentionKey = null;
+  if(mentionMatch){
+    const mentioned = mentionMatch[1].toLowerCase().replace(/[^a-z0-9]/g,'');
+    mentionKey = Object.keys(AI).find(k =>
+      k.toLowerCase() === mentioned ||
+      AI[k].name.toLowerCase().replace(/[^a-z0-9]/g,'').includes(mentioned)
+    ) || null;
+  }
+
+  const currentSelected = mentionKey
+    ? (selected.has(mentionKey) ? [mentionKey] : [...selected]) // pokud agent zapnutý, jen on; jinak ignoruj
+    : [...selected];
   const assistants=currentSelected.filter(k=>!AI[k].boss);
   const hasClaude=currentSelected.includes('claude');
   const MAX_ROUNDS=5;
@@ -3488,12 +3706,16 @@ async function sendMessage() {
     const MAX_CONSENSUS_ROUNDS = 4;
 
     // ── KOLO 1: Sekvenční odpovědi – každý vidí předchozí ──
+    // Kratký popis tématu pro labely
+    const _topicSnip = msgText.replace(/["""]/g,'').slice(0,42).trim() + (msgText.length>42?'…':'');
     startStatusLog(aisDiv);
     addDivider(aisDiv, assistants.length>1 ? `💬 Tým ${assistants.length} AI odpovídá...` : `💬 ${AI[assistants[0]]?.name||'AI'} přemýšlí...`);
     for(let i=0; i<assistants.length; i++){
       const key = assistants[i];
       const _prevDone = assistants.slice(0,i).filter(k=>kb[k]?.text).length;
-      const _bubLbl = _prevDone>0 ? `${AI[key].name} · čte ${_prevDone} koleg${_prevDone===1?'u':'y'} a odpovídá...` : `${AI[key].name} · přemýšlí...`;
+      const _bubLbl = _prevDone>0
+        ? `${AI[key].name} · čte ${_prevDone} koleg${_prevDone===1?'u':'y'} → „${_topicSnip}"`
+        : `${AI[key].name} · zpracovává: „${_topicSnip}"`;
       const bubble = addBubble(aisDiv, key, _bubLbl);
       try{
         // Sestav kontext z odpovědí kolegů kteří již odpověděli
@@ -3548,7 +3770,7 @@ async function sendMessage() {
           // Přeskoč AI která narazila na limit
           if(AI[key]._limitHit){ votes[key]='souhlas'; continue; }
 
-          const bubble = addBubble(aisDiv, key, `${AI[key].name} · porovnává odpovědi...`);
+          const bubble = addBubble(aisDiv, key, `${AI[key].name} · číst ${Object.keys(kb).filter(k=>k!==key&&kb[k]?.text).length} odpovědi…`);
           roundBubbles[key] = bubble;
           try{
             // Devil's advocate – první AI v každém kole musí aktivně kritizovat
@@ -3654,6 +3876,7 @@ Tvůj úkol jako syntetizátor:
     saveCurrent();
     autoGenerateTitle(msgText);
     extractAndSaveMemory(chatLog);
+    autoCompressChat(); // 🗜️ auto-komprese
     notifyDone();
     setBusy(false);return;
   }
@@ -3746,7 +3969,7 @@ Tvůj úkol jako syntetizátor:
     const sequentialKeys = routed.filter(k => AI[k].url?.includes('openrouter'));
 
     const runAgent = async (key, i) => {
-      const bubble = addBubble(aisDiv, key, `${AI[key].name.toUpperCase()} · asistent`);
+      const bubble = addBubble(aisDiv, key, `${AI[key].name} · ${workerRoles[key]?.label||'zpracovává'}: „${msgText.slice(0,38)}${msgText.length>38?'…':''}"`);
       try {
         const roleHint = agentRoles[key] ? `\n\nTvoje perspektiva v této diskuzi: ${agentRoles[key]}` : '';
         const workerHint = workerRoles[key] ? `\n\n👷 Worker role: ${workerRoles[key].label} — ${workerRoles[key].desc}` : '';
@@ -3806,7 +4029,7 @@ Tvůj úkol jako syntetizátor:
   if(routed.length === 0){
     finishLog();
     startStatusLog(aisDiv);
-    const soloBubble = addBubble(aisDiv, 'claude', 'Claude · přemýšlí...', true);
+    const soloBubble = addBubble(aisDiv, 'claude', `Claude · zpracovává: „${msgText.slice(0,45)}${msgText.length>45?'…':''}"`, true);
 
     // Detekce záměru generovat obrázek — Pollinations funguje bez klíče
     const wantsImage = /nakresli|vytvoř obrázek|vygeneruj obrázek|generuj obrázek|udělej obrázek|draw|generate image|create image|dall-e|obrázek (ve stylu|jako|ukazující|zachycující)/i.test(fullMsg);
@@ -3919,6 +4142,7 @@ Máš přístup k nástrojům: web_search, fetch_url, run_code, save_note, recal
   saveCurrent();
   autoGenerateTitle(msgText);
   extractAndSaveMemory(chatLog); // async, runs in background
+  autoCompressChat(); // 🗜️ auto-komprese
   notifyDone();
   setBusy(false);
 }
@@ -3930,21 +4154,37 @@ let _currentLog = null;
 function startStatusLog(container){
   const log = document.createElement('div');
   log.className = 'ai-status-log';
+  // header (klikatelný, schová/zobrazí body)
+  const header = document.createElement('div');
+  header.className = 'log-header';
+  header.innerHTML = `<span class="log-dot" style="background:var(--teal);animation:pulse 1s infinite;width:6px;height:6px;border-radius:50%;flex-shrink:0"></span><span class="log-summary">Zpracovávám…</span><span class="log-count"></span><span class="log-arrow">▾</span>`;
+  header.onclick = () => { log.classList.toggle('collapsed'); };
+  log.appendChild(header);
+  // body (scrollovatelný seznam kroků)
+  const body = document.createElement('div');
+  body.className = 'log-body';
+  log.appendChild(body);
+  log._header = header;
+  log._body = body;
   container.appendChild(log);
   _currentLog = log;
   return log;
 }
 function logStep(text, state='active', aiKey=null, lineId=null){
   if(!_currentLog) return null;
-  // Pokud máme lineId, aktualizujeme existující řádek
+  const body = _currentLog._body;
+  if(!body) return null;
+  // Aktualizuj existující řádek
   if(lineId){
-    const existing = _currentLog.querySelector(`[data-lid="${lineId}"]`);
+    const existing = body.querySelector(`[data-lid="${lineId}"]`);
     if(existing){
       existing.className = `log-line ${state}`;
       const ai = aiKey ? AI[aiKey] : null;
       const dot = `<span class="log-dot" style="${ai?`background:${ai.rawColor}`:''}"></span>`;
       const name = ai ? `<span style="color:${ai.rawColor};font-weight:600">${ai.name.split(' ')[0]}</span> ` : '';
       existing.innerHTML = `${dot}${name}<span>${escHtml(text)}</span>`;
+      // aktualizuj summary v headeru
+      _updateLogHeader(text, state);
       scrollBottom();
       return lineId;
     }
@@ -3958,14 +4198,47 @@ function logStep(text, state='active', aiKey=null, lineId=null){
   const dot = `<span class="log-dot" style="${ai?`background:${ai.rawColor}`:''}"></span>`;
   const name = ai ? `<span style="color:${ai.rawColor};font-weight:600">${ai.name.split(' ')[0]}</span> ` : '';
   line.innerHTML = `${dot}${name}<span>${escHtml(text)}</span>`;
-  _currentLog.appendChild(line);
+  body.appendChild(line);
+  // scroll uvnitř log-body
+  body.scrollTop = body.scrollHeight;
+  // aktualizuj summary v headeru
+  _updateLogHeader(text, state);
   scrollBottom();
   return id;
+}
+function _updateLogHeader(lastText, state){
+  if(!_currentLog?._header) return;
+  const h = _currentLog._header;
+  const dotEl = h.querySelector('.log-dot');
+  const summaryEl = h.querySelector('.log-summary');
+  const countEl = h.querySelector('.log-count');
+  const count = _currentLog._body.querySelectorAll('.log-line').length;
+  if(dotEl){
+    if(state==='active'){ dotEl.style.background='var(--teal)'; dotEl.style.animation='pulse 1s infinite'; }
+    else if(state==='error'){ dotEl.style.background='#f87171'; dotEl.style.animation='none'; }
+    else { dotEl.style.background='#4ade8066'; dotEl.style.animation='none'; }
+  }
+  if(summaryEl) summaryEl.textContent = lastText.length > 50 ? lastText.slice(0,50)+'…' : lastText;
+  if(countEl) countEl.textContent = count > 1 ? `(${count})` : '';
 }
 let _logId = 0;
 function finishLog(){
   if(!_currentLog) return;
-  _currentLog.querySelectorAll('.log-line.active').forEach(l=>l.classList.replace('active','done'));
+  _currentLog._body.querySelectorAll('.log-line.active').forEach(l=>l.classList.replace('active','done'));
+  // spočítej kroky a nastav finální summary
+  const lines = _currentLog._body.querySelectorAll('.log-line');
+  const errors = _currentLog._body.querySelectorAll('.log-line.error').length;
+  const h = _currentLog._header;
+  if(h){
+    const dotEl = h.querySelector('.log-dot');
+    const summaryEl = h.querySelector('.log-summary');
+    const countEl = h.querySelector('.log-count');
+    if(dotEl){ dotEl.style.background = errors ? '#f87171' : '#4ade8066'; dotEl.style.animation='none'; }
+    if(summaryEl) summaryEl.textContent = errors ? `Dokončeno s ${errors} chybami` : 'Hotovo ✓';
+    if(countEl) countEl.textContent = lines.length > 0 ? `${lines.length} kroků` : '';
+  }
+  // automaticky sbal po dokončení
+  _currentLog.classList.add('collapsed');
   _currentLog = null;
 }
 
@@ -4008,7 +4281,9 @@ function finishBubble(id,text,error=null,isFinal=false){
     if(bwrap) addReactionsBar(bwrap, id);
   } else {
     el.innerHTML=formatText(text);
-    logStep('hotovo ✓', 'done', null, lid);
+    // preview prvních ~50 znaků odpovědi
+    const preview = (text||'').replace(/[#*`\n]/g,' ').replace(/\s+/g,' ').trim().slice(0,55);
+    logStep((preview ? '„'+preview+(text.length>55?'…"':'„') : 'hotovo ✓'), 'done', null, lid);
     // Add reactions bar
     const bwrap = el.closest('.ai-bubble-wrap');
     if(bwrap && !bwrap.querySelector('.reactions-bar')) addReactionsBar(bwrap, id);
@@ -4057,7 +4332,7 @@ Odpověz POUZE jako JSON (bez markdown):
 
 Škála: 1.0=perfektní, 0.75=dobré, 0.5=průměrné, 0.25=špatné, 0.0=chybné
 Pravidlo: score<0.75 POUZE pokud je skutečný problém. V comment vždy uveď CO konkrétně opravit.`;
-  const r=await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${AI.gemini.key}`,{method:'POST',signal:sig,headers:{'Content-Type':'application/json'},body:JSON.stringify({contents:[{role:'user',parts:[{text:prompt}]}],generationConfig:{maxOutputTokens:300}})});
+  const r=await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-lite:generateContent?key=${AI.gemini.key}`,{method:'POST',signal:sig,headers:{'Content-Type':'application/json'},body:JSON.stringify({contents:[{role:'user',parts:[{text:prompt}]}],generationConfig:{maxOutputTokens:300}})});
   if(!r.ok){const e=await r.json();throw new Error(e.error?.message||r.status);}
   const d=await r.json();
   const raw=(d.candidates?.[0]?.content?.parts?.[0]?.text||'{}').replace(/```json|```/g,'').trim();
@@ -4331,7 +4606,7 @@ async function shouldSearch(query){
       const d=await r.json();
       return d.choices[0].message.content.trim().toUpperCase().startsWith('ANO');
     }
-  }catch(e){ return true; } // při chybě raději hledej
+  }catch(e){ return false; } // při chybě raději nehledej
   return false;
 }
 
