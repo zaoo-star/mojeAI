@@ -168,15 +168,15 @@ html,body{height:100%;height:100dvh;background:var(--bg);color:var(--text);font-
 @keyframes bounce{0%,60%,100%{transform:translateY(0)}30%{transform:translateY(-6px)}}
 
 /* INPUT AREA */
-.input-area{background:rgba(15,15,26,0.97);backdrop-filter:blur(12px);border-top:1px solid var(--border);padding:10px 12px;padding-bottom:max(10px,env(safe-area-inset-bottom));display:flex;gap:7px;align-items:flex-end;flex-shrink:0;}
-.input-btn{width:36px;height:36px;border-radius:10px;background:var(--card);border:1px solid var(--border);color:var(--muted2);cursor:pointer;display:flex;align-items:center;justify-content:center;flex-shrink:0;font-size:16px;transition:all .2s;}
+.input-area{background:rgba(15,15,26,0.97);backdrop-filter:blur(12px);border-top:1px solid var(--border);padding:10px 12px;padding-bottom:max(10px,env(safe-area-inset-bottom));flex-shrink:0;}
+.input-btn{width:34px;height:34px;border-radius:10px;background:var(--card);border:1px solid var(--border);color:var(--muted2);cursor:pointer;display:flex;align-items:center;justify-content:center;flex-shrink:0;font-size:15px;transition:all .2s;}
 .input-btn:hover{border-color:var(--accent);color:var(--accent);}
 .input-btn.recording{background:rgba(239,68,68,0.15);border-color:#ef4444;color:#ef4444;animation:pulse 1s infinite;}
 @keyframes pulse{0%,100%{opacity:1}50%{opacity:.5}}
-#msgInput{flex:1;background:var(--card);border:1px solid var(--border);border-radius:14px;padding:10px 15px;color:var(--text);font-family:'Outfit',sans-serif;font-size:15px;outline:none;resize:none;max-height:120px;line-height:1.4;transition:border-color .2s;}
+#msgInput{width:100%;background:var(--card);border:1.5px solid var(--border);border-radius:14px;padding:11px 14px;color:var(--text);font-family:'Outfit',sans-serif;font-size:15px;outline:none;resize:none;max-height:140px;line-height:1.5;transition:border-color .2s;display:block;box-sizing:border-box;margin-bottom:7px;}
 #msgInput:focus{border-color:var(--border2);}
 #msgInput::placeholder{color:var(--muted);}
-.send-btn{width:38px;height:38px;border-radius:12px;background:linear-gradient(135deg,var(--accent),var(--accent2));border:none;cursor:pointer;display:flex;align-items:center;justify-content:center;flex-shrink:0;box-shadow:0 3px 12px var(--glow);transition:transform .15s,box-shadow .15s;}
+.send-btn{width:36px;height:36px;border-radius:12px;background:linear-gradient(135deg,var(--accent),var(--accent2));border:none;cursor:pointer;display:flex;align-items:center;justify-content:center;flex-shrink:0;box-shadow:0 3px 12px var(--glow);transition:transform .15s,box-shadow .15s;}
 .send-btn:active{transform:scale(.95);}
 .send-btn:disabled{background:#2a2a3a;box-shadow:none;cursor:default;}
 .send-btn svg{width:16px;height:16px;}
@@ -504,13 +504,13 @@ onAuthStateChanged(auth, user => {
   <div class="pinned-bar" id="pinnedBar"><span class="pinned-label">📌</span></div>
   <div class="messages" id="messages"></div>
   <div class="input-area">
-    <label class="input-btn" title="Přiložit soubor" style="position:relative;overflow:hidden;cursor:pointer;">📎<input type="file" id="fileInput" style="position:absolute;inset:0;opacity:0;cursor:pointer;width:100%;height:100%" accept=".txt,.pdf,.md,.js,.py,.html,.css,.json,.csv,.xml,.yaml,.yml,.log,.ts,.jsx,.tsx,.c,.cpp,.h,.java,.php,.rb,.go,.rs,image/*" onchange="handleFile(event)"></label>
-    <button class="input-btn" id="voiceBtn" onclick="toggleVoice()" title="Hlasový vstup">🎙️</button>
-    <div style="flex:1;position:relative;">
+    <div style="flex:1;position:relative;display:flex;flex-direction:column;gap:6px;">
       <div class="slash-menu" id="slashMenu" style="display:none"></div>
-      <textarea id="msgInput" placeholder="Napiš zprávu… (/ pro šablony)" rows="1" onkeydown="handleKey(event)" oninput="autoResize(this);handleSlash(this.value)"></textarea>
-      <div style="display:flex;align-items:center;gap:6px;padding:2px 2px 0;flex-wrap:wrap;">
-        <div class="model-picker-wrap" id="modelPickerWrap">
+      <textarea id="msgInput" placeholder="Napiš zprávu…" rows="1" onkeydown="handleKey(event)" oninput="autoResize(this);handleSlash(this.value)"></textarea>
+      <div style="display:flex;align-items:center;gap:6px;">
+        <label class="input-btn" title="Přiložit soubor" style="position:relative;overflow:hidden;cursor:pointer;">📎<input type="file" id="fileInput" style="position:absolute;inset:0;opacity:0;cursor:pointer;width:100%;height:100%" accept=".txt,.pdf,.md,.js,.py,.html,.css,.json,.csv,.xml,.yaml,.yml,.log,.ts,.jsx,.tsx,.c,.cpp,.h,.java,.php,.rb,.go,.rs,image/*" onchange="handleFile(event)"></label>
+        <button class="input-btn" id="voiceBtn" onclick="toggleVoice()" title="Hlasový vstup">🎙️</button>
+        <div class="model-picker-wrap" id="modelPickerWrap" style="margin-left:auto;">
           <div class="model-badge" onclick="toggleModelPicker()" id="modelBadge">🧠 <span id="modelBadgeLabel">Sonnet</span> ▾</div>
           <div class="model-picker-dropdown" id="modelPickerDropdown">
             <div class="model-option" onclick="setModel('haiku')">⚡ Haiku <span style="font-size:10px;opacity:.5">~$0.001/zpráva</span></div>
@@ -519,15 +519,14 @@ onAuthStateChanged(auth, user => {
             <div style="padding:4px 12px 2px;font-size:10px;color:var(--muted);border-top:1px solid var(--border);margin-top:2px">Ovlivňuje jen Claude</div>
           </div>
         </div>
-        <span style="font-size:10px;color:var(--muted);opacity:.5"><span class="kbd">Enter</span> odeslat · <span class="kbd">Shift+Enter</span> nový řádek · <span class="kbd">/</span> šablony</span>
+        <button class="send-btn" id="sendBtn" onclick="sendMessage()">
+          <svg viewBox="0 0 24 24" fill="none" stroke="#0e0e12" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+            <line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/>
+          </svg>
+        </button>
+        <button class="cancel-btn" id="cancelBtn" onclick="cancelGeneration()" style="display:none">⏹</button>
       </div>
     </div>
-    <button class="send-btn" id="sendBtn" onclick="sendMessage()">
-      <svg viewBox="0 0 24 24" fill="none" stroke="#0e0e12" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-        <line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/>
-      </svg>
-    </button>
-    <button class="cancel-btn" id="cancelBtn" onclick="cancelGeneration()" style="display:none">⏹</button>
   </div>
 </div>
 
@@ -684,6 +683,43 @@ const TOOL_DEFS = [
     input_schema: { type:'object', properties:{
       prompt: {type:'string', description:'Detailní anglický popis obrázku'}
     }, required:['prompt'] }
+  },
+  {
+    name: 'set_reminder',
+    description: 'Nastaví připomínku která se zobrazí uživateli za určenou dobu. Použij když uživatel řekne "připomeň mi", "napiš mi za X minut/hodin", "upozorni mě".',
+    input_schema: { type:'object', properties:{
+      message:  {type:'string', description:'Text připomínky'},
+      delay_minutes: {type:'number', description:'Za kolik minut se má zobrazit (min 1, max 1440)'}
+    }, required:['message','delay_minutes'] }
+  },
+  {
+    name: 'create_calendar_event',
+    description: 'Vytvoří .ics soubor s kalendářní událostí ke stažení. Použij když uživatel chce vytvořit schůzku, event nebo připomínku v kalendáři.',
+    input_schema: { type:'object', properties:{
+      title:       {type:'string', description:'Název události'},
+      date:        {type:'string', description:'Datum ve formátu YYYY-MM-DD'},
+      time:        {type:'string', description:'Čas ve formátu HH:MM (24h)'},
+      duration_minutes: {type:'number', description:'Délka trvání v minutách'},
+      description: {type:'string', description:'Popis nebo poznámky k události'}
+    }, required:['title','date','time'] }
+  },
+  {
+    name: 'save_file',
+    description: 'Uloží text jako soubor ke stažení (Markdown, TXT nebo HTML). Použij když uživatel chce výstup jako soubor – report, shrnutí, kód, dokument.',
+    input_schema: { type:'object', properties:{
+      filename: {type:'string', description:'Název souboru včetně přípony (.md, .txt, .html, .js, .py)'},
+      content:  {type:'string', description:'Celý obsah souboru'},
+      mime_type:{type:'string', description:'MIME typ: text/plain, text/markdown, text/html, application/javascript'}
+    }, required:['filename','content'] }
+  },
+  {
+    name: 'prepare_email',
+    description: 'Připraví email a nabídne uživateli ho otevřít v emailovém klientovi. Použij když uživatel chce napsat email nebo žádá o sepsání zprávy.',
+    input_schema: { type:'object', properties:{
+      to:      {type:'string', description:'Příjemce (emailová adresa nebo prázdné)'},
+      subject: {type:'string', description:'Předmět emailu'},
+      body:    {type:'string', description:'Tělo emailu'}
+    }, required:['subject','body'] }
   }
 ];
 
@@ -833,12 +869,95 @@ async function executeTool(name, input, aisDiv){
       const url = await generateImage(input.prompt, aisDiv);
       return url ? `✅ Obrázek vygenerován: ${url}` : '⚠️ Generování obrázku selhalo (zkontroluj OpenAI klíč)';
     }
+
+    case 'set_reminder':{
+      const mins = Math.max(1, Math.min(1440, Number(input.delay_minutes)||1));
+      const msg = input.message||'Připomínka';
+      const fireAt = new Date(Date.now()+mins*60000);
+      const label = mins < 60 ? `za ${mins} min` : `za ${(mins/60).toFixed(1)}h`;
+      // Notif permission
+      const showNotif = async () => {
+        if('Notification' in window){
+          if(Notification.permission==='default') await Notification.requestPermission();
+          if(Notification.permission==='granted'){
+            new Notification('⏰ Připomínka', {body: msg, icon: 'data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><text y=".9em" font-size="90">⏰</text></svg>'});
+          }
+        }
+        // Fallback: alert
+        else { alert('⏰ Připomínka: '+msg); }
+      };
+      setTimeout(showNotif, mins*60000);
+      // Show countdown chip in UI
+      const chip = document.createElement('div');
+      chip.style.cssText='display:inline-flex;align-items:center;gap:6px;background:rgba(251,191,36,0.1);border:1px solid rgba(251,191,36,0.3);border-radius:10px;padding:6px 12px;font-size:12px;color:#fbbf24;margin:6px 0;';
+      chip.innerHTML=`⏰ Připomínka nastavena ${label} · "${escHtml(msg.slice(0,60))}"`;
+      aisDiv.appendChild(chip);
+      return `✅ Připomínka nastavena na ${fireAt.toLocaleTimeString('cs-CZ',{hour:'2-digit',minute:'2-digit'})}: "${msg}"`;
+    }
+
+    case 'create_calendar_event':{
+      const title = input.title||'Událost';
+      const date  = input.date||new Date().toISOString().slice(0,10);
+      const time  = input.time||'09:00';
+      const dur   = Number(input.duration_minutes)||60;
+      const desc  = input.description||'';
+      const [y,mo,d] = date.split('-').map(Number);
+      const [h,mi]   = time.split(':').map(Number);
+      const pad = n => String(n).padStart(2,'0');
+      const dtStart = `${y}${pad(mo)}${pad(d)}T${pad(h)}${pad(mi)}00`;
+      const endD = new Date(y,mo-1,d,h,mi+dur);
+      const dtEnd = `${endD.getFullYear()}${pad(endD.getMonth()+1)}${pad(endD.getDate())}T${pad(endD.getHours())}${pad(endD.getMinutes())}00`;
+      const ics = `BEGIN:VCALENDAR\nVERSION:2.0\nBEGIN:VEVENT\nSUMMARY:${title}\nDTSTART:${dtStart}\nDTEND:${dtEnd}\nDESCRIPTION:${desc.replace(/\n/g,'\\n')}\nEND:VEVENT\nEND:VCALENDAR`;
+      const blob = new Blob([ics],{type:'text/calendar'});
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = title.replace(/[^a-z0-9]/gi,'_').slice(0,40)+'.ics';
+      // Show download chip
+      const chip = document.createElement('div');
+      chip.style.cssText='display:inline-flex;align-items:center;gap:8px;background:rgba(96,165,250,0.1);border:1px solid rgba(96,165,250,0.3);border-radius:10px;padding:6px 12px;font-size:12px;color:#60a5fa;margin:6px 0;cursor:pointer;';
+      chip.innerHTML=`📅 <strong>${escHtml(title)}</strong> · ${date} ${time} · <u>Stáhnout .ics</u>`;
+      chip.onclick=()=>a.click();
+      aisDiv.appendChild(chip);
+      return `✅ Kalendářní událost vytvořena: "${title}" ${date} ${time} (${dur} min)`;
+    }
+
+    case 'save_file':{
+      const name = input.filename||'soubor.txt';
+      const content = input.content||'';
+      const mime = input.mime_type||'text/plain';
+      const blob = new Blob([content],{type:mime});
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = name;
+      const ext = name.split('.').pop().toLowerCase();
+      const icons2 = {md:'📝',txt:'📄',html:'🌐',js:'⚡',py:'🐍',json:'📋',csv:'📊'};
+      const icon2 = icons2[ext]||'💾';
+      const chip = document.createElement('div');
+      chip.style.cssText='display:inline-flex;align-items:center;gap:8px;background:rgba(52,211,153,0.1);border:1px solid rgba(52,211,153,0.3);border-radius:10px;padding:6px 12px;font-size:12px;color:#34d399;margin:6px 0;cursor:pointer;';
+      chip.innerHTML=`${icon2} <strong>${escHtml(name)}</strong> · ${(content.length/1024).toFixed(1)} KB · <u>Stáhnout</u>`;
+      chip.onclick=()=>a.click();
+      aisDiv.appendChild(chip);
+      return `✅ Soubor připraven ke stažení: "${name}" (${content.length} znaků)`;
+    }
+
+    case 'prepare_email':{
+      const to      = encodeURIComponent(input.to||'');
+      const subject = encodeURIComponent(input.subject||'');
+      const body    = encodeURIComponent(input.body||'');
+      const mailto  = `mailto:${to}?subject=${subject}&body=${body}`;
+      const chip = document.createElement('div');
+      chip.style.cssText='display:inline-flex;align-items:center;gap:8px;background:rgba(167,139,250,0.1);border:1px solid rgba(167,139,250,0.3);border-radius:10px;padding:6px 12px;font-size:12px;color:#a78bfa;margin:6px 0;cursor:pointer;';
+      chip.innerHTML=`📧 Email: <strong>${escHtml(input.subject||'').slice(0,40)}</strong> · <u>Otevřít v emailu</u>`;
+      chip.onclick=()=>window.open(mailto);
+      aisDiv.appendChild(chip);
+      return `✅ Email připraven: "${input.subject}" – klikni na chip pro otevření`;
+    }
   }
 }
 
 // ── Render collapsible tool step in UI ──
 function renderToolStep(name, input, result, aisDiv){
-  const icons={web_search:'🔍',fetch_url:'🌐',run_code:'⚡',save_note:'📌',recall_notes:'🗂️',delegate_task:'🤝',generate_image:'🎨'};
+  const icons={web_search:'🔍',fetch_url:'🌐',run_code:'⚡',save_note:'📌',recall_notes:'🗂️',delegate_task:'🤝',generate_image:'🎨',set_reminder:'⏰',create_calendar_event:'📅',save_file:'💾',prepare_email:'📧'};
   const icon=icons[name]||'🔧';
   const summary=typeof input==='object'?Object.values(input).filter(Boolean).join(' · ').slice(0,80):String(input).slice(0,80);
   const preview=String(result).slice(0,500)+(String(result).length>500?'\n[...]':'');
@@ -1672,7 +1791,24 @@ function getConvHistoryPrompt(maxTurns=6) {
   return out;
 }
 
-// ── Smart context truncation: keep total under ~12k chars ──
+// ── Team memory: what was agreed/discussed in previous turns ──
+function getTeamHistoryContext(maxTurns=4) {
+  const recent = chatLog.slice(-maxTurns);
+  if (!recent.length) return '';
+  // Extract team discussions if they were stored
+  const teamTurns = recent.filter(t => t._teamSummary || t._synth);
+  if (!teamTurns.length) return '';
+  let out = '\n\nKontext z předchozí týmové diskuze:\n';
+  for (const turn of teamTurns.slice(-2)) {
+    if (turn.user) out += `Uživatel ptal: "${turn.user.slice(0,200)}"\n`;
+    if (turn._teamSummary) out += `Tým dospěl k: ${turn._teamSummary.slice(0,400)}\n`;
+    else if (turn._synth) out += `Závěr: ${turn._synth.slice(0,400)}\n`;
+    out += '\n';
+  }
+  return out;
+}
+
+
 function truncateForContext(text, budget=1200) {
   if (!text || text.length <= budget) return text || '';
   // Keep start and end (most relevant parts)
@@ -2815,7 +2951,7 @@ Tvůj úkol jako syntetizátor:
     }
   }
 
-  // Kolo 1 – asistenti (s plánováním, sebekritikou, iterací)
+  // Kolo 1 – asistenti (paralelně kde možno, s plánováním, sebekritikou, iterací)
   if(routed.length>0){
     if(task.needsPlan && !task.isSimple){
       const planBubble = addBubble(aisDiv, routed[0], `${AI[routed[0]].name.toUpperCase()} · plánuje...`);
@@ -2824,37 +2960,41 @@ Tvůj úkol jako syntetizátor:
       else { document.querySelector(`.bubble-${planBubble}`)?.closest('.msg-ai')?.remove(); }
       scrollBottom();
     }
-    addDivider(aisDiv, task.isSimple ? 'ASISTENTI ODPOVÍDAJÍ' : '💬 ASISTENTI · PRVNÍ ODPOVĚDI');
-    let openRouterCount=0;
-    for(let i=0;i<routed.length;i++){
-      const key=routed[i];
-      const bubble=addBubble(aisDiv,key,`${AI[key].name.toUpperCase()} · asistent`);
-      try{
-        const isOpenRouter=AI[key].url?.includes('openrouter');
-        if(isOpenRouter&&openRouterCount>0) await new Promise(r=>setTimeout(r,1500));
-        if(isOpenRouter) openRouterCount++;
-        // Použij přidělenou roli pokud existuje
+    addDivider(aisDiv, task.isSimple ? 'ASISTENTI ODPOVÍDAJÍ' : '💬 ASISTENTI · PARALELNÍ ODPOVĚDI');
+
+    // ⚡ Paralelizace: OpenRouter musí být sekvenční (rate limit), zbytek paralelně
+    const parallelKeys = routed.filter(k => !AI[k].url?.includes('openrouter'));
+    const sequentialKeys = routed.filter(k => AI[k].url?.includes('openrouter'));
+
+    const runAgent = async (key, i) => {
+      const bubble = addBubble(aisDiv, key, `${AI[key].name.toUpperCase()} · asistent`);
+      try {
         const roleHint = agentRoles[key] ? `\n\nTvoje perspektiva v této diskuzi: ${agentRoles[key]}` : '';
         const assignedTask = (subtasks ? `${enrichedMsg}\n\nTvůj konkrétní podúkol: ${subtasks[i % subtasks.length]}` : enrichedMsg) + projPrompt + roleHint;
-        // Native agent loop
+        const sys = getMdSystem(key)+getDatePrompt()+getMemoryPrompt()+getSearchPrompt()+getTeamHistoryContext();
         let reply;
-        const sys = getMdSystem(key)+getDatePrompt()+getMemoryPrompt()+getSearchPrompt();
         if(key==='gemini') reply = await geminiAgentLoop(assignedTask, sys, aisDiv, fileSnap);
         else if(key==='chatgpt' || AI[key].url) reply = await openAIAgentLoop(key, assignedTask, sys, aisDiv, bubble);
-        else reply = await geminiAgentLoop(assignedTask, sys, aisDiv, fileSnap); // fallback
-        // 🔄 Iterace
+        else reply = await geminiAgentLoop(assignedTask, sys, aisDiv, fileSnap);
         if(!task.isSimple){
           updateBubbleLabel(bubble,`${AI[key].name.toUpperCase()} · hodnotí...`);
-          const result=await iterateIfNeeded(key,msgText,reply);
-          reply=result.reply;
-          const scoreEmoji=result.score>=4?'⭐':(result.score>=3?'🔶':'🔴');
-          const iterLabel=result.iterations>0?` ↺${result.iterations}`:'';
-          updateBubbleLabel(bubble,`${AI[key].name.toUpperCase()} · ${scoreEmoji}${result.score}/5${iterLabel}`);
+          const result = await iterateIfNeeded(key, msgText, reply);
+          reply = result.reply;
+          const scoreEmoji = result.score>=4?'⭐':result.score>=3?'🔶':'🔴';
+          const iterLabel = result.iterations>0?` ↺${result.iterations}`:'';
+          updateBubbleLabel(bubble, `${AI[key].name.toUpperCase()} · ${scoreEmoji}${result.score}/5${iterLabel}`);
         }
-        assistantAnswers[key]=reply;
-        finishBubble(bubble,reply);
-      }catch(e){finishBubble(bubble,null,e.message);}
+        assistantAnswers[key] = reply;
+        finishBubble(bubble, reply);
+      } catch(e) { finishBubble(bubble, null, e.message); }
       scrollBottom();
+    };
+
+    // Spusť paralelní agenty najednou, pak sekvenční
+    await Promise.all(parallelKeys.map((k,i) => runAgent(k, i)));
+    for(let i=0; i<sequentialKeys.length; i++){
+      await new Promise(r=>setTimeout(r,1500));
+      await runAgent(sequentialKeys[i], parallelKeys.length+i);
     }
 
     // 💬 DISCUSSION ROUND — agenti reagují na sebe navzájem
@@ -2920,7 +3060,10 @@ Máš přístup k nástrojům (web_search, fetch_url, run_code) – použij je p
       const hasA=Object.keys(assistantAnswers).length>0;
       const hasDevil = !!assistantAnswers['_devil'];
       const regularAnswers = Object.entries(assistantAnswers).filter(([k])=>k!=='_devil');
-      const summary=hasA?regularAnswers.map(([k,v])=>`${AI[k]?.name||k}:\n${v.slice(0,800)}`).join('\n\n---\n\n'):'';
+      // Adaptivní budget: více agentů = méně na každého, ale nikdy méně než 1200 znaků
+      const totalBudget = 12000; // ~3000 tokenů pro kontext asistentů
+      const perAgentBudget = Math.max(1200, Math.floor(totalBudget / Math.max(regularAnswers.length, 1)));
+      const summary=hasA?regularAnswers.map(([k,v])=>`${AI[k]?.name||k}:\n${v.slice(0,perAgentBudget)}`).join('\n\n---\n\n'):'';
       const devilSection = hasDevil ? `\n\n🔴 ĎÁBLŮV ADVOKÁT (kritická perspektiva):\n${assistantAnswers['_devil']}` : '';
       const claudeSys=getMdSystem('claude')+getDatePrompt()+getMemoryPrompt()+getSearchPrompt()+(round===1
         ? '\nJsi šéf týmu. Tým provedl strukturovanou diskuzi včetně vzájemných reakcí. Vezmi v úvahu VŠECHNY perspektivy včetně kritiky ďáblova advokáta. Oprav chyby, integruj nejlepší insights, dej finální odpověď. Máš přístup k nástrojům – použij je pokud potřebuješ ověřit fakta.'
@@ -2971,7 +3114,10 @@ Máš přístup k nástrojům (web_search, fetch_url, run_code) – použij je p
     aisDiv.appendChild(srcDiv2);
   }
   clearSearchContext();
-  chatLog.push({user:msgText,claude:claudeVerdict,...(fileSnap?{_file:fileSnap.name}:{})});
+  // Ulož _teamSummary pro budoucí kontext pokud byl tým aktivní
+  const teamWasUsed = routed.length > 0 && Object.keys(assistantAnswers).length > 0;
+  const teamSummary = teamWasUsed ? claudeVerdict?.slice(0,600) : undefined;
+  chatLog.push({user:msgText, claude:claudeVerdict, ...(fileSnap?{_file:fileSnap.name}:{}), ...(teamSummary?{_teamSummary:teamSummary}:{})});
   saveCurrent();
   autoGenerateTitle(msgText);
   extractAndSaveMemory(chatLog); // async, runs in background
@@ -3095,24 +3241,40 @@ async function pickModel(msg){
   return CLAUDE_MODELS[c]?c:'sonnet';
 }
 
-async function reviewGemini(originalMsg,verdict){
+async function reviewGemini(originalMsg, verdict){
   const sig=currentAbortController?.signal;
-  const prompt=`Otázka: "${originalMsg}"\nClaude odpověděl: "${verdict}"\nJe odpověď správná a úplná? Odpověz jako JSON: {"approved":true/false,"comment":"komentář"}`;
-  const r=await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${AI.gemini.key}`,{method:'POST',signal:sig,headers:{'Content-Type':'application/json'},body:JSON.stringify({contents:[{role:'user',parts:[{text:prompt}]}],generationConfig:{maxOutputTokens:200}})});
+  const prompt=`Zkontroluj odpověď Clauda na tuto otázku. Buď KRITICKÝ – hledej skutečné problémy.
+
+Otázka: "${originalMsg.slice(0,500)}"
+Claudova odpověď: "${verdict.slice(0,1500)}"
+
+Zkontroluj konkrétně:
+1. Faktické chyby nebo nepřesnosti?
+2. Chybí důležitá perspektiva nebo alternativa?
+3. Je odpověď příliš povrchní nebo naopak příliš rozvleklá?
+4. Logické mezery nebo nesrovnalosti?
+
+Odpověz POUZE jako JSON (bez markdown):
+{"approved": true/false, "comment": "konkrétní komentář – co přesně chybí nebo je špatně, nebo proč je OK"}
+
+Pravidlo: approved=false POUZE pokud je skutečný problém. Neschvaluj jen proto, aby byl nesouhlas.`;
+  const r=await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${AI.gemini.key}`,{method:'POST',signal:sig,headers:{'Content-Type':'application/json'},body:JSON.stringify({contents:[{role:'user',parts:[{text:prompt}]}],generationConfig:{maxOutputTokens:300}})});
   if(!r.ok){const e=await r.json();throw new Error(e.error?.message||r.status);}
   const d=await r.json();
-  const raw=d.candidates?.[0]?.content?.parts?.[0]?.text||'{}';
-  try{return JSON.parse(raw.replace(/```json|```/g,''));}
-  catch{return{approved:true,comment:raw};}
+  const raw=(d.candidates?.[0]?.content?.parts?.[0]?.text||'{}').replace(/```json|```/g,'').trim();
+  try{return JSON.parse(raw);}catch{return{approved:true,comment:raw};}
 }
 
-async function reviewChatGPT(originalMsg,verdict){
+async function reviewChatGPT(originalMsg, verdict){
   const sig=currentAbortController?.signal;
-  const r=await fetch('https://api.openai.com/v1/chat/completions',{method:'POST',signal:sig,headers:{'Content-Type':'application/json','Authorization':`Bearer ${AI.chatgpt.key}`},body:JSON.stringify({model:'gpt-4o',max_tokens:200,messages:[{role:'system',content:'Zkontroluj odpověď. Odpověz POUZE jako JSON: {"approved":true/false,"comment":"komentář"}'},{role:'user',content:`Otázka: "${originalMsg}"\nClaude odpověděl: "${verdict}"\nJe správná a úplná?`}]})});
+  const r=await fetch('https://api.openai.com/v1/chat/completions',{method:'POST',signal:sig,headers:{'Content-Type':'application/json','Authorization':`Bearer ${AI.chatgpt.key}`},body:JSON.stringify({model:'gpt-4o',max_tokens:300,messages:[
+    {role:'system',content:'Jsi přísný recenzent. Odpovídej POUZE jako JSON bez markdown: {"approved":true/false,"comment":"konkrétní komentář"}'},
+    {role:'user',content:`Otázka: "${originalMsg.slice(0,500)}"\n\nClaude odpověděl:\n"${verdict.slice(0,1500)}"\n\nZkontroluj: faktické chyby, chybějící perspektivy, povrchnost, logické mezery. Schval jen pokud je opravdu OK.`}
+  ]})});
   if(!r.ok){const e=await r.json();throw new Error(e.error?.message||r.status);}
   const d=await r.json();
-  try{return JSON.parse(d.choices[0].message.content.replace(/```json|```/g,''));}
-  catch{return{approved:true,comment:d.choices[0].message.content};}
+  const raw=(d.choices[0].message.content||'{}').replace(/```json|```/g,'').trim();
+  try{return JSON.parse(raw);}catch{return{approved:true,comment:raw};}
 }
 
 function normalizeModel(ai){
