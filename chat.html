@@ -368,6 +368,18 @@ onAuthStateChanged(auth, user => {
   </div>
 </div>
 
+<!-- PANEL: Historie chatů -->
+<div id="historyPanel" onclick="closeHistoryOutside(event)" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.6);z-index:200;justify-content:flex-end;">
+  <div class="history-box">
+    <div class="history-header">
+      <h3>💬 Historie chatů</h3>
+      <button class="history-close" onclick="closeHistory()">✕</button>
+    </div>
+    <button class="history-new" onclick="newChat();closeHistory()">✚ Nový chat</button>
+    <div class="history-list" id="historyList"></div>
+  </div>
+</div>
+
 <!-- MODAL: Přidat AI -->
 <div id="modal" onclick="closeModalOutside(event)">
   <div class="modal-box">
@@ -878,20 +890,7 @@ function exportAs(format) {
         msgs+=`<div class="msg-ai" style="border-left:3px solid ${ai?.rawColor||'#888'}"><strong style="color:${ai?.rawColor||'#888'}">${ai?.name||k}</strong><div>${marked.parse(v)}</div></div>`;
       }
     }
-    const html=`<!DOCTYPE html><html lang="cs"><head><meta charset="UTF-8"><title>AI Chat – ${date}</title><style>body{font-family:system-ui,sans-serif;max-width:800px;margin:40px auto;padding:20px;background:#f9f9f9;color:#111;}.msg-user{background:#fff;border-radius:12px;padding:16px;margin:16px 0;box-shadow:0 1px 4px rgba(0,0,0,.08)}.msg-ai{background:#fff;border-radius:12px;padding:16px;margin:8px 0 16px 24px;box-shadow:0 1px 4px rgba(0,0,0,.08)}table{border-collapse:collapse;width:100%}td,th{border:1px solid #ddd;padding:8px}pre{background:#f4f4f4;padding:12px;border-radius:8px;overflow:auto}code{background:#f4f4f4;padding:2px 4px;border-radius:4px}</style></head><body><h1>AI Chat – ${date}</h1>${msgs}
-<!-- HISTORY PANEL -->
-<div id="historyPanel" style="display:none" onclick="closeHistoryOutside(event)">
-  <div class="history-box">
-    <div class="history-header">
-      <h3>💬 Historie chatů</h3>
-      <button class="history-close" onclick="closeHistory()">✕</button>
-    </div>
-    <button class="history-new" onclick="newChat();closeHistory()">✚ Nový chat</button>
-    <div class="history-list" id="historyList"></div>
-  </div>
-</div>
-
-</body></html>`;;
+    const html=`<!DOCTYPE html><html lang="cs"><head><meta charset="UTF-8"><title>AI Chat – ${date}</title><style>body{font-family:system-ui,sans-serif;max-width:800px;margin:40px auto;padding:20px;background:#f9f9f9;color:#111;}.msg-user{background:#fff;border-radius:12px;padding:16px;margin:16px 0;box-shadow:0 1px 4px rgba(0,0,0,.08)}.msg-ai{background:#fff;border-radius:12px;padding:16px;margin:8px 0 16px 24px;box-shadow:0 1px 4px rgba(0,0,0,.08)}table{border-collapse:collapse;width:100%}td,th{border:1px solid #ddd;padding:8px}pre{background:#f4f4f4;padding:12px;border-radius:8px;overflow:auto}code{background:#f4f4f4;padding:2px 4px;border-radius:4px}</style></head><body><h1>AI Chat – ${date}</h1>${msgs}</body></html>`;
     download('konverzace.html', html, 'text/html');
   }
 }
@@ -2048,18 +2047,6 @@ async function fbLoad(){
   </div>
 </div>
 
-
-<!-- HISTORY PANEL -->
-<div id="historyPanel" style="display:none" onclick="closeHistoryOutside(event)">
-  <div class="history-box">
-    <div class="history-header">
-      <h3>💬 Historie chatů</h3>
-      <button class="history-close" onclick="closeHistory()">✕</button>
-    </div>
-    <button class="history-new" onclick="newChat();closeHistory()">✚ Nový chat</button>
-    <div class="history-list" id="historyList"></div>
-  </div>
-</div>
 
 </body>
 </html>
