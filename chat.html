@@ -134,6 +134,20 @@ html,body{height:100%;height:100dvh;background:var(--bg);color:var(--text);font-
 .round-divider span{font-size:9px;color:var(--muted);letter-spacing:2px;white-space:nowrap;text-transform:uppercase;}
 .round-divider::before,.round-divider::after{content:'';flex:1;height:1px;background:var(--border);}
 .msg-ai{display:flex;gap:10px;align-items:flex-start;animation:fadeSlide .3s ease;}
+.msg-ai.collapsed{display:none;}
+.msg-ai.log-item{display:flex;align-items:center;gap:6px;padding:0;min-height:0;animation:none;}
+.msg-ai.log-item .ai-bubble-wrap{flex:1;}
+.msg-ai.log-item .ai-bubble{background:none!important;border:none!important;padding:2px 0!important;box-shadow:none!important;font-size:12px;color:var(--muted);}
+.msg-ai.log-item .ai-avatar{width:18px;height:18px;font-size:8px;border-radius:5px;flex-shrink:0;}
+.msg-ai.log-item .ai-name{font-size:10px;display:none;}
+.ai-status-log{display:flex;flex-direction:column;gap:3px;padding:6px 0 6px 12px;border-left:2px solid var(--border);margin:6px 0 10px 8px;}
+.ai-status-log .log-line{font-size:11px;color:var(--muted);display:flex;align-items:center;gap:6px;line-height:1.5;transition:opacity .2s;}
+.ai-status-log .log-line.done{opacity:.5;}
+.ai-status-log .log-line .log-dot{width:6px;height:6px;border-radius:50%;flex-shrink:0;background:var(--muted);transition:background .3s;}
+.ai-status-log .log-line.active .log-dot{background:var(--teal);animation:pulse 1s infinite;}
+.ai-status-log .log-line.done .log-dot{background:#4ade8066;}
+.ai-status-log .log-line.error{color:#f87171;}
+.ai-status-log .log-line.error .log-dot{background:#f87171;}
 @keyframes fadeSlide{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:translateY(0)}}
 .ai-avatar{width:32px;height:32px;border-radius:10px;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;font-family:'JetBrains Mono',monospace;flex-shrink:0;margin-top:2px;border:1px solid rgba(255,255,255,0.08);}
 .ai-bubble-wrap{flex:1;min-width:0;}
@@ -523,6 +537,7 @@ async function runToolCalls(text, aisDiv) {
   if(!calls.length) return text;
   let result = text;
   for(const call of calls) {
+    logStep(`🔧 Používá nástroj: ${call.name}(${String(call.arg).slice(0,30)})`, 'active');
     const tool = AGENT_TOOLS[call.tool];
     if(!tool) continue;
     const output = tool.run(call.arg);
@@ -1301,7 +1316,11 @@ async function sendMessage() {
 
   // 🌐 Web search – vždy hned na začátku pokud je zapnutý
   if(autoSearchEnabled && msgText && !webSearchContext) {
+    const _searchLog = startStatusLog(document.getElementById('messages').lastElementChild || document.createElement('div'));
+    logStep('🌐 Hledám na webu...', 'active');
     await autoWebSearch(msgText);
+    logStep('🌐 Web search dokončen ✓', 'done');
+    finishLog();
   }
 
   const msgs=document.getElementById('messages');
@@ -1395,13 +1414,17 @@ async function sendMessage() {
     // Znalostní báze: key → {text, vote:'souhlas'|'nesouhlas'|'doplnění'}
     const kb = {};
     const webNote = webSearchContext ? '\n\n🌐 Máš aktuální data z internetu – použij je přednostně!' : '';
+    if(webSearchContext) logStep('🌐 Předávám výsledky webu asistentům...', 'active');
     const MAX_CONSENSUS_ROUNDS = 4;
 
     // ── KOLO 1: Sekvenční odpovědi – každý vidí předchozí ──
-    addDivider(aisDiv, assistants.length>1 ? '💬 PRVNÍ ODPOVĚDI (každý vidí předchozí)' : '💬 ODPOVĚĎ');
+    startStatusLog(aisDiv);
+    addDivider(aisDiv, assistants.length>1 ? `💬 Tým ${assistants.length} AI odpovídá...` : `💬 ${AI[assistants[0]]?.name||'AI'} přemýšlí...`);
     for(let i=0; i<assistants.length; i++){
       const key = assistants[i];
-      const bubble = addBubble(aisDiv, key, `${AI[key].name} · přemýšlí...`);
+      const _prevDone = assistants.slice(0,i).filter(k=>kb[k]?.text).length;
+      const _bubLbl = _prevDone>0 ? `${AI[key].name} · čte ${_prevDone} koleg${_prevDone===1?'u':'y'} a odpovídá...` : `${AI[key].name} · přemýšlí...`;
+      const bubble = addBubble(aisDiv, key, _bubLbl);
       try{
         // Sestav kontext z odpovědí kolegů kteří již odpověděli
         const prevAnswers = assistants.slice(0,i)
@@ -1446,7 +1469,7 @@ async function sendMessage() {
         // Každý AI zhodnotí odpovědi ostatních
         const votes = {}; // key → 'souhlas'|'nesouhlas'|'doplnění'
         const roundBubbles = {};
-        const roundLabel = consensusRound===1 ? '🤝 KOLEGOVÉ REAGUJÍ' : `🔄 KOLO ${consensusRound} · STÁLE NESOUHLASÍ`;
+        const roundLabel = consensusRound===1 ? `🤝 Kolegové čtou odpovědi a reagují...` : `🔄 Kolo ${consensusRound} · stále nesouhlasí, hledám shodu...`;
         addDivider(aisDiv, roundLabel);
 
         for(const key of assistants){
@@ -1458,7 +1481,7 @@ async function sendMessage() {
           // Přeskoč AI která narazila na limit
           if(AI[key]._limitHit){ votes[key]='souhlas'; continue; }
 
-          const bubble = addBubble(aisDiv, key, `${AI[key].name} · čte kolegy...`);
+          const bubble = addBubble(aisDiv, key, `${AI[key].name} · porovnává odpovědi...`);
           roundBubbles[key] = bubble;
           try{
             // Devil's advocate – první AI v každém kole musí aktivně kritizovat
@@ -1525,7 +1548,7 @@ Buď konkrétní – žádné vágní "souhlasím, vše je správně".`;
 
       // ── FINÁLNÍ SYNTÉZA ──
       const synth = assistants[0];
-      addDivider(aisDiv, '✅ FINÁLNÍ ODPOVĚĎ TÝMU');
+      addDivider(aisDiv, `✅ ${AI[synth]?.name||'AI'} syntetizuje finální odpověď...`);
       const bubble = addBubble(aisDiv, synth, `${AI[synth].name} · syntetizuje...`);
       try{
         const allK = assistants.filter(k=>kb[k]?.text).map(k=>`### ${AI[k].name} (${kb[k].vote||'souhlas'}):\n${kb[k].text.slice(0,600)}`).join('\n\n');
@@ -1544,6 +1567,9 @@ Tvůj úkol jako syntetizátor:
 4. Mluv přímo jako jeden hlas týmu, ne jako přehled odpovědí`;
         const reply = await callTeamAI(synth, p);
         assistantAnswers['_synth'] = reply;
+        logStep('✅ Finální odpověď připravena', 'done');
+        finishLog();
+        startStatusLog(aisDiv); // reset – finální bublina dostane čistý log
         updateBubbleLabel(bubble, `${AI[synth].name} · ✓ tým`);
         finishBubble(bubble, reply, null, true);
       }catch(e){ finishBubble(bubble, null, e.message); }
@@ -1570,6 +1596,8 @@ Tvůj úkol jako syntetizátor:
   const fmtInstruction = getFormatInstruction(task.outputFormat);
   const enrichedMsg = fullMsg + fmtInstruction;
 
+  // ── Start status logu pro Claude path ──
+  startStatusLog(aisDiv);
   // 🧰 Kalkulačka
   if(task.hasMath){
     const calcResult = tryCalculator(msgText);
@@ -1585,7 +1613,7 @@ Tvůj úkol jako syntetizátor:
   // 📋 Rozložení úkolu
   let subtasks = null;
   if(task.needsSubtasks && assistants.length > 0){
-    addDivider(aisDiv,'📋 ROZKLÁDÁM ÚKOL...');
+    addDivider(aisDiv,'📋 Rozkládám úkol na podúkoly...');
     subtasks = await decomposeTask(msgText, assistants);
     if(subtasks && subtasks.length > 1){
       const d=document.createElement('div');d.className='round-divider';
@@ -1644,8 +1672,11 @@ Tvůj úkol jako syntetizátor:
   }
 
   for(let round=1;round<=MAX_ROUNDS;round++){
-    addDivider(aisDiv,round===1?'👑 CLAUDE HODNOTÍ':`👑 CLAUDE REVIDUJE · kolo ${round}`);
-    const claudeBubble=addBubble(aisDiv,'claude','CLAUDE · vyhodnocuje...',true);
+    finishLog();
+    startStatusLog(aisDiv);
+    const claudeLogMsg = round===1 ? '👑 Posílám asistentům ke Claude...' : `👑 Claude reviduje · kolo ${round}`;
+    addDivider(aisDiv, claudeLogMsg);
+    const claudeBubble=addBubble(aisDiv,'claude','Claude · vyhodnocuje...',true);
     try{
       const result=await callClaude(fullMsg,assistantAnswers,claudeVerdict,round,fileSnap);
       claudeVerdict=result.text;
@@ -1656,10 +1687,12 @@ Tvůj úkol jako syntetizátor:
 
     if(routed.length===0||round===MAX_ROUNDS)break;
 
+    finishLog();
+    startStatusLog(aisDiv);
     addDivider(aisDiv,'🔍 ASISTENTI KONTROLUJÍ');
     const reviews={};
     for(const key of routed){
-      const bubble=addBubble(aisDiv,key,`${AI[key].name.toUpperCase()} · kontroluje`);
+      const bubble=addBubble(aisDiv,key,`${AI[key].name} · kontroluje odpověď...`);
       try{
         const review=key==='gemini'?await reviewGemini(msgText,claudeVerdict)
           :key==='chatgpt'?await reviewChatGPT(msgText,claudeVerdict)
@@ -1679,8 +1712,8 @@ Tvůj úkol jako syntetizátor:
     assistantAnswers={...assistantAnswers,...Object.fromEntries(Object.entries(reviews).filter(([,v])=>!v.approved).map(([k,v])=>[k,v.comment]))};
   }
 
-  addDivider(aisDiv,'👑 FINÁLNÍ ODPOVĚĎ · CLAUDE OPUS');
-  const finalBubble=addBubble(aisDiv,'claude','CLAUDE · Opus · finální verifikace',true);
+  addDivider(aisDiv,'👑 Claude Opus píše finální odpověď...');
+  const finalBubble=addBubble(aisDiv,'claude','Claude Opus · finalizuje...',true);
   try{
     const finalText=await callClaudeFinal(fullMsg,claudeVerdict,assistantAnswers,fileSnap);
     finishBubble(finalBubble,finalText,null,true);
@@ -1706,20 +1739,103 @@ Tvůj úkol jako syntetizátor:
 
 // ════ UI HELPERS ════
 let bc=0;
+// ── STATUS LOG ──
+let _currentLog = null;
+function startStatusLog(container){
+  const log = document.createElement('div');
+  log.className = 'ai-status-log';
+  container.appendChild(log);
+  _currentLog = log;
+  return log;
+}
+function logStep(text, state='active', aiKey=null, lineId=null){
+  if(!_currentLog) return null;
+  // Pokud máme lineId, aktualizujeme existující řádek
+  if(lineId){
+    const existing = _currentLog.querySelector(`[data-lid="${lineId}"]`);
+    if(existing){
+      existing.className = `log-line ${state}`;
+      const ai = aiKey ? AI[aiKey] : null;
+      const dot = `<span class="log-dot" style="${ai?`background:${ai.rawColor}`:''}"></span>`;
+      const name = ai ? `<span style="color:${ai.rawColor};font-weight:600">${ai.name.split(' ')[0]}</span> ` : '';
+      existing.innerHTML = `${dot}${name}<span>${escHtml(text)}</span>`;
+      scrollBottom();
+      return lineId;
+    }
+  }
+  // Nový řádek
+  const id = 'l'+(++_logId);
+  const line = document.createElement('div');
+  line.className = `log-line ${state}`;
+  line.dataset.lid = id;
+  const ai = aiKey ? AI[aiKey] : null;
+  const dot = `<span class="log-dot" style="${ai?`background:${ai.rawColor}`:''}"></span>`;
+  const name = ai ? `<span style="color:${ai.rawColor};font-weight:600">${ai.name.split(' ')[0]}</span> ` : '';
+  line.innerHTML = `${dot}${name}<span>${escHtml(text)}</span>`;
+  _currentLog.appendChild(line);
+  scrollBottom();
+  return id;
+}
+let _logId = 0;
+function finishLog(){
+  if(!_currentLog) return;
+  _currentLog.querySelectorAll('.log-line.active').forEach(l=>l.classList.replace('active','done'));
+  _currentLog = null;
+}
+
+// bubbleLogMap: bubbleId → logLineId
+const bubbleLogMap = {};
+
 function addBubble(container,aiKey,label,isBoss=false){
   const id='b'+(++bc);
-  const ai=AI[aiKey];const c=ai.rawColor;
-  const wrap=document.createElement('div');wrap.className='msg-ai';
-  wrap.innerHTML=`<div class="ai-avatar" style="background:${c}22;color:${c};border:${isBoss?'2px':'1px'} solid ${c}${isBoss?'88':'44'}">${ai.name[0]}</div><div class="ai-bubble-wrap"><div class="ai-name bubble-label-${id}" style="color:${c}">${label}</div><div class="ai-bubble loading bubble-${id}"><div class="dot-anim" style="background:${c}88"></div><div class="dot-anim" style="background:${c}88"></div><div class="dot-anim" style="background:${c}88"></div></div></div>`;
-  container.appendChild(wrap);scrollBottom();return id;
+  const ai=AI[aiKey];const col=ai.rawColor;
+  const wrap=document.createElement('div');
+  wrap.className = isBoss ? 'msg-ai' : 'msg-ai collapsed';
+  wrap.innerHTML=`<div class="ai-avatar" style="background:${col}22;color:${col};border:${isBoss?'2px':'1px'} solid ${col}${isBoss?'88':'44'}">${ai.name[0]}</div><div class="ai-bubble-wrap"><div class="ai-name bubble-label-${id}" style="color:${col}">${label}</div><div class="ai-bubble loading bubble-${id}"><div class="dot-anim" style="background:${col}88"></div><div class="dot-anim" style="background:${col}88"></div><div class="dot-anim" style="background:${col}88"></div></div></div>`;
+  container.appendChild(wrap);
+  // Vytvoř log-line pro tohoto AI
+  if(!isBoss){
+    const lid = logStep(label, 'active', aiKey);
+    if(lid) bubbleLogMap[id] = lid;
+  }
+  scrollBottom();return id;
 }
+
 function finishBubble(id,text,error=null,isFinal=false){
   const el=document.querySelector(`.bubble-${id}`);if(!el)return;
-  el.classList.remove('loading');if(isFinal)el.classList.add('final');
-  el.innerHTML=error?`<span style="color:#f87171">Chyba: ${escHtml(error)}</span>`:formatText(text);
+  const wrap=el.closest('.msg-ai');
+  const ai=wrap?Array.from(wrap.querySelectorAll('[style*="color"]')).find(e=>e.classList.contains('ai-name')):null;
+  el.classList.remove('loading');
+  const lid = bubbleLogMap[id];
+
+  if(error){
+    el.innerHTML=`<span style="color:#f87171">⚠️ ${escHtml(error)}</span>`;
+    if(isFinal && wrap) wrap.classList.remove('collapsed');
+    logStep(error.slice(0,70), 'error', null, lid);
+  } else if(isFinal){
+    el.classList.add('final');
+    el.innerHTML=formatText(text);
+    if(wrap) wrap.classList.remove('collapsed');
+    finishLog();
+  } else {
+    el.innerHTML=formatText(text);
+    // Aktualizuj log-line na hotovo
+    logStep('hotovo ✓', 'done', null, lid);
+  }
 }
-function updateBubbleLabel(id,label){const el=document.querySelector(`.bubble-label-${id}`);if(el)el.textContent=label;}
-function addDivider(container,label){const d=document.createElement('div');d.className='round-divider';d.innerHTML=`<span>${label}</span>`;container.appendChild(d);}
+
+function updateBubbleLabel(id,label){
+  const el=document.querySelector(`.bubble-label-${id}`);
+  if(el) el.textContent=label;
+  // Aktualizuj existující log-line in-place (bez nového řádku)
+  const lid = bubbleLogMap[id];
+  if(lid) logStep(label, 'active', null, lid);
+}
+
+function addDivider(container,label){
+  // Divider → sekce v logu
+  logStep('— '+label+' —', 'active');
+}
 
 // ════ GROUP CHAT HISTORY ════
 function buildGroupHistory(currentMsg, currentResponses={}) {
