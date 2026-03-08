@@ -344,7 +344,7 @@ const CLAUDE_MODELS = {
   opus:   { id:'claude-opus-4-5-20251101',   label:'Opus'   },
 };
 
-const MD_SYSTEM = 'Odpovídej v Markdownu – používej tabulky, kód, seznamy, nadpisy kdykoli to dává smysl. Buď strukturovaný a přesný.';
+const MD_SYSTEM = 'Odpovídej stručně a přesně. Neuváděj kdo jsi, jaká je tvoje role, ani kdo jsou ostatní členové týmu. Žádné úvody ani závěry o týmu. Jen přímá odpověď na otázku. Používej Markdown – tabulky, kód, seznamy, nadpisy jen když to skutečně pomáhá srozumitelnosti.';
 function getSearchPrompt(){ return webSearchContext ? '\n\n---\n' + webSearchContext + '\n---\nVyužij tato data z webu ve své odpovědi.' : ''; }
 
 // ════ INIT ════
@@ -1059,8 +1059,11 @@ function downloadHtml(){
 let webSearchContext = null;
 
 async function webSearch() {
-  const query = document.getElementById('msgInput').value.trim();
-  if(!query){ alert('Nejdřív napiš co chceš hledat, pak klikni 🔍'); return; }
+  let query = document.getElementById('msgInput').value.trim();
+  if(!query){
+    query = prompt('Co chceš hledat na webu?');
+    if(!query) return;
+  }
   
   const btn = document.getElementById('searchBtn');
   const bar = document.getElementById('searchBar');
@@ -1072,20 +1075,52 @@ async function webSearch() {
   status.textContent = 'Hledám: ' + query + '…';
   
   try {
-    // Use Jina AI search - free, no key, CORS friendly
-    const res = await fetch('https://s.jina.ai/' + encodeURIComponent(query), {
-      headers: { 'Accept': 'text/plain', 'X-No-Cache': 'true' }
-    });
-    if(!res.ok) throw new Error('HTTP ' + res.status);
-    let text = await res.text();
-    // Trim to max 3000 chars to not overload context
-    if(text.length > 3000) text = text.slice(0, 3000) + '\n\n[...zkráceno]';
+    // DuckDuckGo Instant Answer API - CORS friendly, no key needed
+    const ddgRes = await fetch(`https://api.duckduckgo.com/?q=${encodeURIComponent(query)}&format=json&no_redirect=1&no_html=1&skip_disambig=1`);
+    const ddg = await ddgRes.json();
     
-    webSearchContext = `Výsledky vyhledávání pro "${query}":\n\n${text}`;
-    status.innerHTML = '✅ Nalezeno – výsledky přidány do kontextu. Teď se zeptej AI.';
+    let results = [];
+    
+    // Abstract (main answer)
+    if(ddg.AbstractText) results.push(`**${ddg.Heading}**\n${ddg.AbstractText}\nZdroj: ${ddg.AbstractURL}`);
+    
+    // Answer (instant answer)
+    if(ddg.Answer) results.push(`**Odpověď:** ${ddg.Answer}`);
+    
+    // Related topics
+    if(ddg.RelatedTopics?.length) {
+      const topics = ddg.RelatedTopics.slice(0,5)
+        .filter(t=>t.Text)
+        .map(t=>`• ${t.Text}`);
+      if(topics.length) results.push('**Související:**\n' + topics.join('\n'));
+    }
+    
+    // Infobox
+    if(ddg.Infobox?.content?.length) {
+      const info = ddg.Infobox.content.slice(0,8)
+        .map(i=>`${i.label}: ${i.value}`)
+        .join('\n');
+      results.push('**Info:**\n' + info);
+    }
+
+    if(results.length === 0) {
+      // Fallback - use Jina reader on first DuckDuckGo result URL
+      const fallback = await fetch(`https://r.jina.ai/https://duckduckgo.com/html/?q=${encodeURIComponent(query)}`, {
+        headers:{'X-Return-Format':'text'}
+      });
+      let txt = await fallback.text();
+      if(txt.length > 2000) txt = txt.slice(0,2000) + '\n[...zkráceno]';
+      results.push(txt);
+    }
+
+    let text = results.join('\n\n');
+    if(text.length > 3000) text = text.slice(0,3000) + '\n[...zkráceno]';
+    
+    webSearchContext = `Výsledky vyhledávání pro "${query}" (${new Date().toLocaleDateString('cs-CZ')}):\n\n${text}`;
+    status.innerHTML = '✅ Nalezeno – výsledky přidány do kontextu. Teď odešli zprávu.';
     status.style.color = '#4ade80';
   } catch(e) {
-    status.textContent = '❌ Vyhledávání selhalo: ' + e.message;
+    status.textContent = '❌ Chyba: ' + e.message;
     status.style.color = '#f87171';
     webSearchContext = null;
   }
