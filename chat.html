@@ -4056,74 +4056,75 @@ Máš přístup k nástrojům: web_search, fetch_url, run_code, save_note, recal
     scrollBottom();
 
   } else {
-  // ════ TÝM + CLAUDE REVIEW LOOP ════
-  for(let round=1;round<=MAX_ROUNDS;round++){
+  // ════ TÝM + CLAUDE JEN POKUD TŘEBA ════
+  // Agenti odpověděli → rychlé peer-review mezi sebou → Claude jen při nízkém skóre
+
+  // 🔍 Peer-review: každý agent ohodnotí odpovědi kolegů
+  let peerScores = {}; // key → {score, comment}
+  if(!task.isSimple && routed.length >= 1 && Object.keys(assistantAnswers).length >= 1){
     finishLog();
     startStatusLog(aisDiv);
-    const claudeLogMsg = round===1 ? '👑 Posílám asistentům ke Claude...' : `👑 Claude reviduje · kolo ${round}`;
-    addDivider(aisDiv, claudeLogMsg);
-    const claudeBubble=addBubble(aisDiv,'claude','Claude · zpracovává...',true);
-    try{
-      const hasA=Object.keys(assistantAnswers).length>0;
-      const hasDevil = !!assistantAnswers['_devil'];
-      const regularAnswers = Object.entries(assistantAnswers).filter(([k])=>k!=='_devil');
-      // Adaptivní budget: více agentů = méně na každého, ale nikdy méně než 1200 znaků
-      const totalBudget = 12000; // ~3000 tokenů pro kontext asistentů
-      const perAgentBudget = Math.max(1200, Math.floor(totalBudget / Math.max(regularAnswers.length, 1)));
-      const summary=hasA?regularAnswers.map(([k,v])=>`${AI[k]?.name||k}:\n${v.slice(0,perAgentBudget)}`).join('\n\n---\n\n'):'';
-      const devilSection = hasDevil ? `\n\n🔴 ĎÁBLŮV ADVOKÁT (kritická perspektiva):\n${assistantAnswers['_devil']}` : '';
-      const claudeSys=getMdSystem('claude')+getDatePrompt()+getMemoryPrompt()+getSearchPrompt()+(round===1
-        ? '\nJsi šéf týmu. Tým provedl strukturovanou diskuzi včetně vzájemných reakcí. Vezmi v úvahu VŠECHNY perspektivy včetně kritiky ďáblova advokáta. Oprav chyby, integruj nejlepší insights, dej finální odpověď. Máš přístup k nástrojům – použij je pokud potřebuješ ověřit fakta.'
-        : `\nZohledni KONKRÉTNÍ výhrady asistentů a oprav je v revidované odpovědi. Toto musíš opravit:\n${assistantAnswers._rework||'viz komentáře níže'}`);
-      const claudePrompt=hasA
-        ?`Otázka: ${fullMsg}\n\nDiskuze týmu:\n${summary}${devilSection}\n\nTvoje${round===1?'finální':'revidovaná'} odpověď:`
-        :`${fullMsg}`;
-      claudeVerdict = await claudeAgentLoop(claudePrompt, claudeSys, aisDiv, fileSnap, claudeBubble);
-      updateBubbleLabel(claudeBubble,`CLAUDE · Sonnet · šéf`);
-      finishBubble(claudeBubble,claudeVerdict);
-    }catch(e){finishBubble(claudeBubble,null,e.message);break;}
-    scrollBottom();
-
-    if(routed.length===0||round===MAX_ROUNDS)break;
-
-    finishLog();
-    startStatusLog(aisDiv);
-    addDivider(aisDiv,'🔍 ASISTENTI KONTROLUJÍ');
-    const reviews={};
-    for(const key of routed){
-      const bubble=addBubble(aisDiv,key,`${AI[key].name} · kontroluje odpověď...`);
+    addDivider(aisDiv, '🔍 Peer-review · každý hodnotí kolegu');
+    // Každý agent hodnotí odpověď JINÉHO agenta (rotace o 1)
+    const reviewKeys = routed.filter(k => assistantAnswers[k]);
+    for(let i = 0; i < reviewKeys.length; i++){
+      const reviewer = reviewKeys[i];
+      const reviewed = reviewKeys[(i + 1) % reviewKeys.length]; // kolega vpravo
+      const reviewedAnswer = assistantAnswers[reviewed];
+      if(!reviewedAnswer) continue;
+      const bubble = addBubble(aisDiv, reviewer, `${AI[reviewer].name} · hodnotí ${AI[reviewed]?.name||reviewed}…`);
       try{
-        const review=key==='gemini'?await reviewGemini(msgText,claudeVerdict)
-          :key==='chatgpt'?await reviewChatGPT(msgText,claudeVerdict)
-          :await reviewCustom(key,msgText,claudeVerdict);
-        reviews[key]=review;
+        const review = reviewer==='gemini' ? await reviewGemini(msgText, reviewedAnswer)
+          : reviewer==='chatgpt' ? await reviewChatGPT(msgText, reviewedAnswer)
+          : await reviewCustom(reviewer, msgText, reviewedAnswer);
+        peerScores[reviewed] = review; // skóre pro hodnoceného
         const score = review.score ?? (review.approved ? 0.8 : 0.4);
         const scoreColor = score>=0.75?'#34d399':score>=0.5?'#fbbf24':'#f87171';
         const scoreBar = `<span style="display:inline-block;background:${scoreColor};color:#000;border-radius:4px;padding:1px 6px;font-size:11px;font-weight:700;margin-right:6px">${score.toFixed(2)}</span>`;
-        finishBubble(bubble,`${scoreBar}${review.approved?'✅':'🔄'} ${review.comment}`);
-      }catch(e){reviews[key]={score:0.8,approved:true,comment:''};finishBubble(bubble,null,e.message);}
+        finishBubble(bubble, `${scoreBar}${review.approved?'✅':'⚠️'} ${AI[reviewed]?.name}: ${review.comment}`);
+      } catch(e){ peerScores[reviewed]={score:0.75,approved:true,comment:''}; finishBubble(bubble,null,e.message); }
       scrollBottom();
     }
 
-    const scores = Object.values(reviews).map(r=>r.score ?? (r.approved?0.8:0.4));
-    const avgScore = scores.reduce((a,b)=>a+b,0) / scores.length;
-    const approveCount=Object.values(reviews).filter(r=>r.approved).length;
-    const total=routed.length;
+    const peerScoreVals = Object.values(peerScores).map(r => r.score ?? (r.approved?0.8:0.4));
+    const avgPeerScore = peerScoreVals.length ? peerScoreVals.reduce((a,b)=>a+b,0)/peerScoreVals.length : 0.8;
+    const scoreColor = avgPeerScore>=0.75?'#34d399':avgPeerScore>=0.5?'#fbbf24':'#f87171';
+    addDivider(aisDiv, `📊 Průměrné skóre: <span style="color:${scoreColor};font-weight:700">${avgPeerScore.toFixed(2)}</span>`);
 
-    // Zobraz průměrné skóre
-    const scoreColor = avgScore>=0.75?'#34d399':avgScore>=0.5?'#fbbf24':'#f87171';
-    addDivider(aisDiv, `📊 Průměrné skóre: <span style="color:${scoreColor};font-weight:700">${avgScore.toFixed(2)}</span> · ${approveCount}/${total} schváleno`);
-
-    if(approveCount>=Math.ceil(total/2)){
-      addDivider(aisDiv,approveCount===total?'✅ KONSENZUS':'✅ VĚTŠINA SOUHLASÍ ('+approveCount+'/'+total+')');
-      break;
+    if(avgPeerScore >= 0.75){
+      // ✅ Kvalita dobrá → vyber nejlepší odpověď, Claude nevolat
+      const bestKey = Object.entries(peerScores).sort(([,a],[,b])=>(b.score??0.8)-(a.score??0.8))[0]?.[0] || routed[0];
+      claudeVerdict = assistantAnswers[bestKey] || Object.values(assistantAnswers).find(v=>v) || '';
+      addDivider(aisDiv, `✅ Kvalita OK · ${AI[bestKey]?.name||bestKey} má nejlepší odpověď · Claude ušetřen`);
+      finishLog();
+    } else {
+      // ⚠️ Nízké skóre → zavolat šéfa
+      finishLog();
+      startStatusLog(aisDiv);
+      const reworkFeedback = Object.entries(peerScores)
+        .filter(([,v])=>!v.approved)
+        .map(([k,v])=>`${AI[k]?.name||k} (${(v.score??0.4).toFixed(2)}): ${v.comment}`)
+        .join('\n');
+      addDivider(aisDiv, `⚠️ Skóre ${avgPeerScore.toFixed(2)} — volám šéfa na zachrání…`);
+      const claudeBubble = addBubble(aisDiv,'claude','Claude 👑 · zachraňuje odpověď…',true);
+      try{
+        const totalBudget = 12000;
+        const perAgentBudget = Math.max(1200, Math.floor(totalBudget / Math.max(routed.length, 1)));
+        const summary = Object.entries(assistantAnswers).filter(([k])=>!k.startsWith('_'))
+          .map(([k,v])=>`${AI[k]?.name||k}:\n${v.slice(0,perAgentBudget)}`).join('\n\n---\n\n');
+        const claudeSys = getMdSystem('claude')+getDatePrompt()+getMemoryPrompt()+getSearchPrompt()
+          +`\nJsi šéf týmu. Tým odpověděl, ale peer-review ukázalo nízkou kvalitu (skóre ${avgPeerScore.toFixed(2)}).\nProblém: ${reworkFeedback||'Odpovědi jsou neúplné nebo nepřesné.'}\nTvůj úkol: oprav chyby, doplň chybějící info, dej finální kvalitní odpověď.`;
+        const claudePrompt = `Otázka: ${fullMsg}\n\nPokusy týmu:\n${summary}\n\nTvoje opravená finální odpověď:`;
+        claudeVerdict = await claudeAgentLoop(claudePrompt, claudeSys, aisDiv, fileSnap, claudeBubble);
+        updateBubbleLabel(claudeBubble, 'CLAUDE 👑 · zachránil');
+        finishBubble(claudeBubble, claudeVerdict, null, true);
+      } catch(e){ finishBubble(claudeBubble, null, e.message); claudeVerdict = Object.values(assistantAnswers).find(v=>v)||''; }
+      scrollBottom();
     }
-    // Rework: dej Claudovi konkrétní feedback co opravit
-    const reworkFeedback = Object.entries(reviews)
-      .filter(([,v])=>!v.approved)
-      .map(([k,v])=>`${AI[k]?.name||k} (skóre ${(v.score??0.4).toFixed(2)}): ${v.comment}`)
-      .join('\n');
-    assistantAnswers={...assistantAnswers,_rework: reworkFeedback, ...Object.fromEntries(Object.entries(reviews).filter(([,v])=>!v.approved).map(([k,v])=>[k,v.comment]))};
+  } else {
+    // Jednoduchý dotaz — vezmi první dostupnou odpověď rovnou
+    claudeVerdict = Object.values(assistantAnswers).find(v=>v) || '';
+    finishLog();
   }
 
   } // end else (team mode)
@@ -4317,10 +4318,10 @@ async function pickModel(msg){
 
 async function reviewGemini(originalMsg, verdict){
   const sig=currentAbortController?.signal;
-  const prompt=`Zkontroluj odpověď Clauda na tuto otázku. Buď KRITICKÝ – hledej skutečné problémy.
+  const prompt=`Zkontroluj odpověď kolegy na tuto otázku. Buď KRITICKÝ – hledej skutečné problémy.
 
 Otázka: "${originalMsg.slice(0,500)}"
-Claudova odpověď: "${verdict.slice(0,1500)}"
+Odpověď kolegy: "${verdict.slice(0,1500)}"
 
 Zkontroluj konkrétně:
 1. Faktické chyby nebo nepřesnosti?
@@ -4348,9 +4349,9 @@ Pravidlo: score<0.75 POUZE pokud je skutečný problém. V comment vždy uveď C
 
 async function reviewChatGPT(originalMsg, verdict){
   const sig=currentAbortController?.signal;
-  const r=await fetch('https://api.openai.com/v1/chat/completions',{method:'POST',signal:sig,headers:{'Content-Type':'application/json','Authorization':`Bearer ${AI.chatgpt.key}`},body:JSON.stringify({model:'gpt-4o',max_tokens:300,messages:[
+  const r=await fetch('https://api.openai.com/v1/chat/completions',{method:'POST',signal:sig,headers:{'Content-Type':'application/json','Authorization':`Bearer ${AI.chatgpt.key}`},body:JSON.stringify({model:'gpt-4o-mini',max_tokens:300,messages:[
     {role:'system',content:'Jsi přísný recenzent. Odpovídej POUZE jako JSON bez markdown: {"score":0.0-1.0,"comment":"konkrétní komentář"}. Škála: 1.0=perfektní, 0.75=dobré, 0.5=průměrné, 0.25=špatné. V comment vždy uveď CO konkrétně opravit pokud score<0.75.'},
-    {role:'user',content:`Otázka: "${originalMsg.slice(0,500)}"\n\nClaude odpověděl:\n"${verdict.slice(0,1500)}"\n\nZkontroluj: faktické chyby, chybějící perspektivy, povrchnost, logické mezery.`}
+    {role:'user',content:`Otázka: "${originalMsg.slice(0,500)}"\n\nOdpověď kolegy:\n"${verdict.slice(0,1500)}"\n\nZkontroluj: faktické chyby, chybějící perspektivy, povrchnost, logické mezery.`}
   ]})});
   if(!r.ok){const e=await r.json();throw new Error(e.error?.message||r.status);}
   const d=await r.json();
@@ -4384,7 +4385,7 @@ async function reviewCustom(key,originalMsg,verdict){
   const ai=AI[key]; const model=normalizeModel(ai);
   const sig=currentAbortController?.signal;
   if(ai.url?.includes('openrouter')) await new Promise(r=>setTimeout(r,900));
-  const r=await fetch(`${ai.url}/chat/completions`,{method:'POST',signal:sig,headers:{'Content-Type':'application/json','Authorization':`Bearer ${ai.key}`},body:JSON.stringify({model,max_tokens:200,messages:[{role:'system',content:'Zkontroluj odpověď. Odpověz POUZE jako JSON: {"score":0.0-1.0,"comment":"komentář"}. Škála: 1.0=perfektní, 0.75=dobré, 0.5=průměrné.'},{role:'user',content:`Otázka: "${originalMsg}"\nClaude odpověděl: "${verdict}"\nJe správná a úplná?`}]})});
+  const r=await fetch(`${ai.url}/chat/completions`,{method:'POST',signal:sig,headers:{'Content-Type':'application/json','Authorization':`Bearer ${ai.key}`},body:JSON.stringify({model,max_tokens:200,messages:[{role:'system',content:'Zkontroluj odpověď kolegy. Odpověz POUZE jako JSON: {"score":0.0-1.0,"comment":"komentář"}. Škála: 1.0=perfektní, 0.75=dobré, 0.5=průměrné, 0.3=špatné.'},{role:'user',content:`Otázka: "${originalMsg}"\nOdpověď kolegy: "${verdict.slice(0,800)}"\nJe správná, úplná a užitečná?`}]})});
   if(!r.ok){let em=`${r.status}`;try{const e=await r.json();em=e.error?.message||em;}catch{}throw new Error(em);}
   const d=await r.json();
   const raw=d.choices?.[0]?.message?.content||'';
