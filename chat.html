@@ -1148,7 +1148,136 @@ async function sendMessage() {
       isBusy=false;document.getElementById('sendBtn').disabled=false;return;
     }
 
-    await teamFlow(aisDiv, msgText, baseMsg, assistants, task);
+    // ════ TÝM KOLEGŮ ════
+    async function callTeamAI(key, userPrompt){
+      const sys = MD_SYSTEM + getDatePrompt() + getMemoryPrompt() + getSearchPrompt()
+        + '\nJsi součástí AI týmu profesionálních kolegů. Buď konkrétní, stručný a stav vždy na práci ostatních.';
+      const ai = AI[key];
+      if(key==='gemini'){
+        const r=await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${ai.key}`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({systemInstruction:{parts:[{text:sys}]},contents:[{role:'user',parts:[{text:userPrompt}]}],generationConfig:{maxOutputTokens:1500}})});
+        if(!r.ok){const e=await r.json();throw new Error(e.error?.message||r.status);}
+        const d=await r.json();return d.candidates[0].content.parts[0].text;
+      } else if(key==='chatgpt'){
+        const r=await fetch('https://api.openai.com/v1/chat/completions',{method:'POST',headers:{'Content-Type':'application/json','Authorization':`Bearer ${ai.key}`},body:JSON.stringify({model:'gpt-4o',max_tokens:1500,messages:[{role:'system',content:sys},{role:'user',content:userPrompt}]})});
+        if(!r.ok){const e=await r.json();throw new Error(e.error?.message||r.status);}
+        const d=await r.json();return d.choices[0].message.content;
+      } else {
+        if(ai.url?.includes('openrouter')) await new Promise(r=>setTimeout(r,900));
+        const r=await fetch(`${ai.url}/chat/completions`,{method:'POST',headers:{'Content-Type':'application/json','Authorization':`Bearer ${ai.key}`},body:JSON.stringify({model:ai.model,max_tokens:1500,messages:[{role:'system',content:sys},{role:'user',content:userPrompt}]})});
+        if(!r.ok){const e=await r.json();throw new Error(e.error?.message||r.status);}
+        const d=await r.json();return d.choices[0].message.content;
+      }
+    }
+
+    // Znalostní báze: key → {text, vote:'souhlas'|'nesouhlas'|'doplnění'}
+    const kb = {};
+    const webNote = webSearchContext ? '\n\n🌐 Máš aktuální data z internetu – použij je přednostně!' : '';
+    const MAX_CONSENSUS_ROUNDS = 4;
+
+    // ── KOLO 1: Každý odpoví ──
+    addDivider(aisDiv, assistants.length>1 ? '💬 PRVNÍ ODPOVĚDI' : '💬 ODPOVĚĎ');
+    for(const key of assistants){
+      const bubble = addBubble(aisDiv, key, `${AI[key].name} · přemýšlí...`);
+      try{
+        const p = `${baseMsg}${webNote}`;
+        const text = await callTeamAI(key, p);
+        kb[key] = {text, vote:'souhlas'};
+        assistantAnswers[key] = text;
+        updateBubbleLabel(bubble, `${AI[key].name}`);
+        finishBubble(bubble, text);
+      }catch(e){
+        kb[key] = {text:'', vote:'nesouhlas'};
+        finishBubble(bubble, null, e.message);
+      }
+      scrollBottom();
+    }
+
+    // ── KONSENSUÁLNÍ SMYČKA ──
+    if(assistants.length > 1 && !task.isSimple){
+      let consensusRound = 0;
+      let consensusReached = false;
+
+      while(consensusRound < MAX_CONSENSUS_ROUNDS && !consensusReached){
+        consensusRound++;
+
+        // Každý AI zhodnotí odpovědi ostatních
+        const votes = {}; // key → 'souhlas'|'nesouhlas'|'doplnění'
+        const roundBubbles = {};
+        const roundLabel = consensusRound===1 ? '🤝 KOLEGOVÉ REAGUJÍ' : `🔄 KOLO ${consensusRound} · STÁLE NESOUHLASÍ`;
+        addDivider(aisDiv, roundLabel);
+
+        for(const key of assistants){
+          const others = assistants
+            .filter(k=>k!==key && kb[k]?.text)
+            .map(k=>`**${AI[k].name}:**\n${kb[k].text.slice(0,500)}`)
+            .join('\n\n');
+          if(!others) { votes[key]='souhlas'; continue; }
+
+          const bubble = addBubble(aisDiv, key, `${AI[key].name} · čte kolegy...`);
+          roundBubbles[key] = bubble;
+          try{
+            const p = `Otázka: ${msgText}${webNote}
+
+Tvoje odpověď:
+${(kb[key]?.text||'').slice(0,400)}
+
+Kolegové říkají:
+${others}
+
+Uděl jednu z těchto akcí:
+- Pokud SOUHLASÍŠ a nemáš co přidat → napiš: HLAS: souhlas\n[jedna věta proč souhlasíš]
+- Pokud máš CO DOPLNIT → napiš: HLAS: doplnění\n[co konkrétně přidáváš]
+- Pokud NESOUHLASÍŠ a máš důvod → napiš: HLAS: nesouhlas\n[co je špatně a jak to správně je]`;
+
+            const raw = await callTeamAI(key, p);
+            const voteMatch = raw.match(/HLAS:\s*(souhlas|doplnění|nesouhlas)/i);
+            const vote = voteMatch ? voteMatch[1].toLowerCase() : 'souhlas';
+            const text = raw.replace(/HLAS:.*$/im,'').trim();
+            votes[key] = vote;
+            kb[key] = {text, vote};
+            assistantAnswers[key] = text;
+            const vEmoji = vote==='souhlas'?'✅':vote==='doplnění'?'➕':'❌';
+            updateBubbleLabel(bubble, `${AI[key].name} · ${vEmoji} ${vote}`);
+            finishBubble(bubble, text);
+          }catch(e){
+            votes[key]='souhlas';
+            finishBubble(bubble, null, e.message);
+          }
+          scrollBottom();
+        }
+
+        // Zkontroluj konsenzus – většina souhlasí?
+        const allVotes = Object.values(votes);
+        const souhlasi = allVotes.filter(v=>v==='souhlas').length;
+        const majority = souhlasi >= Math.ceil(allVotes.length * 0.6);
+        if(majority){
+          consensusReached = true;
+          const d=document.createElement('div');d.className='round-divider';
+          d.innerHTML=`<span>🎯 Konsenzus dosažen v kole ${consensusRound} (${souhlasi}/${allVotes.length} souhlasí)</span>`;
+          aisDiv.appendChild(d);
+        }
+      }
+
+      if(!consensusReached){
+        const d=document.createElement('div');d.className='round-divider';
+        d.innerHTML=`<span>⚡ Max kol dosaženo – syntetizuji nejlepší odpověď</span>`;
+        aisDiv.appendChild(d);
+      }
+
+      // ── FINÁLNÍ SYNTÉZA ──
+      const synth = assistants[0];
+      addDivider(aisDiv, '✅ FINÁLNÍ ODPOVĚĎ TÝMU');
+      const bubble = addBubble(aisDiv, synth, `${AI[synth].name} · syntetizuje...`);
+      try{
+        const allK = assistants.filter(k=>kb[k]?.text).map(k=>`${AI[k].name}: ${kb[k].text.slice(0,500)}`).join('\n\n');
+        const p = `Otázka: ${msgText}${webNote}\n\nCo tým diskutoval:\n${allK}\n\nNapiš jednu finální, přesnou a úplnou odpověď která zahrnuje to nejlepší co tým zjistil. Mluv přímo.`;
+        const reply = await callTeamAI(synth, p);
+        assistantAnswers['_synth'] = reply;
+        updateBubbleLabel(bubble, `${AI[synth].name} · ✓ tým`);
+        finishBubble(bubble, reply, null, true);
+      }catch(e){ finishBubble(bubble, null, e.message); }
+      scrollBottom();
+    }
 
     if(lastSources.length){
       const srcDiv=document.createElement('div');
