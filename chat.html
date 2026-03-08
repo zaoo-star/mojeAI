@@ -1101,10 +1101,9 @@ async function sendMessage() {
   isBusy=true;
   document.getElementById('sendBtn').disabled=true;
 
-  // Auto web search – AI decides if needed
+  // 🌐 Web search – vždy hned na začátku pokud je zapnutý
   if(autoSearchEnabled && msgText && !webSearchContext) {
-    const needsWeb = await shouldSearch(msgText);
-    if(needsWeb) await autoWebSearch(msgText);
+    await autoWebSearch(msgText);
   }
 
   const msgs=document.getElementById('messages');
@@ -1127,90 +1126,31 @@ async function sendMessage() {
   let claudeVerdict='', assistantAnswers={};
 
   if(!hasClaude){
-    // ════ AGENT FLOW ════
+    // ════ TÝM KOLEGŮ ════
     const task = analyzeMsg(msgText);
     const projPrompt = getProjectPrompt();
     const fmtInstruction = getFormatInstruction(task.outputFormat);
-    const enrichedMsg = fullMsg + fmtInstruction;
+    const baseMsg = fullMsg + fmtInstruction + projPrompt;
 
     // 🧰 Kalkulačka
     if(task.hasMath){
-      const calcResult = tryCalculator(msgText);
-      if(calcResult){const d=document.createElement('div');d.className='round-divider';d.innerHTML=`<span>${calcResult}</span>`;aisDiv.appendChild(d);}
+      const cr=tryCalculator(msgText);
+      if(cr){const d=document.createElement('div');d.className='round-divider';d.innerHTML=`<span>${cr}</span>`;aisDiv.appendChild(d);}
     }
 
-    // 📝 Formát indikátor
-    if(task.outputFormat!=='auto' && !task.isSimple){
-      const fmtMap={'table':'📊 tabulka','code':'💻 kód','list':'📋 seznam','prose':'📄 text'};
-      const d=document.createElement('div');d.className='round-divider';d.innerHTML=`<span>📝 Formát: ${fmtMap[task.outputFormat]}</span>`;aisDiv.appendChild(d);
+    // 📝 Formát
+    if(task.outputFormat!=='auto'){
+      const fm={'table':'📊 tabulka','code':'💻 kód','list':'📋 seznam','prose':'📄 text'};
+      const d=document.createElement('div');d.className='round-divider';d.innerHTML=`<span>📝 ${fm[task.outputFormat]}</span>`;aisDiv.appendChild(d);
     }
 
-    // 🎯 Specializace
-    const routed = routeMessage(msgText, assistants);
-    if(routed.length < assistants.length){
-      const skipped = assistants.filter(k=>!routed.includes(k)).map(k=>AI[k].name).join(', ');
-      addDivider(aisDiv,`🎯 Specializace → ${routed.map(k=>AI[k].name).join(', ')} (${skipped} přeskočen)`);
+    if(assistants.length===0){
+      isBusy=false;document.getElementById('sendBtn').disabled=false;return;
     }
 
-    // 📋 Rozložení úkolu
-    let subtasks = null;
-    if(task.needsSubtasks && routed.length > 0){
-      addDivider(aisDiv,'📋 ROZKLÁDÁM ÚKOL...');
-      subtasks = await decomposeTask(msgText, routed);
-      if(subtasks && subtasks.length > 1){
-        const d=document.createElement('div');d.className='round-divider';
-        d.innerHTML=`<span>📋 ${subtasks.length} podúkoly: ${subtasks.map((s,i)=>`${i+1}. ${escHtml(s)}`).join(' · ')}</span>`;
-        aisDiv.appendChild(d);
-      } else { subtasks = null; }
-    }
-
-    // 🧩 Plánování
-    if(task.needsPlan && !task.isSimple && routed.length > 0){
-      const planBubble = addBubble(aisDiv, routed[0], `${AI[routed[0]].name.toUpperCase()} · plánuje...`);
-      const plan = await makePlan(msgText, routed[0]);
-      if(plan){ finishBubble(planBubble, `🧩 **Plán:**\n${plan}`); }
-      else { document.querySelector(`.bubble-${planBubble}`)?.closest('.msg-ai')?.remove(); }
-      scrollBottom();
-    }
-
-    if(!task.isSimple) addDivider(aisDiv, subtasks ? '💬 ŘEŠÍM PODÚKOLY' : '💬 ODPOVĚDI');
-
-    let openRouterCount=0;
-    for(let i=0; i<routed.length; i++){
-      const key=routed[i];
-      const bubble=addBubble(aisDiv,key,AI[key].name.toUpperCase());
-      try{
-        const isOpenRouter=AI[key].url?.includes('openrouter');
-        if(isOpenRouter&&openRouterCount>0) await new Promise(r=>setTimeout(r,1500));
-        if(isOpenRouter) openRouterCount++;
-        const assignedTask = (subtasks ? `${enrichedMsg}\n\nTvůj konkrétní podúkol: ${subtasks[i % subtasks.length]}` : enrichedMsg) + projPrompt;
-        let reply='';
-        if(key==='gemini') reply=await callGemini(assignedTask,{});
-        else if(key==='chatgpt') reply=await callChatGPT(assignedTask,{});
-        else reply=await callCustom(key,assignedTask,{});
-
-        // 🔄 Iterace + sebekritika
-        if(!task.isSimple){
-          updateBubbleLabel(bubble,`${AI[key].name.toUpperCase()} · hodnotí...`);
-          const result = await iterateIfNeeded(key, msgText, reply);
-          reply = result.reply;
-          const scoreEmoji = result.score>=4?'⭐':(result.score>=3?'🔶':'🔴');
-          const iterLabel = result.iterations>0?` ↺${result.iterations}`:'';
-          updateBubbleLabel(bubble,`${AI[key].name.toUpperCase()} · ${scoreEmoji}${result.score}/5${iterLabel}`);
-        }
-        assistantAnswers[key]=reply;
-        finishBubble(bubble,reply);
-      }catch(e){finishBubble(bubble,null,e.message);}
-      scrollBottom();
-    }
-
-    // ── Kolaborativní debata ──
-    if(task.needsDebate && routed.length>1){
-      await collaborativeDebate(aisDiv, msgText, routed, assistantAnswers);
-    }
+    await teamFlow(aisDiv, msgText, baseMsg, assistants, task);
 
     if(lastSources.length){
-      const sid1='src_'+Math.random().toString(36).slice(2);
       const srcDiv=document.createElement('div');
       srcDiv.className='sources-wrap';
       srcDiv.innerHTML=`<div class="sources-toggle" onclick="this.nextElementSibling.classList.toggle('open');this.textContent=this.nextElementSibling.classList.contains('open')?'📚 Skrýt zdroje (${lastSources.length})':'📚 Zdroje (${lastSources.length})'">📚 Zdroje (${lastSources.length})</div><div class="sources-bar">${lastSources.map(s=>'<a class="source-chip" href="'+s.url+'" target="_blank">🔗 '+escHtml(s.title)+'</a>').join('')}</div>`;
