@@ -1581,8 +1581,8 @@ const CLAUDE_MODELS = {
 
 // ════ THEME ════
 let isDark = localStorage.getItem('theme')!=='light';
-function applyTheme(){ document.body.classList.toggle('theme-light',!isDark); document.getElementById('themeBtn').textContent=isDark?'🌙':'☀️'; }
-function toggleTheme(){ isDark=!isDark; localStorage.setItem('theme',isDark?'dark':'light'); applyTheme(); }
+function applyThemeSimple(){ document.body.classList.toggle('theme-light',!isDark); document.getElementById('themeBtn').textContent=isDark?'🌙':'☀️'; }
+function toggleThemeLegacy(){ isDark=!isDark; localStorage.setItem('theme',isDark?'dark':'light'); applyTheme(); }
 
 // ════ STATS ════
 let statsEnabled = localStorage.getItem('stats')!=='0';
@@ -3087,6 +3087,7 @@ function exportAs(format) {
     w.document.close();
     return;
   }
+  if(format==='html'){
     let msgs='';
     for(const h of chatLog){
       msgs+=`<div class="msg-user"><strong>Ty:</strong> ${escHtml(h.user)}</div>`;
