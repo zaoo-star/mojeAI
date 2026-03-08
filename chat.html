@@ -85,16 +85,18 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:'Outfit
 .export-info span{font-size:12px;color:var(--muted);}
 
 /* CHAT HEADER */
-.chat-header{background:rgba(15,15,26,0.95);backdrop-filter:blur(12px);border-bottom:1px solid var(--border);padding:10px 14px;display:flex;align-items:center;gap:8px;flex-shrink:0;position:sticky;top:0;z-index:10;}
+.chat-header{background:rgba(15,15,26,0.95);backdrop-filter:blur(12px);border-bottom:1px solid var(--border);padding:0;display:flex;flex-direction:column;flex-shrink:0;position:sticky;top:0;z-index:10;}
+.chat-header-row1{padding:8px 12px;display:flex;align-items:center;gap:6px;width:100%;}
 .chat-header-title{font-weight:700;font-size:15px;flex:1;letter-spacing:-.2px;}
 .header-btn{background:var(--card);border:1px solid var(--border);border-radius:10px;color:var(--muted2);font-size:14px;padding:6px 10px;cursor:pointer;font-family:'Outfit',sans-serif;white-space:nowrap;transition:all .2s;}
 .header-btn:hover{border-color:var(--accent);color:var(--text);}
 .header-btn.web-on{border-color:var(--teal);color:var(--teal);}
 
 /* AI SELECTOR */
-.ai-selector{background:var(--surface);border-bottom:1px solid var(--border);padding:8px 12px;display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:6px;flex-shrink:0;overflow:hidden;transition:max-height .25s ease, padding .25s ease;max-height:300px;}
-.ai-selector.collapsed{max-height:0;padding:0;border-bottom:none;}
-.ai-chip{display:flex;align-items:center;gap:7px;padding:8px 12px;border-radius:12px;border:1px solid var(--border);background:var(--card);cursor:pointer;transition:all .2s;user-select:none;}
+.ai-selector{padding:0 12px 8px;display:flex;gap:6px;overflow-x:auto;flex-shrink:0;scrollbar-width:none;}
+.ai-selector::-webkit-scrollbar{display:none;}
+.ai-selector.collapsed{display:none;}
+.ai-chip{display:flex;align-items:center;gap:6px;padding:6px 10px;border-radius:10px;border:1px solid var(--border);background:var(--card);cursor:pointer;transition:all .2s;user-select:none;white-space:nowrap;flex-shrink:0;}
 .ai-chip.selected{border-color:var(--chip-color);background:color-mix(in srgb,var(--chip-color) 12%,var(--card));}
 .ai-chip.selected .ai-chip-dot{box-shadow:0 0 6px var(--chip-color);}
 .ai-chip-dot{width:7px;height:7px;border-radius:50%;flex-shrink:0;}
@@ -310,13 +312,16 @@ onAuthStateChanged(auth, user => {
 <!-- CHAT -->
 <div id="chat" class="screen">
   <div class="chat-header">
-    <div class="chat-header-title" id="chatTitle">AI Chat</div>
-    <button class="header-btn" id="selectorToggle" onclick="toggleSelector()" title="Zobrazit/skrýt AI">▾</button>
-    <button class="header-btn" id="autoSearchToggle" onclick="toggleAutoSearch()" title="Web">🌐</button>
-    <button class="header-btn" onclick="openHistory()" title="Historie">📋</button>
-    <button class="header-btn" onclick="newChat()" title="Nový chat">✏️</button>
+    <div class="chat-header-row1">
+      <button class="input-btn" onclick="goBack()" title="Nastavení" style="width:32px;height:32px;font-size:14px;border-radius:8px;flex-shrink:0">⚙️</button>
+      <div class="chat-header-title" id="chatTitle" style="flex:1;font-size:14px">AI Chat</div>
+      <button class="header-btn" id="selectorToggle" onclick="toggleSelector()" title="AI" style="font-size:11px;padding:4px 8px">▾ AI</button>
+      <button class="header-btn" id="autoSearchToggle" onclick="toggleAutoSearch()" title="Web" style="font-size:13px;padding:4px 8px">🌐</button>
+      <button class="header-btn" onclick="openHistory()" title="Historie" style="font-size:13px;padding:4px 8px">📋</button>
+      <button class="header-btn" onclick="newChat()" title="Nový chat" style="font-size:13px;padding:4px 8px">✏️</button>
+    </div>
+    <div class="ai-selector collapsed" id="aiSelector"></div>
   </div>
-  <div class="ai-selector" id="aiSelector"></div>
   <div class="file-preview" id="filePreview">
     <img id="filePreviewThumb" style="display:none;width:36px;height:36px;object-fit:cover;border-radius:6px;flex-shrink:0">
     <span class="file-preview-icon" id="filePreviewIcon">📎</span>
@@ -326,7 +331,6 @@ onAuthStateChanged(auth, user => {
   <div id="searchBar" style="display:none;padding:8px 16px;background:var(--card);border-bottom:1px solid var(--border);font-size:12px;color:var(--muted);flex-shrink:0;">🔍 <span id="searchStatus"></span></div>
   <div class="messages" id="messages"></div>
   <div class="input-area">
-    <button class="input-btn" onclick="goBack()" title="Nastavení">⚙️</button>
     <label class="input-btn" title="Přiložit soubor" style="position:relative;overflow:hidden;cursor:pointer;">📎<input type="file" id="fileInput" style="position:absolute;inset:0;opacity:0;cursor:pointer;width:100%;height:100%" accept=".txt,.pdf,.md,.js,.py,.html,.css,.json,.csv,.xml,.yaml,.yml,.log,.ts,.jsx,.tsx,.c,.cpp,.h,.java,.php,.rb,.go,.rs,image/*" onchange="handleFile(event)"></label>
     <button class="input-btn" id="voiceBtn" onclick="toggleVoice()" title="Hlasový vstup">🎙️</button>
     <textarea id="msgInput" placeholder="Napiš zprávu…" rows="1" onkeydown="handleKey(event)" oninput="autoResize(this)"></textarea>
