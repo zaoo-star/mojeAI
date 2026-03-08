@@ -674,7 +674,7 @@ function getPersona(key){
 
 const BUILTIN_AI = {
   claude:  { name:'Claude (CEO 👑)',          rawColor:'#c084fc', key:'', builtin:true, boss:true },
-  gemini:  { name:'Gemini (Analytik 📊)',     rawColor:'#38bdf8', key:'', builtin:true, reviewOnly:true },
+  gemini:  { name:'Gemini (Analytik 📊)',     rawColor:'#38bdf8', key:'', builtin:true },
   chatgpt: { name:'ChatGPT (Generalista 🎯)', rawColor:'#4ade80', key:'', builtin:true },
 };
 let AI = { ...BUILTIN_AI };
@@ -4393,109 +4393,141 @@ Máš přístup k nástrojům: web_search, fetch_url, run_code, save_note, recal
   if(!task.isSimple && routed.length >= 1 && Object.keys(assistantAnswers).length >= 1){
     finishLog();
     startStatusLog(aisDiv);
-    addDivider(aisDiv, '🔍 Peer-review · každý hodnotí kolegu');
-    // Každý agent hodnotí odpověď JINÉHO agenta (rotace o 1)
-    const reviewKeys = routedForReview.filter(k => assistantAnswers[k] || AI[k].key);
-    for(let i = 0; i < reviewKeys.length; i++){
-      const reviewer = reviewKeys[i];
-      const reviewed = reviewKeys[(i + 1) % reviewKeys.length]; // kolega vpravo
-      const reviewedAnswer = assistantAnswers[reviewed];
-      if(!reviewedAnswer) continue;
-      const bubble = addBubble(aisDiv, reviewer, `${AI[reviewer].name} · hodnotí ${AI[reviewed]?.name||reviewed}…`);
+
+    const workerKeys = routed.filter(k => assistantAnswers[k]);
+    const hasGemini = AI.gemini?.key && workerKeys.includes('gemini');
+    let geminiVerdict = null; // Geminiho doporučení šéfovi
+
+    if(hasGemini && workerKeys.length >= 2){
+      // ── Gemini jako Quality Manager ──
+      addDivider(aisDiv, '🔍 Gemini 📊 · hodnotí tým a doporučuje šéfovi');
+      const qmBubble = addBubble(aisDiv, 'gemini', 'Gemini 📊 · analyzuje všechny odpovědi…');
       try{
-        const review = reviewer==='gemini' ? await reviewGemini(msgText, reviewedAnswer)
-          : reviewer==='chatgpt' ? await reviewChatGPT(msgText, reviewedAnswer)
-          : await reviewCustom(reviewer, msgText, reviewedAnswer);
-        peerScores[reviewed] = review; // skóre pro hodnoceného
-        const score = review.score ?? (review.approved ? 0.8 : 0.4);
-        const scoreColor = score>=0.75?'#34d399':score>=0.5?'#fbbf24':'#f87171';
-        const scoreBar = `<span style="display:inline-block;background:${scoreColor};color:#000;border-radius:4px;padding:1px 6px;font-size:11px;font-weight:700;margin-right:6px">${score.toFixed(2)}</span>`;
-        finishBubble(bubble, `${scoreBar}${review.approved?'✅':'⚠️'} ${AI[reviewed]?.name}: ${review.comment}`);
-      } catch(e){ peerScores[reviewed]={score:0.75,approved:true,comment:''}; finishBubble(bubble,null,e.message); }
+        const totalBudget = 10000;
+        const perBudget = Math.max(800, Math.floor(totalBudget / workerKeys.length));
+        const answersBlock = workerKeys.filter(k=>k!=='gemini').map(k =>
+          `### ${AI[k]?.name||k}\n${(assistantAnswers[k]||'').slice(0, perBudget)}`
+        ).join('\n\n---\n\n');
+        const myAnswer = assistantAnswers['gemini'] ? `\n\nMoje vlastní odpověď pro referenci:\n${assistantAnswers['gemini'].slice(0,perBudget)}` : '';
+
+        const prompt = `Otázka uživatele: "${msgText.slice(0,400)}"
+
+Odpovědi týmu:
+${answersBlock}${myAnswer}
+
+Tvůj úkol jako Quality Manager:
+1. Ohodnoť každého (score 0.0-1.0, silné stránky, slabiny)
+2. Urči NEJLEPŠÍHO workera
+3. Dej šéfovi JASNÉ doporučení: syntetizovat / zachránit / vzít nejlepšího rovnou
+
+Odpověz POUZE jako JSON:
+{
+  "scores": {"worker_key": {"score": 0.0-1.0, "strengths": ["..."], "weaknesses": ["..."]}},
+  "best": "worker_key",
+  "avgScore": 0.0-1.0,
+  "recommendation": "synthesize|rescue|take_best",
+  "reason": "proč toto doporučuješ šéfovi"
+}`;
+
+        const r = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${AI.gemini.key}`,{
+          method:'POST', signal: currentAbortController?.signal,
+          headers:{'Content-Type':'application/json'},
+          body: JSON.stringify({contents:[{role:'user',parts:[{text:prompt}]}], generationConfig:{maxOutputTokens:600}})
+        });
+        if(!r.ok) throw new Error((await r.json()).error?.message||r.status);
+        const d = await r.json();
+        const raw = (d.candidates?.[0]?.content?.parts?.[0]?.text||'{}').replace(/```json|```/g,'').trim();
+        geminiVerdict = JSON.parse(raw);
+
+        // Ulož skóre pro teaching
+        for(const [k, v] of Object.entries(geminiVerdict.scores||{})){
+          const agentKey = workerKeys.find(wk => wk===k || AI[wk]?.name===k);
+          if(agentKey) peerScores[agentKey] = { score: v.score, approved: v.score>=0.75, comment: [...(v.strengths||[]), ...(v.weaknesses||[])].join('; ') };
+        }
+
+        const avgScore = geminiVerdict.avgScore ?? 0.75;
+        const recLabel = geminiVerdict.recommendation==='rescue' ? '⚠️ Doporučuje záchranný zásah' :
+                         geminiVerdict.recommendation==='take_best' ? `✅ Vezmi ${AI[geminiVerdict.best]?.name||geminiVerdict.best} rovnou` :
+                         '🔀 Doporučuje syntézu';
+        const scoreColor = avgScore>=0.75?'#34d399':avgScore>=0.5?'#fbbf24':'#f87171';
+        const scoreBar = `<span style="display:inline-block;background:${scoreColor};color:#000;border-radius:4px;padding:1px 6px;font-size:11px;font-weight:700;margin-right:6px">${avgScore.toFixed(2)}</span>`;
+        finishBubble(qmBubble, `${scoreBar}${recLabel} — ${geminiVerdict.reason||''}`);
+      } catch(e){
+        finishBubble(qmBubble, null, e.message);
+        geminiVerdict = null;
+      }
       scrollBottom();
     }
 
-    const peerScoreVals = Object.values(peerScores).map(r => r.score ?? (r.approved?0.8:0.4));
-    const avgPeerScore = peerScoreVals.length ? peerScoreVals.reduce((a,b)=>a+b,0)/peerScoreVals.length : 0.8;
-    const scoreColor = avgPeerScore>=0.75?'#34d399':avgPeerScore>=0.5?'#fbbf24':'#f87171';
-    addDivider(aisDiv, `📊 Průměrné skóre: <span style="color:${scoreColor};font-weight:700">${avgPeerScore.toFixed(2)}</span>`);
+    // ── Šéf Claude rozhoduje ──
+    finishLog();
+    startStatusLog(aisDiv);
 
-    if(avgPeerScore >= 0.75){
-      // ✅ Kvalita dobrá → vyber nejlepší odpověď, Claude nevolat
-      const bestKey = Object.entries(peerScores).sort(([,a],[,b])=>(b.score??0.8)-(a.score??0.8))[0]?.[0] || routed[0];
+    const avgPeerScore = geminiVerdict?.avgScore ??
+      (Object.values(peerScores).length
+        ? Object.values(peerScores).reduce((a,v)=>a+(v.score??0.75),0)/Object.values(peerScores).length
+        : 0.8);
+    const recommendation = geminiVerdict?.recommendation || (avgPeerScore >= 0.75 ? 'synthesize' : 'rescue');
+    const bestKey = geminiVerdict?.best || workerKeys[0] || routed[0];
+
+    const scoreColor2 = avgPeerScore>=0.75?'#34d399':avgPeerScore>=0.5?'#fbbf24':'#f87171';
+    addDivider(aisDiv, `📊 Průměrné skóre: <span style="color:${scoreColor2};font-weight:700">${avgPeerScore.toFixed(2)}</span>`);
+
+    if(recommendation === 'take_best'){
+      // Gemini řekl: vezmi nejlepšího rovnou
       claudeVerdict = assistantAnswers[bestKey] || Object.values(assistantAnswers).find(v=>v) || '';
-      addDivider(aisDiv, `✅ Kvalita OK · ${AI[bestKey]?.name||bestKey} nejlepší · Claude syntetizuje silné stránky`);
-      // I při dobrém skóre — Claude syntetizuje "best of" ze všech odpovědí
+      addDivider(aisDiv, `✅ Šéf přijal doporučení · ${AI[bestKey]?.name||bestKey} · žádná syntéza`);
       finishLog();
-      if(routed.length >= 2){
-        startStatusLog(aisDiv);
-        const claudeBubble = addBubble(aisDiv,'claude','Claude 👑 · syntetizuje nejlepší části…',true);
-        try{
-          const totalBudget = 12000;
-          const perAgentBudget = Math.max(1200, Math.floor(totalBudget / Math.max(routed.length, 1)));
-          // Anotovaný přehled: každý agent + jeho skóre + komentář recenzenta + odpověď
-          const annotated = reviewKeys.map((k, i) => {
-            const reviewer = reviewKeys[(i - 1 + reviewKeys.length) % reviewKeys.length];
-            const score = peerScores[k];
-            const scoreStr = score ? `Skóre od ${AI[reviewer]?.name||reviewer}: ${(score.score??0.8).toFixed(2)} — "${score.comment}"` : '';
-            return `### ${AI[k]?.name||k} ${score?.approved?'✅':'⚠️'}\n${scoreStr}\nOdpověď:\n${(assistantAnswers[k]||'').slice(0,perAgentBudget)}`;
-          }).join('\n\n---\n\n');
-          const claudeSys = getMdSystem('claude')+getDatePrompt()+getMemoryPrompt()+getSearchPrompt()
-            +`\nJsi šéf týmu. Tým odvedl dobrou práci (průměrné skóre ${avgPeerScore.toFixed(2)}).
-Každý agent má jiné silné stránky — viz skóre a komentáře od kolegů.
-Tvůj úkol: syntetizuj NEJLEPŠÍ části každé odpovědi do jedné výborné.
-- Vezmi fakta, detaily a perspektivy které ostatní vynechali
-- Oprav případné drobné nepřesnosti
-- Výsledek musí být lepší než každá jednotlivá odpověď`;
-          const claudePrompt = `Otázka: ${fullMsg}\n\nAnotované odpovědi týmu:\n${annotated}\n\nTvoje syntetizovaná finální odpověď:`;
-          claudeVerdict = await claudeAgentLoop(claudePrompt, claudeSys, aisDiv, fileSnap, claudeBubble);
-          updateBubbleLabel(claudeBubble, `CLAUDE 👑 · syntéza (${avgPeerScore.toFixed(2)} → nejlepší z týmu)`);
-          finishBubble(claudeBubble, claudeVerdict, null, true);
-          // 🎓 Claude ohodnotí agenty na pozadí
-          claudeTeachAgents(msgText, assistantAnswers, peerScores);
-        } catch(e){ finishBubble(claudeBubble, null, e.message); claudeVerdict = assistantAnswers[bestKey]||''; }
-        scrollBottom();
-      } else {
-        claudeVerdict = assistantAnswers[bestKey] || '';
-      }
-      finishLog();
-    } else {
-      // ⚠️ Nízké skóre → zavolat šéfa na zachrání
-      finishLog();
-      startStatusLog(aisDiv);
-      const reworkFeedback = Object.entries(peerScores)
-        .filter(([,v])=>!v.approved)
-        .map(([k,v])=>`${AI[k]?.name||k} (${(v.score??0.4).toFixed(2)}): ${v.comment}`)
-        .join('\n');
-      addDivider(aisDiv, `⚠️ Skóre ${avgPeerScore.toFixed(2)} — volám šéfa na zachrání…`);
+      claudeTeachAgents(msgText, assistantAnswers, peerScores);
+
+    } else if(recommendation === 'rescue' || avgPeerScore < 0.75){
+      // Záchrana
+      addDivider(aisDiv, `⚠️ ${geminiVerdict ? 'Gemini doporučil záchranný zásah' : `Skóre ${avgPeerScore.toFixed(2)}`} — šéf zasahuje…`);
       const claudeBubble = addBubble(aisDiv,'claude','Claude 👑 · zachraňuje…',true);
       try{
-        const totalBudget = 12000;
-        const perAgentBudget = Math.max(1200, Math.floor(totalBudget / Math.max(routed.length, 1)));
-        // Šéf dostane plný rozbor: co bylo dobré i co špatné u každého
-        const annotated = reviewKeys.map((k, i) => {
-          const reviewer = reviewKeys[(i - 1 + reviewKeys.length) % reviewKeys.length];
-          const score = peerScores[k];
-          const scoreStr = score ? `Hodnocení od ${AI[reviewer]?.name||reviewer}: ${(score.score??0.4).toFixed(2)} — "${score.comment}"` : 'Bez hodnocení';
-          return `### ${AI[k]?.name||k} ${score?.approved?'✅':'❌'}\n${scoreStr}\nOdpověď:\n${(assistantAnswers[k]||'').slice(0,perAgentBudget)}`;
+        const perBudget = Math.max(1000, Math.floor(10000/Math.max(workerKeys.length,1)));
+        const annotated = workerKeys.map(k=>{
+          const sc = peerScores[k] || geminiVerdict?.scores?.[k];
+          const gemScore = sc ? `Gemini hodnotí: ${(sc.score??0.5).toFixed(2)} — "${sc.comment||''}"` : '';
+          return `### ${AI[k]?.name||k} ${sc?.approved?'✅':'⚠️'}\n${gemScore}\n${(assistantAnswers[k]||'').slice(0,perBudget)}`;
         }).join('\n\n---\n\n');
         const claudeSys = getMdSystem('claude')+getDatePrompt()+getMemoryPrompt()+getSearchPrompt()
-          +`\nJsi šéf týmu. Tým odpověděl slabě (skóre ${avgPeerScore.toFixed(2)}).
-Máš k dispozici hodnocení od kolegů — každý recenzent řekl CO konkrétně chybí nebo je špatně.
-Tvůj úkol:
-1. Identifikuj co bylo v každé odpovědi dobré (zachovej to)
-2. Oprav konkrétní chyby které recenzenti označili
-3. Doplň co všichni vynechali
-4. Dej finální odpověď která je prokazatelně lepší než jakýkoli pokus týmu`;
-        const claudePrompt = `Otázka: ${fullMsg}\n\nAnotované odpovědi týmu s peer-review:\n${annotated}\n\nTvoje opravená finální odpověď:`;
+          +`\nJsi šéf týmu. Gemini (Quality Manager) doporučil zásah: "${geminiVerdict?.reason||'nízká kvalita'}".
+Máš rozbor od Geminiho — co bylo dobré i špatné u každého.
+Tvůj úkol: oprav chyby, doplň co chybí, dej finální odpověď lepší než jakýkoli pokus týmu.`;
+        const claudePrompt = `Otázka: ${fullMsg}\n\nRozbor od Geminiho:\n${annotated}\n\nTvoje opravená finální odpověď:`;
         claudeVerdict = await claudeAgentLoop(claudePrompt, claudeSys, aisDiv, fileSnap, claudeBubble);
         updateBubbleLabel(claudeBubble, 'CLAUDE 👑 · zachránil a zlepšil');
         finishBubble(claudeBubble, claudeVerdict, null, true);
-        // 🎓 Claude ohodnotí agenty na pozadí
         claudeTeachAgents(msgText, assistantAnswers, peerScores);
       } catch(e){ finishBubble(claudeBubble, null, e.message); claudeVerdict = Object.values(assistantAnswers).find(v=>v)||''; }
       scrollBottom();
+
+    } else {
+      // Syntéza — Gemini doporučil nebo průměr OK
+      addDivider(aisDiv, `✅ Kvalita OK · Claude syntetizuje dle doporučení Geminiho`);
+      const claudeBubble = addBubble(aisDiv,'claude','Claude 👑 · syntetizuje…',true);
+      try{
+        const perBudget = Math.max(1000, Math.floor(10000/Math.max(workerKeys.length,1)));
+        const annotated = workerKeys.map(k=>{
+          const sc = peerScores[k] || geminiVerdict?.scores?.[k];
+          const gemScore = sc ? `Gemini: ${(sc.score??0.8).toFixed(2)} — "${sc.comment||''}"` : '';
+          return `### ${AI[k]?.name||k} ${sc?.approved?'✅':'⚠️'}\n${gemScore}\n${(assistantAnswers[k]||'').slice(0,perBudget)}`;
+        }).join('\n\n---\n\n');
+        const claudeSys = getMdSystem('claude')+getDatePrompt()+getMemoryPrompt()+getSearchPrompt()
+          +`\nJsi šéf týmu. Gemini (Quality Manager) analyzoval odpovědi a doporučil syntézu.
+Doporučení Geminiho: "${geminiVerdict?.reason||'dobré odpovědi, syntetizuj nejlepší části'}"
+Nejlepší worker dle Geminiho: ${AI[bestKey]?.name||bestKey}
+Tvůj úkol: syntetizuj NEJLEPŠÍ části do jedné výborné odpovědi.`;
+        const claudePrompt = `Otázka: ${fullMsg}\n\nHodnocení od Geminiho:\n${annotated}\n\nTvoje syntetizovaná finální odpověď:`;
+        claudeVerdict = await claudeAgentLoop(claudePrompt, claudeSys, aisDiv, fileSnap, claudeBubble);
+        updateBubbleLabel(claudeBubble, `CLAUDE 👑 · syntéza (doporučení Geminiho)`);
+        finishBubble(claudeBubble, claudeVerdict, null, true);
+        claudeTeachAgents(msgText, assistantAnswers, peerScores);
+      } catch(e){ finishBubble(claudeBubble, null, e.message); claudeVerdict = assistantAnswers[bestKey]||''; }
+      scrollBottom();
     }
+
   } else {
     // Jednoduchý dotaz — vezmi první dostupnou odpověď rovnou
     claudeVerdict = Object.values(assistantAnswers).find(v=>v) || '';
