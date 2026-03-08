@@ -417,7 +417,7 @@ const BUILTIN_AI = {
   chatgpt: { name:'ChatGPT (Generalista 🎯)', rawColor:'#4ade80', key:'', builtin:true },
 };
 let AI = { ...BUILTIN_AI };
-let active=[], selected=[], history=[], isBusy=false;
+let active=[], selected=[], chatLog=[], isBusy=false;
 let userMemory='', attachedFile=null;
 let recognition=null, isRecording=false;
 
@@ -596,6 +596,13 @@ function startChat() {
   for(const c of customs){const inp=document.getElementById('key-'+c.id);if(inp){c.key=inp.value.trim();AI[c.id].key=c.key;}}
   localStorage.setItem('custom-ais',JSON.stringify(customs));
   if(!currentChatId) currentChatId=genId();
+  // Obnov poslední chat po reloadu
+  const savedChatId = localStorage.getItem('current-chat-id');
+  if(savedChatId){
+    const chats = getChats();
+    const last = chats.find(c=>c.id===savedChatId);
+    if(last){ currentChatId=savedChatId; chatLog=last.messages; }
+  }
   active=Object.entries(AI).filter(([,v])=>v.key).map(([k])=>k);
   if(!active.length){alert('Vlož aspoň jeden API klíč!');return;}
   const savedSel=JSON.parse(localStorage.getItem('selected-ais')||'null');
@@ -832,12 +839,12 @@ function exportAs(format) {
   closeExportModal();
   const date=new Date().toLocaleDateString('cs-CZ');
   if(format==='json'){
-    download('konverzace.json', JSON.stringify(history, null, 2), 'application/json');
+    download('konverzace.json', JSON.stringify(chatLog, null, 2), 'application/json');
     return;
   }
   if(format==='txt'){
     let out=`AI Chat – ${date}\n${'='.repeat(40)}\n\n`;
-    for(const h of history){
+    for(const h of chatLog){
       out+=`Ty: ${h.user}\n\n`;
       for(const [k,v] of Object.entries(h)){
         if(k==='user')continue;
@@ -850,7 +857,7 @@ function exportAs(format) {
   }
   if(format==='md'){
     let out=`# AI Chat – ${date}\n\n`;
-    for(const h of history){
+    for(const h of chatLog){
       out+=`## 💬 ${escHtml(h.user)}\n\n`;
       for(const [k,v] of Object.entries(h)){
         if(k==='user')continue;
@@ -863,7 +870,7 @@ function exportAs(format) {
   }
   if(format==='html'){
     let msgs='';
-    for(const h of history){
+    for(const h of chatLog){
       msgs+=`<div class="msg-user"><strong>Ty:</strong> ${escHtml(h.user)}</div>`;
       for(const [k,v] of Object.entries(h)){
         if(k==='user')continue;
@@ -1195,48 +1202,9 @@ async function sendMessage() {
       scrollBottom();
     }
 
-    // ── Debata ──
+    // ── Kolaborativní debata ──
     if(task.needsDebate && routed.length>1){
-      addDivider(aisDiv,'🔍 REAGUJÍ NA SEBE');
-      const reactions={};
-      let orCount=0;
-      for(const key of routed){
-        const bubble=addBubble(aisDiv,key,`${AI[key].name.toUpperCase()} · reaguje`);
-        try{
-          const isOpenRouter=AI[key].url?.includes('openrouter');
-          if(isOpenRouter&&orCount>0) await new Promise(r=>setTimeout(r,1500));
-          if(isOpenRouter) orCount++;
-          const othersText=Object.entries(assistantAnswers).filter(([k])=>k!==key).map(([k,v])=>`${AI[k]?.name||k}: ${v.slice(0,400)}`).join('\n\n');
-          const debateMsg=`Otázka: ${msgText}\n\nTvoje odpověď: ${(assistantAnswers[key]||'').slice(0,400)}\n\nOstatní: ${othersText}\n\nSouhlasíš? Co zlepšit?`;
-          let reply='';
-          if(key==='gemini') reply=await callGemini(debateMsg,{});
-          else if(key==='chatgpt') reply=await callChatGPT(debateMsg,{});
-          else reply=await callCustom(key,debateMsg,{});
-          reactions[key]=reply;
-          finishBubble(bubble,reply);
-        }catch(e){finishBubble(bubble,null,e.message);}
-        scrollBottom();
-      }
-      const disagreed=/nesouhlasím|ale|oprava|chyba|spíše|jinak|naopak|vlastně/.test(Object.values(reactions).join(' ').toLowerCase());
-      if(disagreed){
-        addDivider(aisDiv,'✅ FINÁLNÍ SHODA');
-        const ctx=Object.entries(assistantAnswers).map(([k,v])=>`${AI[k]?.name||k}: ${v.slice(0,300)}`).join('\n')+'\nReakce:\n'+Object.entries(reactions).map(([k,v])=>`${AI[k]?.name||k}: ${v.slice(0,300)}`).join('\n');
-        let orCount2=0;
-        for(const key of routed){
-          const bubble=addBubble(aisDiv,key,`${AI[key].name.toUpperCase()} · finální`);
-          try{
-            const isOR=AI[key].url?.includes('openrouter');
-            if(isOR&&orCount2>0) await new Promise(r=>setTimeout(r,1500));
-            if(isOR) orCount2++;
-            let reply='';
-            if(key==='gemini') reply=await callGemini(`Otázka: ${msgText}\n\nDiskuze:\n${ctx}\n\nFinální stručná odpověď:`,{});
-            else if(key==='chatgpt') reply=await callChatGPT(`Otázka: ${msgText}\n\nDiskuze:\n${ctx}\n\nFinální stručná odpověď:`,{});
-            else reply=await callCustom(key,`Otázka: ${msgText}\n\nDiskuze:\n${ctx}\n\nFinální stručná odpověď:`,{});
-            finishBubble(bubble,reply,null,true);
-          }catch(e){finishBubble(bubble,null,e.message);}
-          scrollBottom();
-        }
-      }
+      await collaborativeDebate(aisDiv, msgText, routed, assistantAnswers);
     }
 
     if(lastSources.length){
@@ -1247,9 +1215,9 @@ async function sendMessage() {
       aisDiv.appendChild(srcDiv);
     }
     clearSearchContext();
-    history.push({user:msgText,...assistantAnswers});
+    chatLog.push({user:msgText,...assistantAnswers});
     saveCurrent();
-    extractAndSaveMemory(history);
+    extractAndSaveMemory(chatLog);
     notifyDone();
     isBusy=false;document.getElementById('sendBtn').disabled=false;return;
   }
@@ -1384,9 +1352,9 @@ async function sendMessage() {
     aisDiv.appendChild(srcDiv2);
   }
   clearSearchContext();
-  history.push({user:msgText,claude:claudeVerdict,...(fileSnap?{_file:fileSnap.name}:{})});
+  chatLog.push({user:msgText,claude:claudeVerdict,...(fileSnap?{_file:fileSnap.name}:{})});
   saveCurrent();
-  extractAndSaveMemory(history); // async, runs in background
+  extractAndSaveMemory(chatLog); // async, runs in background
   notifyDone();
   isBusy=false;document.getElementById('sendBtn').disabled=false;
 }
@@ -1416,7 +1384,7 @@ function buildGroupHistory(currentMsg, currentResponses={}) {
 
 `;
   
-  for (const t of history) {
+  for (const t of chatLog) {
     transcript += `Uživatel: ${t.user}
 `;
     for (const [k, v] of Object.entries(t)) {
@@ -1570,21 +1538,24 @@ function saveChats(chats){
 }
 
 function saveCurrent(){
-  if(!history.length) return;
+  if(!chatLog.length) return;
   const chats = getChats();
-  const title = history[0]?.user?.slice(0,40) || 'Chat';
+  const title = chatLog[0]?.user?.slice(0,40) || 'Chat';
   const existing = chats.findIndex(c=>c.id===currentChatId);
-  const entry = { id:currentChatId, title, date:new Date().toISOString(), messages:history };
+  // Zachovej původní datum vytvoření
+  const originalDate = existing>=0 ? chats[existing].created : new Date().toISOString();
+  const entry = { id:currentChatId, title, created:originalDate, date:new Date().toISOString(), messages:chatLog };
   if(existing>=0) chats[existing]=entry;
   else chats.unshift(entry);
-  // Keep max 50 chats
   saveChats(chats.slice(0,50));
+  // Ulož aktuální chatId pro reload
+  localStorage.setItem('current-chat-id', currentChatId);
 }
 
 function newChat(){
   saveCurrent();
   currentChatId = genId();
-  history = [];
+  chatLog = [];
   document.getElementById('messages').innerHTML='';
   document.getElementById('chatTitle').textContent='AI Chat';
   updateProjectIndicator();
@@ -1596,30 +1567,34 @@ function loadChat(id){
   const chat = chats.find(c=>c.id===id);
   if(!chat) return;
   currentChatId = id;
-  history = chat.messages;
-  // Re-render messages
+  chatLog = chat.messages;
+  localStorage.setItem('current-chat-id', id);
   const msgsEl = document.getElementById('messages');
   msgsEl.innerHTML='';
-  for(const h of history){
+  for(const h of chatLog){
+    // User bubble
     const userDiv=document.createElement('div');
     userDiv.className='msg-user';
-    userDiv.innerHTML=`<div class="msg-user-bubble">${escHtml(h.user)}</div>`;
+    userDiv.innerHTML=`<div class="msg-user-bubble">${escHtml(h.user)}${h._file?`<div class="msg-file-badge">📎 ${escHtml(h._file)}</div>`:''}</div>`;
     msgsEl.appendChild(userDiv);
+    // AI bubbles
     const aisDiv=document.createElement('div');
     aisDiv.className='msg-ais';
-    for(const [k,v] of Object.entries(h)){
-      if(k==='user'||k==='_file') continue;
+    const aiEntries = Object.entries(h).filter(([k])=>k!=='user'&&k!=='_file');
+    for(const [k,v] of aiEntries){
       const ai=AI[k];
+      const color=ai?.rawColor||'#888';
       const wrap=document.createElement('div');
       wrap.className='msg-ai';
-      wrap.innerHTML=`<div class="ai-avatar" style="background:${ai?.rawColor||'#888'}22;color:${ai?.rawColor||'#888'}">${(ai?.name||k).slice(0,2).toUpperCase()}</div><div class="ai-bubble-wrap"><div class="ai-name" style="color:${ai?.rawColor||'#888'}">${ai?.name||k}</div><div class="ai-bubble">${formatText(v)}</div></div>`;
+      wrap.innerHTML=`<div class="ai-avatar" style="background:${color}22;color:${color};border:1px solid ${color}44">${(ai?.name||k)[0].toUpperCase()}</div><div class="ai-bubble-wrap"><div class="ai-name" style="color:${color}">${ai?.name||k}</div><div class="ai-bubble">${formatText(v)}</div></div>`;
       aisDiv.appendChild(wrap);
     }
     msgsEl.appendChild(aisDiv);
   }
-  document.getElementById('chatTitle').textContent = chat.title.slice(0,20)+'…';
+  document.getElementById('chatTitle').textContent = (chat.title||'Chat').slice(0,25);
   scrollBottom();
   closeHistory();
+  showScreen('chat');
   updateProjectIndicator();
 }
 
@@ -1627,7 +1602,7 @@ function deleteChat(id, e){
   e.stopPropagation();
   const chats = getChats().filter(c=>c.id!==id);
   saveChats(chats);
-  if(currentChatId===id){ history=[]; document.getElementById('messages').innerHTML=''; currentChatId=genId(); }
+  if(currentChatId===id){ chatLog=[]; document.getElementById('messages').innerHTML=''; currentChatId=genId(); }
   renderHistoryList();
 }
 
@@ -1652,7 +1627,7 @@ function renderHistoryList(){
     <div class="history-item${c.id===currentChatId?' active':''}" onclick="loadChat('${c.id}')">
       <button class="history-item-del" onclick="deleteChat('${c.id}',event)">🗑</button>
       <div class="history-item-title">${escHtml(c.title)}</div>
-      <div class="history-item-meta">${new Date(c.date).toLocaleString('cs-CZ')}</div>
+      <div class="history-item-meta">${new Date(c.created||c.date).toLocaleString('cs-CZ')}</div>
     </div>`).join('');
 }
 
@@ -1664,18 +1639,32 @@ function downloadHtml(){
 }
 
 async function shouldSearch(query){
-  // Simple heuristic first – no API call needed
-  const webKeywords = /dnes|dneska|dnes|dnes|počasí|zprávy|news|aktuáln|cena|kurz|výsledk|letos|loni|tento rok|teď|ted|kdy se|kdy je|kdo je|kdo vyhrál|kdo vyhr|kdo je|co je nové|nejnov|nejnovější|kdy|date|time|čas|datum|2024|2025|2026|akcie|burza|hokej|fotbal|zápas/i;
-  if(webKeywords.test(query)) return true;
-  // For ambiguous queries use Haiku to decide
+  const t = query.toLowerCase();
+  // Vždy hledej při těchto signálech
+  const hardYes = /dnes|dneska|počasí|zprávy|news|aktuáln|cena|kurz|výsledk|letos|loni|tento rok|teď|teď|kdy se|kdo je|kdo vyhrál|co je nové|nejnov|nejnovější|datum|čas|2024|2025|2026|akcie|burza|hokej|fotbal|zápas|bitcoin|crypto|recept|film|seriál|kde koupit|jak dlouho|otevírací|počet|obyvatel|vzdálenost|překlad|převod/i;
+  if(hardYes.test(query)) return true;
+  // Nikdy nehledej při jednoduchých konceptech
+  const hardNo = /^(ahoj|čau|díky|ok|jo|co je to|vysvětli|jak funguje|co znamená|definuj|porovnej teorie|proč|v historii)/i;
+  if(hardNo.test(t) && t.length < 60) return false;
+  // Pro vše ostatní delší než 15 slov – hledej
+  if(t.split(' ').length > 15) return true;
+  // Zkus Groq nebo Claude pro rozhodnutí
   const claudeKey = localStorage.getItem('key-claude');
-  if(!claudeKey) return false;
+  const groqAI = Object.values(AI).find(a=>a.url?.includes('groq') && a.key);
   try{
-    const r=await fetch('https://api.anthropic.com/v1/messages',{method:'POST',headers:{'Content-Type':'application/json','x-api-key':claudeKey,'anthropic-version':'2023-06-01','anthropic-dangerous-direct-browser-access':'true'},body:JSON.stringify({model:'claude-haiku-4-5-20251001',max_tokens:5,system:'Odpověz pouze ANO nebo NE. ANO = otázka potřebuje aktuální data z internetu (datum, zprávy, kurzy, počasí, výsledky...). NE = lze odpovědět ze znalostí.',messages:[{role:'user',content:query.slice(0,200)}]})});
-    if(!r.ok) return false;
-    const d=await r.json();
-    return d.content[0].text.trim().toUpperCase().startsWith('ANO');
-  }catch(e){return false;}
+    if(claudeKey){
+      const r=await fetch('https://api.anthropic.com/v1/messages',{method:'POST',headers:{'Content-Type':'application/json','x-api-key':claudeKey,'anthropic-version':'2023-06-01','anthropic-dangerous-direct-browser-access':'true'},body:JSON.stringify({model:'claude-haiku-4-5-20251001',max_tokens:5,system:'Odpověz pouze ANO nebo NE. ANO = otázka by profitovala z aktuálních dat z webu (fakta, události, ceny, osoby, místa...). NE = lze dobře odpovědět ze znalostí.',messages:[{role:'user',content:query.slice(0,200)}]})});
+      if(!r.ok) return true;
+      const d=await r.json();
+      return d.content[0].text.trim().toUpperCase().startsWith('ANO');
+    } else if(groqAI){
+      const r=await fetch(`${groqAI.url}/chat/completions`,{method:'POST',headers:{'Content-Type':'application/json','Authorization':`Bearer ${groqAI.key}`},body:JSON.stringify({model:'llama3-8b-8192',max_tokens:5,messages:[{role:'system',content:'Odpověz pouze ANO nebo NE. ANO = otázka by profitovala z aktuálních dat z webu. NE = lze dobře odpovědět ze znalostí.'},{role:'user',content:query.slice(0,200)}]})});
+      if(!r.ok) return true;
+      const d=await r.json();
+      return d.choices[0].message.content.trim().toUpperCase().startsWith('ANO');
+    }
+  }catch(e){ return true; } // při chybě raději hledej
+  return false;
 }
 
 // ════ AUTO WEB SEARCH ════
