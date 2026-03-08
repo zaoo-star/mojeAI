@@ -877,46 +877,78 @@ async function sendMessage() {
 
   let claudeVerdict='', assistantAnswers={};
 
-  if(currentSelected.length===1){
-    const key=currentSelected[0];
-    const bubble=addBubble(aisDiv,key,AI[key].name.toUpperCase());
-    try{
-      let reply='';
-      if(key==='claude'){const r=await callClaude(fullMsg,{},  '',1);reply=r.text;updateBubbleLabel(bubble,`CLAUDE · ${r.modelLabel}`);}
-      else if(key==='gemini')reply=await callGemini(fullMsg,{});
-      else if(key==='chatgpt')reply=await callChatGPT(fullMsg,{});
-      else reply=await callCustom(key,fullMsg,{});
-      finishBubble(bubble,reply);
-    }catch(e){finishBubble(bubble,null,e.message);}
-    scrollBottom();
-    history.push({user:msgText,...(fileSnap?{_file:fileSnap.name}:{})});
-    isBusy=false;document.getElementById('sendBtn').disabled=false;return;
-  }
-
-  if(assistants.length>0){
-    addDivider(aisDiv,'ASISTENTI ODPOVÍDAJÍ');
-    let openRouterCount=0;
-    // Sekvenčně – každý vidí odpovědi předchozích
-    for(const key of assistants){
-      const bubble=addBubble(aisDiv,key,`${AI[key].name.toUpperCase()} · asistent`);
-      try{
-        // Zpoždění pro OpenRouter AI aby se nepřekročil rate limit
-        const isOpenRouter = AI[key].url?.includes('openrouter');
-        if(isOpenRouter && openRouterCount>0){
-          await new Promise(r=>setTimeout(r,1500)); // 1.5s pauza mezi OpenRouter voláními
-        }
-        if(isOpenRouter) openRouterCount++;
-        let reply='';
-        if(key==='gemini')reply=await callGemini(fullMsg,assistantAnswers);
-        else if(key==='chatgpt')reply=await callChatGPT(fullMsg,assistantAnswers);
-        else reply=await callCustom(key,fullMsg,assistantAnswers);
-        assistantAnswers[key]=reply;finishBubble(bubble,reply);
-      }catch(e){finishBubble(bubble,null,e.message);}
-      scrollBottom();
-    }
-  }
-
   if(!hasClaude){
+    // ════ DEBATA BEZ CLAUDE ════
+    // Kolo 1 – každý odpoví samostatně
+    if(assistants.length>0){
+      addDivider(aisDiv,'💬 KOLO 1 · PRVNÍ ODPOVĚDI');
+      let openRouterCount=0;
+      for(const key of assistants){
+        const bubble=addBubble(aisDiv,key,`${AI[key].name.toUpperCase()} · první odpověď`);
+        try{
+          const isOpenRouter=AI[key].url?.includes('openrouter');
+          if(isOpenRouter&&openRouterCount>0) await new Promise(r=>setTimeout(r,1500));
+          if(isOpenRouter) openRouterCount++;
+          let reply='';
+          if(key==='gemini') reply=await callGemini(fullMsg,{});
+          else if(key==='chatgpt') reply=await callChatGPT(fullMsg,{});
+          else reply=await callCustom(key,fullMsg,{});
+          assistantAnswers[key]=reply;
+          finishBubble(bubble,reply);
+        }catch(e){finishBubble(bubble,null,e.message);}
+        scrollBottom();
+      }
+    }
+
+    // Kolo 2 – každý si přečte odpovědi ostatních a reaguje
+    if(assistants.length>1){
+      addDivider(aisDiv,'🔍 KOLO 2 · REAKCE A KONTROLA');
+      const reactions={};
+      let openRouterCount=0;
+      for(const key of assistants){
+        const bubble=addBubble(aisDiv,key,`${AI[key].name.toUpperCase()} · reaguje`);
+        try{
+          const isOpenRouter=AI[key].url?.includes('openrouter');
+          if(isOpenRouter&&openRouterCount>0) await new Promise(r=>setTimeout(r,1500));
+          if(isOpenRouter) openRouterCount++;
+          // Sestav kontext odpovědí ostatních
+          const othersText=Object.entries(assistantAnswers)
+            .filter(([k])=>k!==key)
+            .map(([k,v])=>`${AI[k]?.name||k} odpověděl(a):\n${v}`)
+            .join('\n\n');
+          const debateMsg=`Otázka: ${fullMsg}\n\nTvoje předchozí odpověď:\n${assistantAnswers[key]||'(žádná)'}\n\nOdpovědi ostatních členů týmu:\n${othersText}\n\nZkontroluj odpovědi ostatních. Souhlasíš nebo nesouhlasíš? Proč? Oprav případné chyby nebo doplň co jim chybí. Buď konkrétní.`;
+          let reply='';
+          if(key==='gemini') reply=await callGemini(debateMsg,{});
+          else if(key==='chatgpt') reply=await callChatGPT(debateMsg,{});
+          else reply=await callCustom(key,debateMsg,{});
+          reactions[key]=reply;
+          finishBubble(bubble,reply);
+        }catch(e){finishBubble(bubble,null,e.message);}
+        scrollBottom();
+      }
+
+      // Kolo 3 – finální shodná odpověď
+      addDivider(aisDiv,'✅ KOLO 3 · FINÁLNÍ SHODA');
+      const allContext=Object.entries(assistantAnswers).map(([k,v])=>`${AI[k]?.name||k}: ${v}`).join('\n\n')
+        +'\n\nReakce:\n'+Object.entries(reactions).map(([k,v])=>`${AI[k]?.name||k}: ${v}`).join('\n\n');
+      let openRouterCount2=0;
+      for(const key of assistants){
+        const bubble=addBubble(aisDiv,key,`${AI[key].name.toUpperCase()} · finální`);
+        try{
+          const isOpenRouter=AI[key].url?.includes('openrouter');
+          if(isOpenRouter&&openRouterCount2>0) await new Promise(r=>setTimeout(r,1500));
+          if(isOpenRouter) openRouterCount2++;
+          const finalMsg=`Otázka: ${fullMsg}\n\nCelá dosavadní diskuze týmu:\n${allContext}\n\nNa základě diskuze dej jednu stručnou finální odpověď která reflektuje to nejlepší z debaty.`;
+          let reply='';
+          if(key==='gemini') reply=await callGemini(finalMsg,{});
+          else if(key==='chatgpt') reply=await callChatGPT(finalMsg,{});
+          else reply=await callCustom(key,finalMsg,{});
+          finishBubble(bubble,reply,null,true);
+        }catch(e){finishBubble(bubble,null,e.message);}
+        scrollBottom();
+      }
+    }
+
     if(lastSources.length){
       const srcDiv=document.createElement('div');
       srcDiv.className='sources-bar';
@@ -926,6 +958,8 @@ async function sendMessage() {
     clearSearchContext();
     history.push({user:msgText,...assistantAnswers});
     saveCurrent();
+    extractAndSaveMemory(history);
+    notifyDone();
     isBusy=false;document.getElementById('sendBtn').disabled=false;return;
   }
 
