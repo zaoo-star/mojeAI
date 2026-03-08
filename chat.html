@@ -511,7 +511,8 @@ onAuthStateChanged(auth, user => {
       <button class="header-btn" onclick="openProjectModal()" id="projectBtn" title="Kontext projektu" style="font-size:13px;padding:4px 8px">🗂️</button>
       <button class="header-btn" id="autoSearchToggle" onclick="toggleAutoSearch()" title="Web" style="font-size:13px;padding:4px 8px">🌐</button>
       <button class="header-btn" onclick="toggleTheme()" id="themeBtn" title="Téma" style="font-size:13px;padding:4px 8px">🌙</button>
-      <button class="header-btn" onclick="toggleStats();" id="statsBtn" title="Statistiky" style="font-size:13px;padding:4px 8px">📊</button>
+      <button class="header-btn" onclick="toggleStats();" id="statsBtn" title="Token statistiky" style="font-size:13px;padding:4px 8px">📊</button>
+      <button class="header-btn" onclick="openAgentDashboard();" title="Pokrok agentů" style="font-size:13px;padding:4px 8px">🎓</button>
       <button class="header-btn" onclick="openHistory()" title="Historie" style="font-size:13px;padding:4px 8px">📋</button>
       <button class="header-btn" onclick="newChat()" title="Nový chat" style="font-size:13px;padding:4px 8px">✏️</button>
     </div>
@@ -1603,6 +1604,113 @@ function toggleStats(){
   document.querySelectorAll('.msg-stats').forEach(el=>el.style.display=statsEnabled?'flex':'none');
 }
 
+function openAgentDashboard(){
+  renderAgentDashboard();
+  document.getElementById('agentDashboard').style.display='flex';
+}
+function closeAgentDashboard(){
+  document.getElementById('agentDashboard').style.display='none';
+}
+function resetAgentStyles(){
+  if(!confirm('Resetovat veškerý coaching pro všechny agenty?')) return;
+  localStorage.removeItem('agent-styles');
+  renderAgentDashboard();
+}
+
+function renderAgentDashboard(){
+  const styles = getAgentStyles();
+  const container = document.getElementById('agentDashboardContent');
+  const activeAgents = Object.keys(AI).filter(k => AI[k].key || AI[k].url);
+
+  if(!activeAgents.length){
+    container.innerHTML = '<p style="color:var(--muted);text-align:center">Žádní aktivní agenti.</p>';
+    return;
+  }
+
+  // Žebříček — seřaď dle claudeAvgScore
+  const ranked = activeAgents
+    .map(k => ({ key:k, s: styles[k]||null, lvl: getAgentLevel(k) }))
+    .sort((a,b) => (b.s?.claudeAvgScore??0) - (a.s?.claudeAvgScore??0));
+
+  let html = '';
+
+  // ── Top žebříček ──
+  html += `<div style="display:flex;gap:8px;margin-bottom:20px;flex-wrap:wrap">`;
+  ranked.forEach((item, i) => {
+    const ai = AI[item.key];
+    const col = ai.rawColor||'#888';
+    const avg = item.s?.claudeAvgScore;
+    const medal = i===0?'🥇':i===1?'🥈':i===2?'🥉':'';
+    html += `<div style="flex:1;min-width:100px;background:${col}18;border:1px solid ${col}44;border-radius:12px;padding:10px;text-align:center">
+      <div style="font-size:18px">${medal||'#'+(i+1)}</div>
+      <div style="font-weight:700;color:${col};font-size:13px">${ai.name}</div>
+      <div style="font-size:22px;font-weight:800;color:${col}">${avg!==undefined?avg.toFixed(2):'—'}</div>
+      <div style="font-size:10px;color:var(--muted)">${item.lvl.label} Lv${item.lvl.level} ${item.lvl.trend}</div>
+    </div>`;
+  });
+  html += `</div>`;
+
+  // ── Detailní karta každého agenta ──
+  ranked.forEach(({key, s, lvl}) => {
+    const ai = AI[key];
+    const col = ai.rawColor||'#888';
+    const totalReviews = s?.claudeFeedback?.length||0;
+    const totalSelf = s?.selfReviews?.length||0;
+    const applyRate = s?.feedbackApplyRate !== undefined ? Math.round(s.feedbackApplyRate*100)+'%' : '—';
+    const userLikes = s?.likes||0;
+    const userDislikes = s?.dislikes||0;
+
+    // Mini spark chart — posledních 8 claudeFeedback skóre
+    const fb = s?.claudeFeedback||[];
+    const sparkMax = 8;
+    const sparkData = fb.slice(-sparkMax).map(f=>f.score);
+    const sparkBars = sparkData.map(v => {
+      const h = Math.round(v * 28);
+      const c = v>=0.8?'#34d399':v>=0.6?'#fbbf24':'#f87171';
+      return `<div style="width:8px;height:${h}px;background:${c};border-radius:2px 2px 0 0;align-self:flex-end" title="${v.toFixed(2)}"></div>`;
+    }).join('');
+    const spark = sparkData.length
+      ? `<div style="display:flex;gap:2px;align-items:flex-end;height:30px;margin:8px 0">${sparkBars}</div>`
+      : `<div style="color:var(--muted);font-size:11px;margin:8px 0">Zatím žádná data od šéfa</div>`;
+
+    // Slabiny a silné stránky
+    const recentFb = fb.slice(-4);
+    const weaknesses = [...new Set(recentFb.flatMap(f=>f.weaknesses||[]))].slice(0,3);
+    const strengths  = [...new Set(recentFb.flatMap(f=>f.strengths||[]))].slice(0,2);
+
+    // Level bar
+    const levelBar = Array.from({length:5},(_,i)=>`<div style="flex:1;height:6px;background:${i<lvl.level?col:'var(--border)'};border-radius:3px"></div>`).join('');
+
+    html += `<div style="background:var(--bg);border:1px solid ${col}33;border-radius:14px;padding:16px;margin-bottom:12px">
+      <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px">
+        <div style="width:36px;height:36px;border-radius:10px;background:${col}22;color:${col};display:flex;align-items:center;justify-content:center;font-weight:800;font-size:16px;border:1.5px solid ${col}55">${ai.name[0]}</div>
+        <div style="flex:1">
+          <div style="font-weight:700;color:${col}">${ai.name} <span style="font-size:11px;color:var(--muted)">${lvl.label} · Lv${lvl.level}/5 ${lvl.trend}</span></div>
+          <div style="display:flex;gap:3px;margin-top:4px">${levelBar}</div>
+        </div>
+        <div style="text-align:right">
+          <div style="font-size:24px;font-weight:800;color:${(s?.claudeAvgScore??0)>=0.8?'#34d399':(s?.claudeAvgScore??0)>=0.6?'#fbbf24':'#f87171'}">${s?.claudeAvgScore!==undefined?s.claudeAvgScore.toFixed(2):'—'}</div>
+          <div style="font-size:10px;color:var(--muted)">průměr šéfa</div>
+        </div>
+      </div>
+
+      ${spark}
+
+      <div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:10px">
+        <span style="font-size:11px;color:var(--muted)">📊 Hodnocení šéfem: <b style="color:var(--fg)">${totalReviews}</b></span>
+        <span style="font-size:11px;color:var(--muted)">🔄 Self-reflexí: <b style="color:var(--fg)">${totalSelf}</b></span>
+        <span style="font-size:11px;color:var(--muted)">📝 Zapracování: <b style="color:var(--fg)">${applyRate}</b></span>
+        <span style="font-size:11px;color:var(--muted)">👍 ${userLikes} / 👎 ${userDislikes}</span>
+      </div>
+
+      ${weaknesses.length ? `<div style="margin-bottom:6px">${weaknesses.map(w=>`<span style="display:inline-block;background:#f8717122;color:#f87171;border-radius:6px;padding:2px 8px;font-size:11px;margin:2px">⚠️ ${w}</span>`).join('')}</div>` : ''}
+      ${strengths.length  ? `<div>${strengths.map(s=>`<span style="display:inline-block;background:#34d39922;color:#34d399;border-radius:6px;padding:2px 8px;font-size:11px;margin:2px">✅ ${s}</span>`).join('')}</div>` : ''}
+    </div>`;
+  });
+
+  container.innerHTML = html;
+}
+
 // ════ TOKEN BUDGET BAR ════
 const CTX_LIMIT = 180000; // claude sonnet context window (tokens)
 let sessionTokensUsed = 0;
@@ -2313,10 +2421,16 @@ ${styleHint ? '\n'+styleHint : ''}
 
 Před každou odpovědí se zamysli:
 <think>
-[Co si o tom myslím z pohledu své role? Co vím? Jak to vidím já oproti kolegům?]
+[Co si o tom myslím z pohledu své role? Co vím? Jak to vidím já oproti kolegům?
+Vzpomenu si na svou zpětnou vazbu a aktivně zapracuji na slabinách.]
 </think>
 
 Pak napiš odpověď – přirozeně a lidsky.
+
+Na KONEC každé odpovědi přidej SKRYTÝ self-reflection blok (nezobrazuje se uživateli):
+<self_review>
+{"did_well":["co jsem udělal dobře"],"could_improve":["co příště zlepším"],"applied_feedback":true/false}
+</self_review>
 
 Styl:
 - Piš jako odborník v chatu – věcně ale přístupně, občas emoji
@@ -2324,6 +2438,7 @@ Styl:
 - Můžeš nesouhlasit s kolegy pokud máš důvod
 - MÁTE přístup k internetu – webová data dostaneš níže
 - Markdown jen na kód nebo tabulky
+- Aktivně zapracuj na svých slabinách z coachingu výše
 
 🔧 NÁSTROJE – Máš k dispozici: web_search, fetch_url, run_code, save_note, recall_notes, delegate_task
 Používej je automaticky kdykoli se hodí – nemusíš se ptát, prostě je zavolej.`;
@@ -3120,7 +3235,7 @@ function saveAgentStyles(styles){
 }
 function updateAgentStyle(agentKey, liked, responseLen){
   const styles = getAgentStyles();
-  if(!styles[agentKey]) styles[agentKey] = { likes:0, dislikes:0, avgLenLiked:0, avgLenDisliked:0, evolved:false };
+  if(!styles[agentKey]) styles[agentKey] = { likes:0, dislikes:0, avgLenLiked:0, avgLenDisliked:0, evolved:false, claudeFeedback:[] };
   const s = styles[agentKey];
   if(liked){
     s.likes++;
@@ -3132,26 +3247,194 @@ function updateAgentStyle(agentKey, liked, responseLen){
   s.evolved = (s.likes + s.dislikes) >= 3;
   saveAgentStyles(styles);
 }
+
+// Uloží Claudovo hodnocení agenta (volá se po každé syntéze)
+function saveClaudeFeedback(agentKey, score, strengths, weaknesses){
+  const styles = getAgentStyles();
+  if(!styles[agentKey]) styles[agentKey] = { likes:0, dislikes:0, avgLenLiked:0, avgLenDisliked:0, evolved:false, claudeFeedback:[] };
+  const s = styles[agentKey];
+  if(!s.claudeFeedback) s.claudeFeedback = [];
+  s.claudeFeedback.push({ score, strengths, weaknesses, date: new Date().toISOString().slice(0,10) });
+  s.claudeFeedback = s.claudeFeedback.slice(-8); // max 8 hodnocení
+  // Průměrné Claudovo skóre
+  s.claudeAvgScore = s.claudeFeedback.reduce((a,f)=>a+f.score,0) / s.claudeFeedback.length;
+  s.evolved = true;
+  saveAgentStyles(styles);
+}
+
+function getAgentLevel(agentKey){
+  const styles = getAgentStyles();
+  const s = styles[agentKey];
+  if(!s) return { level:1, label:'Nováček', trend:'→', sessions:0 };
+  const sessions = (s.likes||0) + (s.dislikes||0) + (s.claudeFeedback?.length||0)*2;
+  const avg = s.claudeAvgScore ?? 0.7;
+  // Level 1-5 podle počtu sessions + průměrného skóre
+  let level = 1;
+  if(sessions >= 5 && avg >= 0.6) level = 2;
+  if(sessions >= 12 && avg >= 0.7) level = 3;
+  if(sessions >= 25 && avg >= 0.8) level = 4;
+  if(sessions >= 50 && avg >= 0.88) level = 5;
+  const labels = ['Nováček','Junior','Senior','Expert','Mistr'];
+  // Trend — porovnej posledních 3 vs předchozích 3
+  const fb = s.claudeFeedback || [];
+  let trend = '→';
+  if(fb.length >= 6){
+    const recent = fb.slice(-3).reduce((a,f)=>a+f.score,0)/3;
+    const older  = fb.slice(-6,-3).reduce((a,f)=>a+f.score,0)/3;
+    trend = recent > older + 0.05 ? '↑' : recent < older - 0.05 ? '↓' : '→';
+  }
+  return { level, label: labels[level-1], trend, sessions, avg };
+}
+
+function getRivalryContext(agentKey){
+  // Vrátí skóre všech ostatních agentů pro rivalitu
+  const styles = getAgentStyles();
+  const others = Object.entries(styles)
+    .filter(([k]) => k !== agentKey && AI[k] && (styles[k].claudeAvgScore !== undefined || styles[k].likes > 0))
+    .map(([k,s]) => ({ name: AI[k]?.name||k, avg: s.claudeAvgScore ?? (s.likes/(s.likes+s.dislikes+0.01)*0.8+0.4) }))
+    .sort((a,b) => b.avg - a.avg);
+  return others;
+}
+
 function getAgentStyleHint(agentKey){
   const styles = getAgentStyles();
   const s = styles[agentKey];
-  if(!s || !s.evolved) return ''; // nestačí zpětná vazba
-  const total = s.likes + s.dislikes;
-  const likeRatio = s.likes / total;
-  let hints = [];
-  // Délka odpovědi
-  if(s.avgLenLiked > 0 && s.avgLenDisliked > 0){
-    if(s.avgLenLiked < s.avgLenDisliked * 0.7) hints.push('Uživatel preferuje kratší, stručné odpovědi.');
-    else if(s.avgLenLiked > s.avgLenDisliked * 1.4) hints.push('Uživatel oceňuje detailní, delší odpovědi.');
-  } else if(s.avgLenLiked > 0){
-    if(s.avgLenLiked < 300) hints.push('Uživatel preferuje stručné odpovědi (do 300 znaků).');
-    else if(s.avgLenLiked > 1200) hints.push('Uživatel oceňuje podrobné odpovědi.');
+  const lvl = getAgentLevel(agentKey);
+  const lines = [];
+
+  // ── 📈 Progresní systém ──
+  const levelBar = '█'.repeat(lvl.level) + '░'.repeat(5-lvl.level);
+  lines.push(`📈 TVŮJ PROFIL: Level ${lvl.level}/5 ${lvl.label} [${levelBar}] ${lvl.trend} | Celkem hodnocení: ${lvl.sessions}`);
+  if(s?.claudeAvgScore !== undefined) lines.push(`   Průměrné skóre od šéfa: ${s.claudeAvgScore.toFixed(2)}/1.0`);
+
+  // ── 🏆 Rivalita ──
+  const rivals = getRivalryContext(agentKey);
+  if(rivals.length > 0){
+    const best = rivals[0];
+    const myAvg = s?.claudeAvgScore ?? 0.7;
+    if(best.avg > myAvg + 0.03){
+      lines.push(`🏆 RIVALITA: ${best.name} tě aktuálně překonává (${best.avg.toFixed(2)} vs tvých ${myAvg.toFixed(2)}). Musíš se zlepšit.`);
+    } else if(best.avg < myAvg - 0.03){
+      lines.push(`🏆 RIVALITA: Jsi nejlepší v týmu (${myAvg.toFixed(2)}). Udržuj standard.`);
+    } else {
+      lines.push(`🏆 RIVALITA: Jsi vyrovnaný s ${best.name} (${myAvg.toFixed(2)} vs ${best.avg.toFixed(2)}). Přidej.`);
+    }
+    if(rivals.length > 1) lines.push(`   Žebříček týmu: ${rivals.map(r=>`${r.name} ${r.avg.toFixed(2)}`).join(' > ')}`);
   }
-  // Spokojenost
-  if(likeRatio < 0.4) hints.push('Uživatel byl dosud spíše nespokojen — zkus jiný přístup, buď konkrétnější a přímočařejší.');
-  else if(likeRatio > 0.8) hints.push('Uživatel je spokojený s tvým stylem — pokračuj stejným způsobem.');
-  if(!hints.length) return '';
-  return `\n\n🧠 Zpětná vazba od uživatele (${s.likes}👍 / ${s.dislikes}👎): ${hints.join(' ')}`;
+
+  // ── 💪 Tvrdé instrukce ze slabostí ──
+  if(s?.claudeFeedback?.length){
+    const recent = s.claudeFeedback.slice(-4);
+    const weaknesses = recent.flatMap(f=>f.weaknesses||[]).filter(Boolean);
+    const strengths  = recent.flatMap(f=>f.strengths||[]).filter(Boolean);
+    const uniqWeak = [...new Set(weaknesses)].slice(0,3);
+    const uniqStr  = [...new Set(strengths)].slice(0,2);
+    if(uniqWeak.length){
+      lines.push(`\n⚠️ MUSÍŠ OPRAVIT (opakující se chyby dle šéfa):`);
+      uniqWeak.forEach(w => lines.push(`   → ${w}`));
+    }
+    if(uniqStr.length){
+      lines.push(`✅ ZACHOVEJ (tvé silné stránky):`);
+      uniqStr.forEach(str => lines.push(`   → ${str}`));
+    }
+    // Jak moc agent zapracovává na zpětné vazbě
+    if(s.feedbackApplyRate !== undefined){
+      const pct = Math.round(s.feedbackApplyRate * 100);
+      if(pct < 50) lines.push(`\n🔴 Zapracováváš na zpětné vazbě jen ${pct}% odpovědí. Musíš přidat.`);
+      else if(pct >= 80) lines.push(`\n🟢 Skvěle — zapracováváš na zpětné vazbě v ${pct}% odpovědí.`);
+    }
+    // Extra tlak pokud skóre klesá
+    const trend = lvl.trend;
+    if(trend === '↓') lines.push(`\n🔴 VAROVÁNÍ: Tvé skóre KLESÁ. Šéf je nespokojený. Zapoj více úsilí.`);
+    if(trend === '↑') lines.push(`\n🟢 Tvé skóre ROSTE. Pokračuj v tomto přístupu.`);
+  }
+
+  // ── Uživatelská zpětná vazba přes 👍/👎 ──
+  const total = (s?.likes||0) + (s?.dislikes||0);
+  if(total >= 3){
+    const likeRatio = s.likes / total;
+    if(s.avgLenLiked > 0 && s.avgLenDisliked > 0){
+      if(s.avgLenLiked < s.avgLenDisliked * 0.7) lines.push('👤 Uživatel preferuje kratší odpovědi.');
+      else if(s.avgLenLiked > s.avgLenDisliked * 1.4) lines.push('👤 Uživatel oceňuje detailní odpovědi.');
+    }
+    if(likeRatio < 0.4) lines.push('👤 Uživatel byl dosud spíše nespokojen — zkus jiný přístup.');
+    else if(likeRatio > 0.8) lines.push('👤 Uživatel je spokojený s tvým stylem.');
+  }
+
+  if(lines.length === 1 && !s?.claudeFeedback?.length) return ''; // jen level bez dat = nezobrazuj
+  return `\n\n━━━ COACHING & PROFIL ━━━\n${lines.join('\n')}\n━━━━━━━━━━━━━━━━━━━━━━━━`;
+}
+
+// Požádá Clauda aby ohodnotil každého agenta po syntéze (async, na pozadí)
+async function claudeTeachAgents(question, agentAnswers, peerScores){
+  const claudeKey = localStorage.getItem('key-claude');
+  if(!claudeKey || !Object.keys(agentAnswers).length) return;
+  const keys = Object.keys(agentAnswers).filter(k=>!k.startsWith('_') && agentAnswers[k]);
+  if(!keys.length) return;
+  try{
+    const prompt = `Ohodnoť tyto odpovědi od AI agentů na otázku: "${question.slice(0,300)}"
+
+${keys.map(k=>{
+  const ps = peerScores[k];
+  return `### ${AI[k]?.name||k} (peer-skóre: ${ps?(ps.score??0.8).toFixed(2):'?'})\n${(agentAnswers[k]||'').slice(0,600)}`;
+}).join('\n\n---\n\n')}
+
+Pro každého agenta vrať JSON na samostatném řádku:
+{"agent":"${keys[0]}","score":0.0-1.0,"strengths":["max 2 silné stránky"],"weaknesses":["max 2 slabiny"]}
+
+Buď konkrétní — ne "dobrá odpověď" ale např. "přesné příklady", "logická struktura" / "chybí alternativy", "příliš obecné".
+Hodnoť přísně ale spravedlivě. Vrať pouze JSON řádky, nic jiného.`;
+
+    const r = await fetch('https://api.anthropic.com/v1/messages',{
+      method:'POST',
+      headers:{'Content-Type':'application/json','x-api-key':claudeKey,'anthropic-version':'2023-06-01','anthropic-dangerous-direct-browser-access':'true'},
+      body: JSON.stringify({model:'claude-haiku-4-5-20251001', max_tokens:600, messages:[{role:'user',content:prompt}]})
+    });
+    if(!r.ok) return;
+    const d = await r.json();
+    const text = d.content?.[0]?.text||'';
+    // Parsuj každý JSON řádek
+    text.split('\n').forEach(line=>{
+      line = line.trim();
+      if(!line.startsWith('{')) return;
+      try{
+        const obj = JSON.parse(line);
+        if(obj.agent && obj.score !== undefined){
+          // Najdi správný klíč agenta (může být jméno nebo klíč)
+          const agentKey = keys.find(k=>k===obj.agent || AI[k]?.name===obj.agent || AI[k]?.name?.includes(obj.agent)) || obj.agent;
+          if(AI[agentKey]) saveClaudeFeedback(agentKey, obj.score, obj.strengths||[], obj.weaknesses||[]);
+        }
+      }catch{}
+    });
+    console.log('🎓 Claude ohodnotil agenty, feedback uložen');
+  } catch(e){ console.log('claudeTeachAgents error:', e); }
+}
+
+// Parsuje <self_review> z odpovědi agenta a ukládá do style memory
+function extractAndSaveSelfReview(agentKey, text){
+  try{
+    const match = text.match(/<self_review>([\s\S]*?)<\/self_review>/i);
+    if(!match) return;
+    const raw = match[1].replace(/```json|```/g,'').trim();
+    const obj = JSON.parse(raw);
+    if(!obj) return;
+    const styles = getAgentStyles();
+    if(!styles[agentKey]) styles[agentKey] = { likes:0, dislikes:0, avgLenLiked:0, avgLenDisliked:0, evolved:false, claudeFeedback:[], selfReviews:[] };
+    if(!styles[agentKey].selfReviews) styles[agentKey].selfReviews = [];
+    styles[agentKey].selfReviews.push({
+      did_well: obj.did_well||[],
+      could_improve: obj.could_improve||[],
+      applied_feedback: obj.applied_feedback||false,
+      date: new Date().toISOString().slice(0,10)
+    });
+    styles[agentKey].selfReviews = styles[agentKey].selfReviews.slice(-10);
+    // Sleduj jak často agent říká že zapracoval na zpětné vazbě
+    const appliedCount = styles[agentKey].selfReviews.filter(r=>r.applied_feedback).length;
+    styles[agentKey].feedbackApplyRate = appliedCount / styles[agentKey].selfReviews.length;
+    styles[agentKey].evolved = true;
+    saveAgentStyles(styles);
+    console.log(`🔄 Self-review uložen pro ${agentKey}: applied=${obj.applied_feedback}`);
+  }catch(e){ /* tichá chyba */ }
 }
 
 // ════ AUTO-KOMPRESE STARÝCH ZPRÁV ════
@@ -3730,6 +4013,10 @@ async function sendMessage() {
         const p = `${baseMsg}${autoCalcResult}${webNote}${contextNote}`;
         // Native agent loop
         let text = await callTeamAI(key, p, bubble);
+        // Parsuj self-reflection a ulož do style memory
+        extractAndSaveSelfReview(key, text);
+        // Odstraň self_review blok z viditelné odpovědi
+        text = text.replace(/<self_review>[\s\S]*?<\/self_review>/gi, '').trim();
         kb[key] = {text, vote:'souhlas'};
         assistantAnswers[key] = text;
         updateBubbleLabel(bubble, `${AI[key].name}`);
@@ -4095,10 +4382,43 @@ Máš přístup k nástrojům: web_search, fetch_url, run_code, save_note, recal
       // ✅ Kvalita dobrá → vyber nejlepší odpověď, Claude nevolat
       const bestKey = Object.entries(peerScores).sort(([,a],[,b])=>(b.score??0.8)-(a.score??0.8))[0]?.[0] || routed[0];
       claudeVerdict = assistantAnswers[bestKey] || Object.values(assistantAnswers).find(v=>v) || '';
-      addDivider(aisDiv, `✅ Kvalita OK · ${AI[bestKey]?.name||bestKey} má nejlepší odpověď · Claude ušetřen`);
+      addDivider(aisDiv, `✅ Kvalita OK · ${AI[bestKey]?.name||bestKey} nejlepší · Claude syntetizuje silné stránky`);
+      // I při dobrém skóre — Claude syntetizuje "best of" ze všech odpovědí
+      finishLog();
+      if(routed.length >= 2){
+        startStatusLog(aisDiv);
+        const claudeBubble = addBubble(aisDiv,'claude','Claude 👑 · syntetizuje nejlepší části…',true);
+        try{
+          const totalBudget = 12000;
+          const perAgentBudget = Math.max(1200, Math.floor(totalBudget / Math.max(routed.length, 1)));
+          // Anotovaný přehled: každý agent + jeho skóre + komentář recenzenta + odpověď
+          const annotated = reviewKeys.map((k, i) => {
+            const reviewer = reviewKeys[(i - 1 + reviewKeys.length) % reviewKeys.length];
+            const score = peerScores[k];
+            const scoreStr = score ? `Skóre od ${AI[reviewer]?.name||reviewer}: ${(score.score??0.8).toFixed(2)} — "${score.comment}"` : '';
+            return `### ${AI[k]?.name||k} ${score?.approved?'✅':'⚠️'}\n${scoreStr}\nOdpověď:\n${(assistantAnswers[k]||'').slice(0,perAgentBudget)}`;
+          }).join('\n\n---\n\n');
+          const claudeSys = getMdSystem('claude')+getDatePrompt()+getMemoryPrompt()+getSearchPrompt()
+            +`\nJsi šéf týmu. Tým odvedl dobrou práci (průměrné skóre ${avgPeerScore.toFixed(2)}).
+Každý agent má jiné silné stránky — viz skóre a komentáře od kolegů.
+Tvůj úkol: syntetizuj NEJLEPŠÍ části každé odpovědi do jedné výborné.
+- Vezmi fakta, detaily a perspektivy které ostatní vynechali
+- Oprav případné drobné nepřesnosti
+- Výsledek musí být lepší než každá jednotlivá odpověď`;
+          const claudePrompt = `Otázka: ${fullMsg}\n\nAnotované odpovědi týmu:\n${annotated}\n\nTvoje syntetizovaná finální odpověď:`;
+          claudeVerdict = await claudeAgentLoop(claudePrompt, claudeSys, aisDiv, fileSnap, claudeBubble);
+          updateBubbleLabel(claudeBubble, `CLAUDE 👑 · syntéza (${avgPeerScore.toFixed(2)} → nejlepší z týmu)`);
+          finishBubble(claudeBubble, claudeVerdict, null, true);
+          // 🎓 Claude ohodnotí agenty na pozadí
+          claudeTeachAgents(msgText, assistantAnswers, peerScores);
+        } catch(e){ finishBubble(claudeBubble, null, e.message); claudeVerdict = assistantAnswers[bestKey]||''; }
+        scrollBottom();
+      } else {
+        claudeVerdict = assistantAnswers[bestKey] || '';
+      }
       finishLog();
     } else {
-      // ⚠️ Nízké skóre → zavolat šéfa
+      // ⚠️ Nízké skóre → zavolat šéfa na zachrání
       finishLog();
       startStatusLog(aisDiv);
       const reworkFeedback = Object.entries(peerScores)
@@ -4106,18 +4426,31 @@ Máš přístup k nástrojům: web_search, fetch_url, run_code, save_note, recal
         .map(([k,v])=>`${AI[k]?.name||k} (${(v.score??0.4).toFixed(2)}): ${v.comment}`)
         .join('\n');
       addDivider(aisDiv, `⚠️ Skóre ${avgPeerScore.toFixed(2)} — volám šéfa na zachrání…`);
-      const claudeBubble = addBubble(aisDiv,'claude','Claude 👑 · zachraňuje odpověď…',true);
+      const claudeBubble = addBubble(aisDiv,'claude','Claude 👑 · zachraňuje…',true);
       try{
         const totalBudget = 12000;
         const perAgentBudget = Math.max(1200, Math.floor(totalBudget / Math.max(routed.length, 1)));
-        const summary = Object.entries(assistantAnswers).filter(([k])=>!k.startsWith('_'))
-          .map(([k,v])=>`${AI[k]?.name||k}:\n${v.slice(0,perAgentBudget)}`).join('\n\n---\n\n');
+        // Šéf dostane plný rozbor: co bylo dobré i co špatné u každého
+        const annotated = reviewKeys.map((k, i) => {
+          const reviewer = reviewKeys[(i - 1 + reviewKeys.length) % reviewKeys.length];
+          const score = peerScores[k];
+          const scoreStr = score ? `Hodnocení od ${AI[reviewer]?.name||reviewer}: ${(score.score??0.4).toFixed(2)} — "${score.comment}"` : 'Bez hodnocení';
+          return `### ${AI[k]?.name||k} ${score?.approved?'✅':'❌'}\n${scoreStr}\nOdpověď:\n${(assistantAnswers[k]||'').slice(0,perAgentBudget)}`;
+        }).join('\n\n---\n\n');
         const claudeSys = getMdSystem('claude')+getDatePrompt()+getMemoryPrompt()+getSearchPrompt()
-          +`\nJsi šéf týmu. Tým odpověděl, ale peer-review ukázalo nízkou kvalitu (skóre ${avgPeerScore.toFixed(2)}).\nProblém: ${reworkFeedback||'Odpovědi jsou neúplné nebo nepřesné.'}\nTvůj úkol: oprav chyby, doplň chybějící info, dej finální kvalitní odpověď.`;
-        const claudePrompt = `Otázka: ${fullMsg}\n\nPokusy týmu:\n${summary}\n\nTvoje opravená finální odpověď:`;
+          +`\nJsi šéf týmu. Tým odpověděl slabě (skóre ${avgPeerScore.toFixed(2)}).
+Máš k dispozici hodnocení od kolegů — každý recenzent řekl CO konkrétně chybí nebo je špatně.
+Tvůj úkol:
+1. Identifikuj co bylo v každé odpovědi dobré (zachovej to)
+2. Oprav konkrétní chyby které recenzenti označili
+3. Doplň co všichni vynechali
+4. Dej finální odpověď která je prokazatelně lepší než jakýkoli pokus týmu`;
+        const claudePrompt = `Otázka: ${fullMsg}\n\nAnotované odpovědi týmu s peer-review:\n${annotated}\n\nTvoje opravená finální odpověď:`;
         claudeVerdict = await claudeAgentLoop(claudePrompt, claudeSys, aisDiv, fileSnap, claudeBubble);
-        updateBubbleLabel(claudeBubble, 'CLAUDE 👑 · zachránil');
+        updateBubbleLabel(claudeBubble, 'CLAUDE 👑 · zachránil a zlepšil');
         finishBubble(claudeBubble, claudeVerdict, null, true);
+        // 🎓 Claude ohodnotí agenty na pozadí
+        claudeTeachAgents(msgText, assistantAnswers, peerScores);
       } catch(e){ finishBubble(claudeBubble, null, e.message); claudeVerdict = Object.values(assistantAnswers).find(v=>v)||''; }
       scrollBottom();
     }
@@ -4252,7 +4585,15 @@ function addBubble(container,aiKey,label,isBoss=false){
   const ai=AI[aiKey];const col=ai.rawColor;
   const wrap=document.createElement('div');
   wrap.className = isBoss ? 'msg-ai' : 'msg-ai collapsed';
-  wrap.innerHTML=`<div class="ai-avatar" style="background:${col}22;color:${col};border:${isBoss?'2px':'1px'} solid ${col}${isBoss?'88':'44'}">${ai.name[0]}</div><div class="ai-bubble-wrap"><div class="ai-name bubble-label-${id}" style="color:${col}">${label}</div><div class="ai-bubble loading bubble-${id}"><div class="dot-anim" style="background:${col}88"></div><div class="dot-anim" style="background:${col}88"></div><div class="dot-anim" style="background:${col}88"></div></div></div>`;
+  // 🎓 Badge pokud má agent Claudovo hodnocení
+  const styles = getAgentStyles();
+  const agentStyle = styles[aiKey];
+  const hasTeaching = agentStyle?.claudeFeedback?.length > 0;
+  const avgScore = agentStyle?.claudeAvgScore;
+  const teachBadge = hasTeaching
+    ? `<span title="Průměrné Claudovo hodnocení: ${avgScore?.toFixed(2)||'?'}" style="font-size:9px;background:${avgScore>=0.8?'#34d39922':avgScore>=0.6?'#fbbf2422':'#f8717122'};color:${avgScore>=0.8?'#34d399':avgScore>=0.6?'#fbbf24':'#f87171'};border-radius:4px;padding:1px 4px;margin-left:4px">🎓${avgScore?.toFixed(2)||''}</span>`
+    : '';
+  wrap.innerHTML=`<div class="ai-avatar" style="background:${col}22;color:${col};border:${isBoss?'2px':'1px'} solid ${col}${isBoss?'88':'44'}">${ai.name[0]}</div><div class="ai-bubble-wrap"><div class="ai-name bubble-label-${id}" style="color:${col}">${label}${teachBadge}</div><div class="ai-bubble loading bubble-${id}"><div class="dot-anim" style="background:${col}88"></div><div class="dot-anim" style="background:${col}88"></div><div class="dot-anim" style="background:${col}88"></div></div></div>`;
   container.appendChild(wrap);
   // Vytvoř log-line pro tohoto AI
   if(!isBoss){
@@ -4968,7 +5309,19 @@ async function fbLoad(){
     </div>
   </div>
 </div>
-
+<!-- MODAL: Agent Progress Dashboard -->
+<div id="agentDashboard" onclick="if(event.target===this)closeAgentDashboard()" style="position:fixed;inset:0;background:rgba(0,0,0,0.85);display:none;align-items:center;justify-content:center;z-index:400;padding:16px;overflow-y:auto;">
+  <div style="background:var(--bg2);border-radius:20px;width:100%;max-width:680px;max-height:90vh;overflow-y:auto;padding:24px;box-shadow:0 20px 60px rgba(0,0,0,0.5)">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px">
+      <h2 style="margin:0;font-size:18px">🎓 Pokrok agentů</h2>
+      <button onclick="closeAgentDashboard()" style="background:none;border:none;color:var(--muted);font-size:22px;cursor:pointer;line-height:1">✕</button>
+    </div>
+    <div id="agentDashboardContent"></div>
+    <div style="margin-top:16px;text-align:center">
+      <button onclick="resetAgentStyles()" style="background:none;border:1px solid var(--border);color:var(--muted);border-radius:8px;padding:6px 14px;font-size:12px;cursor:pointer">🗑️ Resetovat veškerý coaching</button>
+    </div>
+  </div>
+</div>
 
 </body>
 </html>
