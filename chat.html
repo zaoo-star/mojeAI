@@ -449,7 +449,7 @@ function getDatePrompt(){
   const days = ['neděle','pondělí','úterý','středa','čtvrtek','pátek','sobota'];
   return `\n\nAktuální datum a čas: ${days[now.getDay()]} ${now.toLocaleDateString('cs-CZ')} ${now.toLocaleTimeString('cs-CZ',{hour:'2-digit',minute:'2-digit'})}`;
 }
-function getSearchPrompt(){ return webSearchContext ? '\n\n---\n' + webSearchContext + '\n---\nVyužij tato data z webu ve své odpovědi.' : ''; }
+function getSearchPrompt(){ return webSearchContext ? `\n\nDŮLEŽITÉ – Aktuální data z internetu (${new Date().toLocaleDateString('cs-CZ')}):\n---\n${webSearchContext}\n---\nTyto informace jsou aktuální. Použij je pro odpověď a ignoruj starší znalosti kde jsou v konfliktu.` : ''; }
 
 // ════ INIT ════
 window.addEventListener('DOMContentLoaded', () => {
@@ -981,16 +981,18 @@ function getFormatInstruction(fmt){
 function routeMessage(msg, assistants) {
   if(assistants.length <= 1) return assistants;
   const t = msg.toLowerCase();
-  const groqKey  = assistants.find(k => AI[k].url?.includes('groq'));
-  const deepKey  = assistants.find(k => AI[k].url?.includes('openrouter') || AI[k].url?.includes('mistral') || AI[k].url?.includes('deepseek'));
+  const groqKey    = assistants.find(k => AI[k].url?.includes('groq'));
+  const deepKey    = assistants.find(k => AI[k].url?.includes('openrouter') || AI[k].url?.includes('mistral') || AI[k].url?.includes('deepseek'));
   const chatgptKey = assistants.find(k=>k==='chatgpt');
-  const isQuick  = t.length < 40 || /^(co je|kdo|kdy|kde|jak se|jaká)/.test(t);
-  const isHeavy  = /analyzuj|porovnej|napiš|vytvoř|vysvětli podrobně|plán|kód|program|strategi|kompletní/.test(t);
-  if(isQuick && !isHeavy && groqKey) return [groqKey];
-  if(isHeavy && !isQuick){
-    const best = chatgptKey || deepKey;
+  // Pokud je web search aktivní nebo otázka je faktická → vždy všichni AI (ověří se navzájem)
+  if(webSearchContext) return assistants;
+  // Jen těžké úkoly dej specializovanému AI
+  const isHeavy = /analyzuj|porovnej|napiš kód|vytvoř program|vysvětli podrobně|celý plán|kompletní/.test(t);
+  if(isHeavy){
+    const best = chatgptKey || deepKey || groqKey;
     if(best) return [best];
   }
+  // Vše ostatní → všichni AI (lepší pokrytí)
   return assistants;
 }
 
