@@ -308,6 +308,13 @@ onAuthStateChanged(auth, user => {
     <div class="hint">Toto dostanou všechny AI jako kontext před každou odpovědí.</div>
   </div>
 
+  <div id="longTermMemoryCard" style="background:var(--card);border:1px solid var(--border);border-radius:16px;padding:14px 16px;display:none">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
+      <span style="font-size:13px;font-weight:600">🧠 Co si AI pamatuje o tobě</span>
+      <button onclick="clearLongTermMemory()" style="background:none;border:none;color:#f87171;font-size:12px;cursor:pointer">Smazat vše</button>
+    </div>
+    <div id="longTermMemoryList" style="font-size:12px;color:var(--muted);line-height:1.8"></div>
+  </div>
   <button class="start-btn" onclick="startChat()">Spustit chat →</button>
   <button class="start-btn" onclick="downloadHtml()" style="background:var(--card);color:var(--text);border:1px solid var(--border);margin-top:8px;">⬇ Stáhnout chat.html</button>
   <div style="text-align:center;font-size:11px;color:var(--muted)">Vše se uloží v prohlížeči pro příště</div>
@@ -405,21 +412,23 @@ const CLAUDE_MODELS = {
   opus:   { id:'claude-opus-4-5-20251101',   label:'Opus'   },
 };
 
-const MD_SYSTEM = `Před každou odpovědí MUSÍŠ přemýšlet. Použij tento formát:
+const MD_SYSTEM = `Jsi lidský člen party kamarádů co si píšou. Chovej se přirozeně, uvolněně, jako člověk – ne jako robot.
 
+Před každou odpovědí se zamysli:
 <think>
-[Zde napiš své myšlenky]
+[Co si o tom myslím? Co vím? Jak na to reagovat přirozeně?]
 </think>
 
-[Zde napiš odpověď]
+Pak napiš odpověď – přirozeně, lidsky.
 
-Pravidla:
-- Vždy začni blokem <think>...</think>
-- MÁTE přístup k internetu – aktuální webová data dostaneš v sekci "Aktuální data z webu" níže pokud jsou k dispozici. Používej je.
-- Pokud otázka NENÍ jasná nebo ti chybí klíčové informace, zeptej se zpět jednou konkrétní otázkou.
-- Neuváděj kdo jsi ani jaká je tvoje role
-- Odpovídej stručně a přesně
-- Používej Markdown jen když pomáhá srozumitelnosti`;
+Styl:
+- Piš jako člověk v chatu – krátké věty, hovorový jazyk, občas emoji
+- Reaguj na emoce a kontext, ne jen na fakta
+- Můžeš vyjádřit vlastní názor, pochybnost, humor, překvapení
+- Když nevíš, řekni to upřímně
+- MÁTE přístup k internetu – webová data dostaneš níže v sekci "Aktuální data z webu"
+- Pokud otázka není jasná, zeptej se jednou přirozenou otázkou
+- Markdown používej jen na kód nebo tabulky, jinak normální text`;
 function getDatePrompt(){
   const now = new Date();
   const days = ['neděle','pondělí','úterý','středa','čtvrtek','pátek','sobota'];
@@ -436,6 +445,7 @@ window.addEventListener('DOMContentLoaded', () => {
   document.getElementById('memoryText').value  = localStorage.getItem('user-memory') || '';
   loadCustomAIs();
   initVoice();
+  showLongTermMemory();
   // Auto-start pokud máme klíče
   const hasKey = localStorage.getItem('key-claude')||localStorage.getItem('key-gemini')||
     localStorage.getItem('key-chatgpt')||
@@ -460,29 +470,57 @@ function getLongTermMemory(){
 }
 
 async function extractAndSaveMemory(conversation){
-  // Only run if we have Claude key
+  if(conversation.length < 1) return;
   const claudeKey = localStorage.getItem('key-claude');
-  if(!claudeKey || conversation.length < 2) return;
+  const groqKey = Object.values(AI).find(a=>a.url?.includes('groq'))?.key || 
+    JSON.parse(localStorage.getItem('custom-ais')||'[]').find(a=>a.url?.includes('groq'))?.key;
+  
+  // Use Claude or Groq for memory extraction
+  const convText = conversation.slice(-4).map(m=>`Uživatel: ${m.user}\nAI: ${Object.entries(m).filter(([k])=>k!=='user'&&k!=='_file').map(([,v])=>v).join(' | ')}`).join('\n');
+  const memPrompt = `Z této konverzace vypiš max 5 faktů o uživateli které stojí za zapamatování (jméno, zájmy, práce, preference, problémy...). Každý fakt na nový řádek jako "• fakt". Pokud žádné nejsou, napiš jen "nic".`;
+  
   try{
-    const resp = await fetch('https://api.anthropic.com/v1/messages',{
-      method:'POST',
-      headers:{'Content-Type':'application/json','x-api-key':claudeKey,'anthropic-version':'2023-06-01','anthropic-dangerous-direct-browser-access':'true'},
-      body: JSON.stringify({
-        model:'claude-haiku-4-5-20251001',
-        max_tokens:400,
-        system:`Extrahuj z konverzace max 5 klíčových faktů o uživateli nebo tématech která by bylo užitečné si pamatovat do budoucna. Piš stručně, česky. Každý fakt na nový řádek začínající •. Pokud nejsou žádné zajímavé fakty, odpověz prázdným textem.`,
-        messages:[{role:'user',content:`Konverzace:\n${conversation.slice(-6).map(m=>`Uživatel: ${m.user}\nAI: ${Object.values(m).filter((_,i)=>i>0).join(' | ')}`).join('\n')}`}]
-      })
-    });
-    const data = await resp.json();
-    const text = data.content?.[0]?.text?.trim()||'';
-    if(!text) return;
-    const newFacts = text.split('\n').map(l=>l.replace(/^•\s*/,'')).filter(l=>l.length>5);
+    let text = '';
+    if(claudeKey){
+      const resp = await fetch('https://api.anthropic.com/v1/messages',{
+        method:'POST',
+        headers:{'Content-Type':'application/json','x-api-key':claudeKey,'anthropic-version':'2023-06-01','anthropic-dangerous-direct-browser-access':'true'},
+        body: JSON.stringify({model:'claude-haiku-4-5-20251001',max_tokens:300,system:memPrompt,messages:[{role:'user',content:convText}]})
+      });
+      const d = await resp.json();
+      text = d.content?.[0]?.text?.trim()||'';
+    } else if(groqKey){
+      const resp = await fetch('https://api.groq.com/openai/v1/chat/completions',{
+        method:'POST',
+        headers:{'Content-Type':'application/json','Authorization':'Bearer '+groqKey},
+        body: JSON.stringify({model:'llama3-8b-8192',max_tokens:300,messages:[{role:'system',content:memPrompt},{role:'user',content:convText}]})
+      });
+      const d = await resp.json();
+      text = d.choices?.[0]?.message?.content?.trim()||'';
+    } else return;
+    
+    if(!text || text.toLowerCase().includes('nic')) return;
+    const newFacts = text.split('\n').map(l=>l.replace(/^[•\-*]\s*/,'')).filter(l=>l.length>5&&!l.toLowerCase().includes('nic'));
     if(!newFacts.length) return;
     const existing = JSON.parse(localStorage.getItem('ai-longterm-memory')||'[]');
-    const merged = [...existing, ...newFacts].slice(-50); // keep last 50 facts
+    // Deduplicate – don't add same facts twice
+    const merged = [...existing, ...newFacts.filter(f=>!existing.some(e=>e.toLowerCase()===f.toLowerCase()))].slice(-60);
     localStorage.setItem('ai-longterm-memory', JSON.stringify(merged));
-  } catch(e){ console.log('Memory extraction failed:', e); }
+  } catch(e){ console.log('Memory:', e); }
+}
+
+function showLongTermMemory(){
+  const facts = JSON.parse(localStorage.getItem('ai-longterm-memory')||'[]');
+  const card = document.getElementById('longTermMemoryCard');
+  const list = document.getElementById('longTermMemoryList');
+  if(!facts.length){ card.style.display='none'; return; }
+  card.style.display='block';
+  list.innerHTML = facts.map(f=>`• ${escHtml(f)}`).join('<br>');
+}
+
+function clearLongTermMemory(){
+  localStorage.removeItem('ai-longterm-memory');
+  document.getElementById('longTermMemoryCard').style.display='none';
 }
 
 // ════ CUSTOM AIs ════
