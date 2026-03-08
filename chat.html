@@ -674,7 +674,7 @@ function getPersona(key){
 
 const BUILTIN_AI = {
   claude:  { name:'Claude (CEO 👑)',          rawColor:'#c084fc', key:'', builtin:true, boss:true },
-  gemini:  { name:'Gemini (Analytik 📊)',     rawColor:'#38bdf8', key:'', builtin:true },
+  gemini:  { name:'Gemini (Analytik 📊)',     rawColor:'#38bdf8', key:'', builtin:true, reviewOnly:true },
   chatgpt: { name:'ChatGPT (Generalista 🎯)', rawColor:'#4ade80', key:'', builtin:true },
 };
 let AI = { ...BUILTIN_AI };
@@ -1002,7 +1002,7 @@ async function executeTool(name, input, aisDiv){
         const prompt=`Podúkol: ${input.task}\n\nKontext:\n${input.context||'(žádný)'}`;
         let result='';
         if(agentKey==='gemini'){
-          const r=await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-lite:generateContent?key=${ai.key}`,{method:'POST',signal:getSignal(),headers:{'Content-Type':'application/json'},body:JSON.stringify({systemInstruction:{parts:[{text:sys}]},contents:[{role:'user',parts:[{text:prompt}]}],generationConfig:{maxOutputTokens:2000}})});
+          const r=await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${ai.key}`,{method:'POST',signal:getSignal(),headers:{'Content-Type':'application/json'},body:JSON.stringify({systemInstruction:{parts:[{text:sys}]},contents:[{role:'user',parts:[{text:prompt}]}],generationConfig:{maxOutputTokens:2000}})});
           const d=await r.json();result=d.candidates?.[0]?.content?.parts?.[0]?.text||'Prázdná odpověď';
         } else if(agentKey==='chatgpt'){
           const r=await fetch('https://api.openai.com/v1/chat/completions',{method:'POST',signal:getSignal(),headers:{'Content-Type':'application/json','Authorization':`Bearer ${ai.key}`},body:JSON.stringify({model:'gpt-4o',max_tokens:2000,messages:[{role:'system',content:sys},{role:'user',content:prompt}]})});
@@ -1541,7 +1541,7 @@ async function geminiAgentLoop(userMsg, systemPrompt, aisDiv, fileSnap=null){
 
   for(let step=0;step<MAX_STEPS;step++){
     if(signal?.aborted) throw new Error('Zrušeno');
-    const r=await fetchWithRetry(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-lite:generateContent?key=${AI.gemini.key}`,{
+    const r=await fetchWithRetry(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${AI.gemini.key}`,{
       method:'POST',signal,headers:{'Content-Type':'application/json'},
       body:JSON.stringify({systemInstruction:{parts:[{text:fullSystem}]},contents,tools:getGeminiTools(),toolConfig:{functionCallingConfig:{mode:'AUTO'}},generationConfig:{maxOutputTokens:2048}})
     });
@@ -1554,7 +1554,7 @@ async function geminiAgentLoop(userMsg, systemPrompt, aisDiv, fileSnap=null){
     contents.push({role:'model',parts:respParts});
     const funcCalls=respParts.filter(p=>p.functionCall);
     if(!funcCalls.length){
-      renderStats(aisDiv,Date.now()-t0,totalOut,'gemini-2.0-flash-lite');
+      renderStats(aisDiv,Date.now()-t0,totalOut,'gemini-2.0-flash');
       return respParts.filter(p=>p.text).map(p=>p.text).join('')||'';
     }
     const funcResults=[];
@@ -1568,7 +1568,7 @@ async function geminiAgentLoop(userMsg, systemPrompt, aisDiv, fileSnap=null){
     }
     contents.push({role:'user',parts:funcResults});
   }
-  renderStats(aisDiv,Date.now()-t0,totalOut,'gemini-2.0-flash-lite');
+  renderStats(aisDiv,Date.now()-t0,totalOut,'gemini-2.0-flash');
   const last=contents.filter(c=>c.role==='model').pop();
   return last?.parts?.filter(p=>p.text).map(p=>p.text).join('')||'(Max kroků)';
 }
@@ -1593,7 +1593,7 @@ const COST_PER_TOKEN = { // USD per output token
   'claude-haiku-4-5-20251001': 1.25/1e6,
   'claude-opus-4-6': 75/1e6,
   'gpt-4o': 10/1e6,
-  'gemini-2.0-flash-lite': 0,
+  'gemini-2.0-flash': 0,
   '_default': 2/1e6
 };
 function getCost(model, tokens){ return (COST_PER_TOKEN[model]||COST_PER_TOKEN._default)*tokens; }
@@ -2403,7 +2403,7 @@ async function selfReflect(key, question, answer, signal){
       if(!r.ok) return null;
       const d=await r.json(); return d.choices?.[0]?.message?.content?.trim()||null;
     } else if(key==='gemini'){
-      const r=await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-lite:generateContent?key=${AI.gemini.key}`,{method:'POST',signal,headers:{'Content-Type':'application/json'},body:JSON.stringify({contents:[{role:'user',parts:[{text:prompt}]}],generationConfig:{maxOutputTokens:80}})});
+      const r=await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${AI.gemini.key}`,{method:'POST',signal,headers:{'Content-Type':'application/json'},body:JSON.stringify({contents:[{role:'user',parts:[{text:prompt}]}],generationConfig:{maxOutputTokens:80}})});
       if(!r.ok) return null;
       const d=await r.json(); return d.candidates?.[0]?.content?.parts?.[0]?.text?.trim()||null;
     }
@@ -3651,7 +3651,7 @@ async function makePlan(msg, key){
       const r=await fetch('https://api.anthropic.com/v1/messages',{method:'POST',signal:sig,headers:{'Content-Type':'application/json','x-api-key':ai.key,'anthropic-version':'2023-06-01','anthropic-dangerous-direct-browser-access':'true'},body:JSON.stringify({model:'claude-haiku-4-5-20251001',max_tokens:200,messages:[{role:'user',content:prompt}]})});
       const d=await r.json(); text=d.content?.[0]?.text||'';
     } else if(key==='gemini'){
-      const r=await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-lite:generateContent?key=${ai.key}`,{method:'POST',signal:sig,headers:{'Content-Type':'application/json'},body:JSON.stringify({contents:[{parts:[{text:prompt}]}],generationConfig:{maxOutputTokens:200}})});
+      const r=await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${ai.key}`,{method:'POST',signal:sig,headers:{'Content-Type':'application/json'},body:JSON.stringify({contents:[{parts:[{text:prompt}]}],generationConfig:{maxOutputTokens:200}})});
       const d=await r.json(); text=d.candidates?.[0]?.content?.parts?.[0]?.text||'';
     } else if(ai.url){
       if(ai.url?.includes('openrouter')) await new Promise(r=>setTimeout(r,900));
@@ -3673,7 +3673,7 @@ async function decomposeTask(msg, assistants) {
       const r=await fetch('https://api.openai.com/v1/chat/completions',{method:'POST',signal:sig,headers:{'Content-Type':'application/json','Authorization':`Bearer ${ai.key}`},body:JSON.stringify({model:'gpt-4o',max_tokens:200,messages:[{role:'user',content:prompt}]})});
       const d=await r.json(); text=d.choices?.[0]?.message?.content||'';
     } else if(key==='gemini'){
-      const r=await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-lite:generateContent?key=${ai.key}`,{method:'POST',signal:sig,headers:{'Content-Type':'application/json'},body:JSON.stringify({contents:[{parts:[{text:prompt}]}]})});
+      const r=await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${ai.key}`,{method:'POST',signal:sig,headers:{'Content-Type':'application/json'},body:JSON.stringify({contents:[{parts:[{text:prompt}]}]})});
       const d=await r.json(); text=d.candidates?.[0]?.content?.parts?.[0]?.text||'';
     } else if(ai.url){
       if(ai.url?.includes('openrouter')) await new Promise(r=>setTimeout(r,900));
@@ -3697,7 +3697,7 @@ async function selfCritique(key, originalMsg, reply) {
       const r=await fetch('https://api.openai.com/v1/chat/completions',{method:'POST',signal:sig,headers:{'Content-Type':'application/json','Authorization':`Bearer ${ai.key}`},body:JSON.stringify({model:'gpt-4o',max_tokens:400,messages:[{role:'system',content:'Odpovídej POUZE jako JSON.'},{role:'user',content:prompt}]})});
       const d=await r.json(); text=d.choices?.[0]?.message?.content||'';
     } else if(key==='gemini'){
-      const r=await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-lite:generateContent?key=${ai.key}`,{method:'POST',signal:sig,headers:{'Content-Type':'application/json'},body:JSON.stringify({contents:[{parts:[{text:'Odpovídej POUZE jako JSON.\n\n'+prompt}]}]})});
+      const r=await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${ai.key}`,{method:'POST',signal:sig,headers:{'Content-Type':'application/json'},body:JSON.stringify({contents:[{parts:[{text:'Odpovídej POUZE jako JSON.\n\n'+prompt}]}]})});
       const d=await r.json(); text=d.candidates?.[0]?.content?.parts?.[0]?.text||'';
     } else if(key==='claude'){
       const r=await fetch('https://api.anthropic.com/v1/messages',{method:'POST',signal:sig,headers:{'Content-Type':'application/json','x-api-key':ai.key,'anthropic-version':'2023-06-01','anthropic-dangerous-direct-browser-access':'true'},body:JSON.stringify({model:'claude-haiku-4-5-20251001',max_tokens:400,system:'Odpovídej POUZE jako JSON.',messages:[{role:'user',content:prompt}]})});
@@ -3737,7 +3737,7 @@ async function callAgentQuick(key, systemPrompt, userPrompt, maxTokens=500){
       const r=await fetchWithRetry('https://api.anthropic.com/v1/messages',{method:'POST',signal:sig,headers:{'Content-Type':'application/json','x-api-key':ai.key,'anthropic-version':'2023-06-01','anthropic-dangerous-direct-browser-access':'true'},body:JSON.stringify({model:'claude-haiku-4-5-20251001',max_tokens:maxTokens,system:systemPrompt,messages:[{role:'user',content:userPrompt}]})});
       const d=await r.json(); return d.content?.[0]?.text?.trim()||null;
     } else if(key==='gemini'){
-      const r=await fetchWithRetry(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-lite:generateContent?key=${ai.key}`,{method:'POST',signal:sig,headers:{'Content-Type':'application/json'},body:JSON.stringify({systemInstruction:{parts:[{text:systemPrompt}]},contents:[{role:'user',parts:[{text:userPrompt}]}],generationConfig:{maxOutputTokens:maxTokens}})});
+      const r=await fetchWithRetry(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${ai.key}`,{method:'POST',signal:sig,headers:{'Content-Type':'application/json'},body:JSON.stringify({systemInstruction:{parts:[{text:systemPrompt}]},contents:[{role:'user',parts:[{text:userPrompt}]}],generationConfig:{maxOutputTokens:maxTokens}})});
       const d=await r.json(); return d.candidates?.[0]?.content?.parts?.[0]?.text?.trim()||null;
     } else if(key==='chatgpt' || ai.url){
       const url = ai.url ? `${ai.url}/chat/completions` : 'https://api.openai.com/v1/chat/completions';
@@ -3965,6 +3965,12 @@ async function sendMessage() {
     ? (selected.has(mentionKey) ? [mentionKey] : [...selected]) // pokud agent zapnutý, jen on; jinak ignoruj
     : [...selected];
   const assistants=currentSelected.filter(k=>!AI[k].boss);
+  // Agenti jen pro review (Gemini) — odpovídají ale nejsou primární workeři pokud jsou zapnutí jiní
+  const primaryWorkers = assistants.filter(k=>!AI[k].reviewOnly);
+  const reviewOnlyAgents = assistants.filter(k=>AI[k].reviewOnly);
+  // Pokud jsou k dispozici primární workeři, Gemini (reviewOnly) odpovídá jen v peer-review
+  // Pokud jsou POUZE reviewOnly agenti, nech je odpovídat normálně
+  const actualWorkers = primaryWorkers.length > 0 ? primaryWorkers : assistants;
   const hasClaude=currentSelected.includes('claude');
   const MAX_ROUNDS=5;
   // Pro obrázky nepřidávej base64 do textu – callClaude a callClaudeFinal to řeší přes vision API
@@ -4226,9 +4232,9 @@ Tvůj úkol jako syntetizátor:
 
   // 📋 Rozložení úkolu
   let subtasks = null;
-  if(task.needsSubtasks && assistants.length > 0){
+  if(task.needsSubtasks && actualWorkers.length > 0){
     addDivider(aisDiv,'📋 Rozkládám úkol na podúkoly...');
-    subtasks = await decomposeTask(msgText, assistants);
+    subtasks = await decomposeTask(msgText, actualWorkers);
     if(subtasks && subtasks.length > 1){
       const d=document.createElement('div');d.className='round-divider';
       d.innerHTML=`<span>📋 ${subtasks.length} podúkoly: ${subtasks.map((s,i)=>`${i+1}. ${escHtml(s)}`).join(' · ')}</span>`;
@@ -4237,18 +4243,19 @@ Tvůj úkol jako syntetizátor:
   }
 
   // 🎯 Specializace asistentů
-  // Přeskočíme tým pokud by jen brzdil (kód, math, překlad, rychlé otázky)
-  let routed = routeMessage(msgText, assistants);
+  let routed = routeMessage(msgText, actualWorkers);
   if(routed.length > 0 && !task.teamBenefits && !task.needsSubtasks){
     const reason = task.hasMath ? '🔢 matematika' :
       /```|def |class |import |const |function |SELECT /.test(msgText) ? '💻 kód' :
       /přelož|translate/.test(msgText.toLowerCase()) ? '🌐 překlad' : '⚡ rychlý dotaz';
     addDivider(aisDiv, `⚡ Claude sám (${reason} → tým by nepomohl)`);
-    routed = []; // Přepni do solo módu
-  } else if(routed.length < assistants.length){
-    const skipped = assistants.filter(k=>!routed.includes(k)).map(k=>AI[k].name).join(', ');
+    routed = [];
+  } else if(routed.length < actualWorkers.length){
+    const skipped = actualWorkers.filter(k=>!routed.includes(k)).map(k=>AI[k].name).join(', ');
     addDivider(aisDiv,`🎯 Specializace → ${routed.map(k=>AI[k].name).join(', ')} (${skipped} přeskočen)`);
   }
+  // Přidej reviewOnly agenty do routed jen pro peer-review fázi (ne jako workeři)
+  const routedForReview = [...new Set([...routed, ...reviewOnlyAgents.filter(k=>AI[k].key)])];
 
   // 🎭 PM ROUTING (Lana) — přidělí worker typy před diskuzí
   let workerRoles = {};
@@ -4388,7 +4395,7 @@ Máš přístup k nástrojům: web_search, fetch_url, run_code, save_note, recal
     startStatusLog(aisDiv);
     addDivider(aisDiv, '🔍 Peer-review · každý hodnotí kolegu');
     // Každý agent hodnotí odpověď JINÉHO agenta (rotace o 1)
-    const reviewKeys = routed.filter(k => assistantAnswers[k]);
+    const reviewKeys = routedForReview.filter(k => assistantAnswers[k] || AI[k].key);
     for(let i = 0; i < reviewKeys.length; i++){
       const reviewer = reviewKeys[i];
       const reviewed = reviewKeys[(i + 1) % reviewKeys.length]; // kolega vpravo
@@ -4710,7 +4717,7 @@ Odpověz POUZE jako JSON (bez markdown):
 
 Škála: 1.0=perfektní, 0.75=dobré, 0.5=průměrné, 0.25=špatné, 0.0=chybné
 Pravidlo: score<0.75 POUZE pokud je skutečný problém. V comment vždy uveď CO konkrétně opravit.`;
-  const r=await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-lite:generateContent?key=${AI.gemini.key}`,{method:'POST',signal:sig,headers:{'Content-Type':'application/json'},body:JSON.stringify({contents:[{role:'user',parts:[{text:prompt}]}],generationConfig:{maxOutputTokens:300}})});
+  const r=await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${AI.gemini.key}`,{method:'POST',signal:sig,headers:{'Content-Type':'application/json'},body:JSON.stringify({contents:[{role:'user',parts:[{text:prompt}]}],generationConfig:{maxOutputTokens:300}})});
   if(!r.ok){const e=await r.json();throw new Error(e.error?.message||r.status);}
   const d=await r.json();
   const raw=(d.candidates?.[0]?.content?.parts?.[0]?.text||'{}').replace(/```json|```/g,'').trim();
