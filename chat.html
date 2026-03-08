@@ -308,6 +308,14 @@ onAuthStateChanged(auth, user => {
     <div class="hint">Toto dostanou všechny AI jako kontext před každou odpovědí.</div>
   </div>
 
+  <div style="background:var(--card);border:1px solid var(--border);border-radius:16px;padding:14px 16px;display:flex;align-items:center;justify-content:space-between;gap:10px">
+    <div>
+      <div style="font-size:13px;font-weight:600;color:var(--accent)">📚 Kumulativní paměť</div>
+      <div style="font-size:11px;color:var(--muted);margin-top:2px">Projde všechny staré chaty a extrahuje fakta</div>
+    </div>
+    <button id="buildMemoryBtn" onclick="buildCumulativeMemory()" style="background:var(--accent);border:none;color:#fff;border-radius:10px;padding:8px 14px;font-family:'Outfit',sans-serif;font-size:12px;font-weight:700;cursor:pointer;white-space:nowrap">📚 Extrahovat</button>
+  </div>
+
   <div id="longTermMemoryCard" style="background:var(--card);border:1px solid var(--border);border-radius:16px;padding:14px 16px;display:none">
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
       <span style="font-size:13px;font-weight:600">🧠 Co si AI pamatuje o tobě</span>
@@ -423,6 +431,27 @@ onAuthStateChanged(auth, user => {
 
 <script>
 // ════ DATA ════
+// 🎯 TRVALÉ PERSÓNY – každý AI ví kdo je
+const AI_PERSONAS = {
+  claude:  `Jsi Claude – šéf AI týmu a stratég. Máš nejširší rozhled, hledáš jádro problému, opravuješ chyby ostatních. Mluv sebejistě, přesně, bez zbytečných slov. Nikdy neříkej "jako AI" – jsi člen týmu.`,
+  gemini:  `Jsi Gemini – analytik a datový expert. Myslíš strukturovaně, miluješ čísla a fakta, rozkládáš problémy na části. Odpovídej přesně. Zmiň pokud vidíš věci jinak než kolegové.`,
+  chatgpt: `Jsi ChatGPT – generalista a komunikátor. Dokážeš vysvětlit cokoliv srozumitelně, propojuješ různé oblasti, hledáš praktická řešení. Mluv přístupně.`,
+  _custom: `Jsi AI asistent – specializovaný člen týmu. Buď konkrétní a přímý. Využij své specifické znalosti.`
+};
+function getPersona(key){
+  if(AI_PERSONAS[key]) return AI_PERSONAS[key];
+  // Custom AI – vygeneruj persónu z názvu
+  const name = AI[key]?.name || key;
+  const nameLow = name.toLowerCase();
+  if(nameLow.includes('groq') || nameLow.includes('llama') || nameLow.includes('⚡'))
+    return `Jsi ${name} – rychlý specialista. Odpovídáš přesně a stručně, bez zbytečností.`;
+  if(nameLow.includes('mistral') || nameLow.includes('právník') || nameLow.includes('🌍'))
+    return `Jsi ${name} – právník a logik. Analyzuješ detaily, hledáš přesné formulace, upozorňuješ na nepřesnosti.`;
+  if(nameLow.includes('cerebras') || nameLow.includes('qwen') || nameLow.includes('deepseek'))
+    return `Jsi ${name} – technický expert. Preferuješ přesná fakta a technické detaily.`;
+  return `Jsi ${name} – specializovaný člen AI týmu. Přispívej svým unikátním pohledem.`;
+}
+
 const BUILTIN_AI = {
   claude:  { name:'Claude (CEO 👑)',          rawColor:'#c084fc', key:'', builtin:true, boss:true },
   gemini:  { name:'Gemini (Analytik 📊)',     rawColor:'#38bdf8', key:'', builtin:true },
@@ -433,29 +462,162 @@ let active=[], selected=[], chatLog=[], isBusy=false;
 let userMemory='', attachedFile=null;
 let recognition=null, isRecording=false;
 
+// 🔧 AGENT TOOLS – nástroje pro agenty
+const AGENT_TOOLS = {
+  calculator: {
+    name: 'kalkulačka',
+    emoji: '🧮',
+    run: (expr) => {
+      try {
+        const clean = expr.replace(/[^0-9+\-*/().\s]/g,'');
+        if(!clean.trim()) return null;
+        const r = Function('"use strict";return ('+clean+')')();
+        return isFinite(r) ? String(r) : null;
+      } catch { return null; }
+    }
+  },
+  note: {
+    name: 'poznámka',
+    emoji: '📌',
+    run: (text) => {
+      const notes = JSON.parse(localStorage.getItem('agent-notes')||'[]');
+      notes.push({ text, ts: Date.now() });
+      localStorage.setItem('agent-notes', JSON.stringify(notes.slice(-50)));
+      return `Poznámka uložena: "${text}"`;
+    }
+  },
+  recall: {
+    name: 'vzpomínka',
+    emoji: '🔍',
+    run: () => {
+      const notes = JSON.parse(localStorage.getItem('agent-notes')||'[]');
+      if(!notes.length) return 'Žádné poznámky.';
+      return notes.slice(-5).map(n=>n.text).join('\n');
+    }
+  },
+  coderun: {
+    name: 'spustit kód',
+    emoji: '⚡',
+    run: (code) => {
+      try {
+        const r = Function('"use strict";'+code)();
+        return r !== undefined ? String(r) : '(kód spuštěn, žádný výstup)';
+      } catch(e) { return 'Chyba: '+e.message; }
+    }
+  }
+};
+
+function parseToolCalls(text) {
+  // Detekuj TOOL:nazev(argument) v textu agenta
+  const regex = /TOOL:(calculator|note|recall|coderun)\(([^)]*)\)/gi;
+  const calls = [];
+  let m;
+  while((m = regex.exec(text)) !== null){
+    calls.push({ tool: m[1].toLowerCase(), arg: m[2], full: m[0] });
+  }
+  return calls;
+}
+
+async function runToolCalls(text, aisDiv) {
+  const calls = parseToolCalls(text);
+  if(!calls.length) return text;
+  let result = text;
+  for(const call of calls) {
+    const tool = AGENT_TOOLS[call.tool];
+    if(!tool) continue;
+    const output = tool.run(call.arg);
+    if(output !== null) {
+      const d = document.createElement('div');
+      d.className = 'round-divider';
+      d.innerHTML = `<span>${tool.emoji} <strong>${tool.name}</strong>: <code>${escHtml(String(output).slice(0,200))}</code></span>`;
+      aisDiv.appendChild(d);
+      result = result.replace(call.full, `[VÝSLEDEK ${tool.emoji}${tool.name}: ${output}]`);
+    }
+  }
+  return result;
+}
+
+// ⚙️ ReAct loop – AI vidí výsledek nástroje a pokračuje (max 3 kola)
+async function reactLoop(key, initialPrompt, aisDiv, callFn) {
+  const MAX_REACT = 3;
+  let messages = [{ role:'user', content: initialPrompt }];
+  let lastText = '';
+  
+  for(let round=0; round<MAX_REACT; round++){
+    const response = await callFn(messages);
+    lastText = response;
+    messages.push({ role:'assistant', content: response });
+    
+    const calls = parseToolCalls(response);
+    if(!calls.length) break; // žádné nástroje → hotovo
+    
+    // Spusť nástroje a sesbírej výsledky
+    let toolResults = '';
+    for(const call of calls){
+      const tool = AGENT_TOOLS[call.tool];
+      if(!tool) continue;
+      const output = tool.run(call.arg);
+      if(output !== null){
+        const d = document.createElement('div');
+        d.className = 'round-divider';
+        d.innerHTML = `<span>${tool.emoji} <strong>${tool.name}</strong> → <code>${escHtml(String(output).slice(0,200))}</code></span>`;
+        aisDiv.appendChild(d);
+        toolResults += `\n${tool.emoji} ${tool.name}(${call.arg}) = ${output}`;
+        lastText = lastText.replace(call.full, `[${tool.emoji}${output}]`);
+      }
+    }
+    
+    if(!toolResults) break;
+    // Pošli výsledky zpátky AI
+    messages.push({ role:'user', content: `Výsledky nástrojů:${toolResults}\n\nPokračuj v odpovědi na základě těchto výsledků.` });
+  }
+  
+  return lastText;
+}
+
 const CLAUDE_MODELS = {
   haiku:  { id:'claude-haiku-4-5-20251001',  label:'Haiku'  },
   sonnet: { id:'claude-sonnet-4-5-20251022', label:'Sonnet' },
   opus:   { id:'claude-opus-4-5-20251101',   label:'Opus'   },
 };
 
-const MD_SYSTEM = `Jsi lidský člen party kamarádů co si píšou. Chovej se přirozeně, uvolněně, jako člověk – ne jako robot.
+// MD_SYSTEM je nyní funkce – injectuje persónu každého AI
+function getMdSystem(key='') {
+  const persona = key ? getPersona(key) : '';
+  const toolsInfo = `
+🔧 NÁSTROJE – MUSÍŠ použít pokud se hodí:
+
+PRAVIDLO: Pokud zpráva obsahuje čísla a matematiku → VŽDY zavolej TOOL:calculator
+PRAVIDLO: Pokud potřebuješ si zapamatovat fakt pro pozdější použití → zavolej TOOL:note
+PRAVIDLO: Pokud se ptáš "co jsem si dříve poznamenal" → zavolej TOOL:recall
+PRAVIDLO: Pokud chceš ověřit kód nebo spočítat přesný výsledek → TOOL:coderun
+
+Jak to funguje – přímo do textu odpovědi vlož:
+  TOOL:calculator(150*12 + 500)   → spočítá a vrátí výsledek
+  TOOL:note(Martin pracuje na AI projektu)   → uloží fakt
+  TOOL:recall()   → vrátí uložené poznámky
+  TOOL:coderun(return new Date().toLocaleDateString('cs-CZ'))   → spustí kód
+
+Výsledek nástroje uvidíš v dalším kole a můžeš ho použít v odpovědi.`;
+  return `Jsi člen AI týmu – odborník se svou rolí a charakterem.
+${persona ? '\nTVOJE ROLE: '+persona : ''}
 
 Před každou odpovědí se zamysli:
 <think>
-[Co si o tom myslím? Co vím? Jak na to reagovat přirozeně?]
+[Co si o tom myslím z pohledu své role? Co vím? Jak to vidím já oproti kolegům?]
 </think>
 
-Pak napiš odpověď – přirozeně, lidsky.
+Pak napiš odpověď – přirozeně a lidsky.
 
 Styl:
-- Piš jako člověk v chatu – krátké věty, hovorový jazyk, občas emoji
-- Reaguj na emoce a kontext, ne jen na fakta
-- Můžeš vyjádřit vlastní názor, pochybnost, humor, překvapení
-- Když nevíš, řekni to upřímně
-- MÁTE přístup k internetu – webová data dostaneš níže v sekci "Aktuální data z webu"
-- Pokud otázka není jasná, zeptej se jednou přirozenou otázkou
-- Markdown používej jen na kód nebo tabulky, jinak normální text`;
+- Piš jako odborník v chatu – věcně ale přístupně, občas emoji
+- Reaguj ze svého pohledu a role
+- Můžeš nesouhlasit s kolegy pokud máš důvod
+- MÁTE přístup k internetu – webová data dostaneš níže
+- Markdown jen na kód nebo tabulky
+${toolsInfo}`;
+}
+const MD_SYSTEM = getMdSystem(); // fallback pro starý kód
 function getDatePrompt(){
   const now = new Date();
   const days = ['neděle','pondělí','úterý','středa','čtvrtek','pátek','sobota'];
@@ -496,43 +658,68 @@ function getLongTermMemory(){
   return facts.slice(-30).map(f=>`• ${f}`).join('\n');
 }
 
+// 📚 KUMULATIVNÍ PAMĚŤ – projde všechny staré chaty a extrahuje fakta
+async function buildCumulativeMemory(){
+  const chats = getChats();
+  if(!chats.length){ alert('Žádné uložené chaty.'); return; }
+  
+  const btn = document.getElementById('buildMemoryBtn');
+  if(btn){ btn.textContent = '⏳ Extrahuji...'; btn.disabled = true; }
+  
+  let allFacts = JSON.parse(localStorage.getItem('ai-longterm-memory')||'[]');
+  let processed = 0;
+  
+  for(const chat of chats){
+    const msgs = chat.messages || [];
+    if(msgs.length < 2) continue;
+    try {
+      const convText = msgs.slice(-6).map(m=>{const aiParts=Object.entries(m).filter(([k])=>k!=='user'&&k!=='_file'&&k!=='_synth'&&typeof m[k]==='string').map(([k,v])=>v.slice(0,150)).join(' | ');return `Uživatel: ${m.user||''}\nAI: ${aiParts}`;}).join('\n');
+      const newFacts = await extractFactsFromText(convText);
+      allFacts = [...allFacts, ...newFacts.filter(f=>!allFacts.some(e=>e.toLowerCase()===f.toLowerCase()))];
+      processed++;
+    } catch(e){ console.log('cumulative memory skip:', e); }
+  }
+  
+  allFacts = allFacts.slice(-80); // max 80 faktů
+  localStorage.setItem('ai-longterm-memory', JSON.stringify(allFacts));
+  showLongTermMemory();
+  
+  if(btn){ btn.textContent = `✅ Hotovo (${processed} chatů, ${allFacts.length} faktů)`; btn.disabled = false; }
+}
+
+async function extractFactsFromText(convText){
+  const claudeKey = localStorage.getItem('key-claude');
+  const groqAI = Object.values(AI).find(a=>a.url?.includes('groq') && a.key);
+  const memPrompt = `Z této konverzace vypiš max 5 faktů o uživateli které stojí za zapamatování (jméno, zájmy, práce, projekty, preference...). Každý fakt na nový řádek jako "• fakt". Pokud žádné nejsou, napiš jen "nic".`;
+  let text = '';
+  try{
+    if(claudeKey){
+      const resp=await fetch('https://api.anthropic.com/v1/messages',{method:'POST',headers:{'Content-Type':'application/json','x-api-key':claudeKey,'anthropic-version':'2023-06-01','anthropic-dangerous-direct-browser-access':'true'},body:JSON.stringify({model:'claude-haiku-4-5-20251001',max_tokens:300,system:memPrompt,messages:[{role:'user',content:convText}]})});
+      const d=await resp.json(); text=d.content?.[0]?.text?.trim()||'';
+    } else if(groqAI){
+      const resp=await fetch(`${groqAI.url}/chat/completions`,{method:'POST',headers:{'Content-Type':'application/json','Authorization':`Bearer ${groqAI.key}`},body:JSON.stringify({model:'llama3-8b-8192',max_tokens:300,messages:[{role:'system',content:memPrompt},{role:'user',content:convText}]})});
+      const d=await resp.json(); text=d.choices?.[0]?.message?.content?.trim()||'';
+    }
+  } catch(e){ return []; }
+  if(!text||text.toLowerCase().includes('nic')) return [];
+  return text.split('\n').map(l=>l.replace(/^[•\-*]\s*/,'')).filter(l=>l.length>5&&!l.toLowerCase().includes('nic'));
+}
+
 async function extractAndSaveMemory(conversation){
   if(conversation.length < 1) return;
-  const claudeKey = localStorage.getItem('key-claude');
-  const groqKey = Object.values(AI).find(a=>a.url?.includes('groq'))?.key || 
-    JSON.parse(localStorage.getItem('custom-ais')||'[]').find(a=>a.url?.includes('groq'))?.key;
-  
-  // Use Claude or Groq for memory extraction
-  const convText = conversation.slice(-4).map(m=>`Uživatel: ${m.user}\nAI: ${Object.entries(m).filter(([k])=>k!=='user'&&k!=='_file').map(([,v])=>v).join(' | ')}`).join('\n');
-  const memPrompt = `Z této konverzace vypiš max 5 faktů o uživateli které stojí za zapamatování (jméno, zájmy, práce, preference, problémy...). Každý fakt na nový řádek jako "• fakt". Pokud žádné nejsou, napiš jen "nic".`;
-  
+  const convText = conversation.slice(-4).map(m=>{
+    const aiParts = Object.entries(m)
+      .filter(([k])=>k!=='user'&&k!=='_file'&&typeof m[k]==='string')
+      .map(([,v])=>v.slice(0,200)).join(' | ');
+    return `Uživatel: ${m.user||''}\nAI: ${aiParts}`;
+  }).join('\n');
   try{
-    let text = '';
-    if(claudeKey){
-      const resp = await fetch('https://api.anthropic.com/v1/messages',{
-        method:'POST',
-        headers:{'Content-Type':'application/json','x-api-key':claudeKey,'anthropic-version':'2023-06-01','anthropic-dangerous-direct-browser-access':'true'},
-        body: JSON.stringify({model:'claude-haiku-4-5-20251001',max_tokens:300,system:memPrompt,messages:[{role:'user',content:convText}]})
-      });
-      const d = await resp.json();
-      text = d.content?.[0]?.text?.trim()||'';
-    } else if(groqKey){
-      const resp = await fetch('https://api.groq.com/openai/v1/chat/completions',{
-        method:'POST',
-        headers:{'Content-Type':'application/json','Authorization':'Bearer '+groqKey},
-        body: JSON.stringify({model:'llama3-8b-8192',max_tokens:300,messages:[{role:'system',content:memPrompt},{role:'user',content:convText}]})
-      });
-      const d = await resp.json();
-      text = d.choices?.[0]?.message?.content?.trim()||'';
-    } else return;
-    
-    if(!text || text.toLowerCase().includes('nic')) return;
-    const newFacts = text.split('\n').map(l=>l.replace(/^[•\-*]\s*/,'')).filter(l=>l.length>5&&!l.toLowerCase().includes('nic'));
+    const newFacts = await extractFactsFromText(convText);
     if(!newFacts.length) return;
     const existing = JSON.parse(localStorage.getItem('ai-longterm-memory')||'[]');
-    // Deduplicate – don't add same facts twice
-    const merged = [...existing, ...newFacts.filter(f=>!existing.some(e=>e.toLowerCase()===f.toLowerCase()))].slice(-60);
+    const merged = [...existing, ...newFacts.filter(f=>!existing.some(e=>e.toLowerCase()===f.toLowerCase()))].slice(-80);
     localStorage.setItem('ai-longterm-memory', JSON.stringify(merged));
+    showLongTermMemory();
   } catch(e){ console.log('Memory:', e); }
 }
 
@@ -859,7 +1046,7 @@ function exportAs(format) {
     for(const h of chatLog){
       out+=`Ty: ${h.user}\n\n`;
       for(const [k,v] of Object.entries(h)){
-        if(k==='user')continue;
+        if(k==='user'||k==='_file'||k==='_synth'||typeof v!=='string')continue;
         out+=`${AI[k]?.name||k}:\n${v}\n\n`;
       }
       out+=`${'-'.repeat(40)}\n\n`;
@@ -872,7 +1059,7 @@ function exportAs(format) {
     for(const h of chatLog){
       out+=`## 💬 ${escHtml(h.user)}\n\n`;
       for(const [k,v] of Object.entries(h)){
-        if(k==='user')continue;
+        if(k==='user'||k==='_file'||k==='_synth'||typeof v!=='string')continue;
         out+=`### ${AI[k]?.name||k}\n\n${v}\n\n`;
       }
       out+=`---\n\n`;
@@ -885,7 +1072,7 @@ function exportAs(format) {
     for(const h of chatLog){
       msgs+=`<div class="msg-user"><strong>Ty:</strong> ${escHtml(h.user)}</div>`;
       for(const [k,v] of Object.entries(h)){
-        if(k==='user')continue;
+        if(k==='user'||k==='_file'||k==='_synth'||typeof v!=='string')continue;
         const ai=AI[k];
         msgs+=`<div class="msg-ai" style="border-left:3px solid ${ai?.rawColor||'#888'}"><strong style="color:${ai?.rawColor||'#888'}">${ai?.name||k}</strong><div>${marked.parse(v)}</div></div>`;
       }
@@ -998,6 +1185,7 @@ function routeMessage(msg, assistants) {
 // 🧩 PLÁNOVÁNÍ – AI nejdříve napíše plán
 async function makePlan(msg, key){
   const ai = AI[key];
+  const model = normalizeModel(ai);
   const prompt = `Napiš krátký plán (2-4 kroky) jak odpovíš na tento dotaz. Každý krok na nový řádek jako "1. krok". Nic neřeš, jen plánuj.\n\nDotaz: ${msg}`;
   try {
     let text = '';
@@ -1007,8 +1195,12 @@ async function makePlan(msg, key){
     } else if(key==='claude'){
       const r=await fetch('https://api.anthropic.com/v1/messages',{method:'POST',headers:{'Content-Type':'application/json','x-api-key':ai.key,'anthropic-version':'2023-06-01','anthropic-dangerous-direct-browser-access':'true'},body:JSON.stringify({model:'claude-haiku-4-5-20251001',max_tokens:200,messages:[{role:'user',content:prompt}]})});
       const d=await r.json(); text=d.content?.[0]?.text||'';
-    } else {
-      const r=await fetch(`${ai.url}/chat/completions`,{method:'POST',headers:{'Content-Type':'application/json','Authorization':`Bearer ${ai.key}`},body:JSON.stringify({model:ai.model,max_tokens:200,messages:[{role:'user',content:prompt}]})});
+    } else if(key==='gemini'){
+      const r=await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${ai.key}`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({contents:[{parts:[{text:prompt}]}],generationConfig:{maxOutputTokens:200}})});
+      const d=await r.json(); text=d.candidates?.[0]?.content?.parts?.[0]?.text||'';
+    } else if(ai.url){
+      if(ai.url?.includes('openrouter')) await new Promise(r=>setTimeout(r,900));
+      const r=await fetch(`${ai.url}/chat/completions`,{method:'POST',headers:{'Content-Type':'application/json','Authorization':`Bearer ${ai.key}`},body:JSON.stringify({model,max_tokens:200,messages:[{role:'user',content:prompt}]})});
       const d=await r.json(); text=d.choices?.[0]?.message?.content||'';
     }
     return text.trim();
@@ -1020,6 +1212,7 @@ async function decomposeTask(msg, assistants) {
   if(!assistants.length) return null;
   const key = assistants[0];
   const ai  = AI[key];
+  const model = normalizeModel(ai);
   try {
     const prompt = `Rozlož tento úkol na 2-4 konkrétní podúkoly. Odpověz POUZE jako JSON array bez markdown: ["podúkol 1", "podúkol 2"]\n\nÚkol: ${msg}`;
     let text = '';
@@ -1030,7 +1223,8 @@ async function decomposeTask(msg, assistants) {
       const r=await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${ai.key}`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({contents:[{parts:[{text:prompt}]}]})});
       const d=await r.json(); text=d.candidates?.[0]?.content?.parts?.[0]?.text||'';
     } else {
-      const r=await fetch(`${ai.url}/chat/completions`,{method:'POST',headers:{'Content-Type':'application/json','Authorization':`Bearer ${ai.key}`},body:JSON.stringify({model:ai.model,max_tokens:200,messages:[{role:'system',content:'Odpovídej POUZE jako JSON array.'},{role:'user',content:prompt}]})});
+      if(ai.url?.includes('openrouter')) await new Promise(r=>setTimeout(r,900));
+      const r=await fetch(`${ai.url}/chat/completions`,{method:'POST',headers:{'Content-Type':'application/json','Authorization':`Bearer ${ai.key}`},body:JSON.stringify({model,max_tokens:200,messages:[{role:'system',content:'Odpovídej POUZE jako JSON array.'},{role:'user',content:prompt}]})});
       const d=await r.json(); text=d.choices?.[0]?.message?.content||'';
     }
     const match=text.match(/\[[\s\S]*?\]/);
@@ -1042,6 +1236,7 @@ async function decomposeTask(msg, assistants) {
 // 🔁 SEBEKRITIKA
 async function selfCritique(key, originalMsg, reply) {
   const ai = AI[key];
+  const model = normalizeModel(ai);
   const prompt = `Ohodnoť svou odpověď na škále 1-5. Odpověz jako JSON:\n{"score": N, "reason": "proč", "better": "přepis nebo null pokud je dobré"}\n\nOtázka: ${originalMsg.slice(0,300)}\nTvoje odpověď: ${reply.slice(0,600)}`;
   try {
     let text = '';
@@ -1051,8 +1246,12 @@ async function selfCritique(key, originalMsg, reply) {
     } else if(key==='gemini'){
       const r=await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${ai.key}`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({contents:[{parts:[{text:'Odpovídej POUZE jako JSON.\n\n'+prompt}]}]})});
       const d=await r.json(); text=d.candidates?.[0]?.content?.parts?.[0]?.text||'';
-    } else {
-      const r=await fetch(`${ai.url}/chat/completions`,{method:'POST',headers:{'Content-Type':'application/json','Authorization':`Bearer ${ai.key}`},body:JSON.stringify({model:ai.model,max_tokens:400,messages:[{role:'system',content:'Odpovídej POUZE jako JSON.'},{role:'user',content:prompt}]})});
+    } else if(key==='claude'){
+      const r=await fetch('https://api.anthropic.com/v1/messages',{method:'POST',headers:{'Content-Type':'application/json','x-api-key':ai.key,'anthropic-version':'2023-06-01','anthropic-dangerous-direct-browser-access':'true'},body:JSON.stringify({model:'claude-haiku-4-5-20251001',max_tokens:400,system:'Odpovídej POUZE jako JSON.',messages:[{role:'user',content:prompt}]})});
+      const d=await r.json(); text=d.content?.[0]?.text||'';
+    } else if(ai.url){
+      if(ai.url?.includes('openrouter')) await new Promise(r=>setTimeout(r,900));
+      const r=await fetch(`${ai.url}/chat/completions`,{method:'POST',headers:{'Content-Type':'application/json','Authorization':`Bearer ${ai.key}`},body:JSON.stringify({model,max_tokens:400,messages:[{role:'system',content:'Odpovídej POUZE jako JSON.'},{role:'user',content:prompt}]})});
       const d=await r.json(); text=d.choices?.[0]?.message?.content||'';
     }
     const match=text.match(/\{[\s\S]*?\}/);
@@ -1120,9 +1319,12 @@ async function sendMessage() {
   const assistants=currentSelected.filter(k=>!AI[k].boss);
   const hasClaude=currentSelected.includes('claude');
   const MAX_ROUNDS=5;
-  const fullMsg=fileSnap?`${msgText}\n\nObsah souboru "${fileSnap.name}":\n\`\`\`\n${fileSnap.content.slice(0,8000)}\n\`\`\``:msgText;
+  // Pro obrázky nepřidávej base64 do textu – callClaude a callClaudeFinal to řeší přes vision API
+  const fullMsg=fileSnap?(fileSnap.isImage?msgText:`${msgText}\n\nObsah souboru "${fileSnap.name}":\n\`\`\`\n${fileSnap.content.slice(0,12000)}\n\`\`\``):msgText;
 
   let claudeVerdict='', assistantAnswers={};
+  // Reset chybových stavů AI
+  for(const k of Object.keys(AI)) AI[k]._limitHit = false;
 
   if(!hasClaude){
     // ════ TÝM KOLEGŮ ════
@@ -1131,10 +1333,14 @@ async function sendMessage() {
     const fmtInstruction = getFormatInstruction(task.outputFormat);
     const baseMsg = fullMsg + fmtInstruction + projPrompt;
 
-    // 🧰 Kalkulačka
+    // 🧰 Kalkulačka – auto spuštění PŘED AI + výsledek do kontextu
+    let autoCalcResult = '';
     if(task.hasMath){
       const cr=tryCalculator(msgText);
-      if(cr){const d=document.createElement('div');d.className='round-divider';d.innerHTML=`<span>${cr}</span>`;aisDiv.appendChild(d);}
+      if(cr){
+        const d=document.createElement('div');d.className='round-divider';d.innerHTML=`<span>${cr}</span>`;aisDiv.appendChild(d);
+        autoCalcResult = `\n\n🧮 Automatický výpočet: ${cr.replace('🧮 Kalkulačka: ','').replace('**','').replace('**','')}`;
+      }
     }
 
     // 📝 Formát
@@ -1149,18 +1355,21 @@ async function sendMessage() {
 
     // ════ TÝM KOLEGŮ ════
     async function callTeamAI(key, userPrompt){
-      const sys = MD_SYSTEM + getDatePrompt() + getMemoryPrompt() + getSearchPrompt()
-        + '\nJsi součástí AI týmu profesionálních kolegů. Buď konkrétní, stručný a stav vždy na práci ostatních.';
+      const sys = getMdSystem(key) + getDatePrompt() + getMemoryPrompt() + getSearchPrompt();
       const ai = AI[key];
       if(key==='gemini'){
-        const r=await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${ai.key}`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({systemInstruction:{parts:[{text:sys}]},contents:[{role:'user',parts:[{text:userPrompt}]}],generationConfig:{maxOutputTokens:1500}})});
+        // Gemini – podpora obrázků
+        const gemParts = (fileSnap?.isImage && round===undefined) 
+          ? [{inline_data:{mime_type:fileSnap.type||'image/jpeg',data:fileSnap.content.split(',')[1]}},{text:userPrompt}]
+          : [{text:userPrompt}];
+        const r=await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${ai.key}`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({systemInstruction:{parts:[{text:sys}]},contents:[{role:'user',parts:gemParts}],generationConfig:{maxOutputTokens:1500}})});
         if(!r.ok){const e=await r.json();throw new Error(e.error?.message||r.status);}
         const d=await r.json();
         const text=d.candidates?.[0]?.content?.parts?.[0]?.text;
         if(!text) throw new Error('Gemini: prázdná odpověď');
         return text;
       } else if(key==='chatgpt'){
-        const r=await fetch('https://api.openai.com/v1/chat/completions',{method:'POST',headers:{'Content-Type':'application/json','Authorization':`Bearer ${ai.key}`},body:JSON.stringify({model:'gpt-4o',max_tokens:1500,messages:[{role:'system',content:sys},{role:'user',content:userPrompt}]})});
+        const r=await fetch('https://api.openai.com/v1/chat/completions',{method:'POST',headers:{'Content-Type':'application/json','Authorization':`Bearer ${AI.chatgpt.key}`},body:JSON.stringify({model:'gpt-4o',max_tokens:1500,messages:[{role:'system',content:sys},{role:'user',content:userPrompt}]})});
         if(!r.ok){const e=await r.json();throw new Error(e.error?.message||r.status);}
         const d=await r.json();
         const text=d.choices?.[0]?.message?.content;
@@ -1169,14 +1378,7 @@ async function sendMessage() {
       } else {
         // Custom AI (Groq, Mistral/OpenRouter, Cerebras, ...)
         if(ai.url?.includes('openrouter')) await new Promise(r=>setTimeout(r,900));
-        // Cerebras: oprav model name pokud user zadal špatný formát
-        let model = ai.model||'';
-        if(ai.url?.includes('cerebras.ai') && !model.includes('/')){
-          // Cerebras modely: llama-3.3-70b, llama3.1-8b, llama3.1-70b
-          if(model.toLowerCase().includes('70b')) model='llama-3.3-70b';
-          else if(model.toLowerCase().includes('8b')) model='llama3.1-8b';
-          else model='llama-3.3-70b'; // default
-        }
+        const model = normalizeModel(ai);
         const r=await fetch(`${ai.url}/chat/completions`,{method:'POST',headers:{'Content-Type':'application/json','Authorization':`Bearer ${ai.key}`},body:JSON.stringify({model,max_tokens:1500,messages:[{role:'system',content:sys},{role:'user',content:userPrompt}]})});
         if(!r.ok){
           let errMsg=`${r.status}`;
@@ -1195,20 +1397,40 @@ async function sendMessage() {
     const webNote = webSearchContext ? '\n\n🌐 Máš aktuální data z internetu – použij je přednostně!' : '';
     const MAX_CONSENSUS_ROUNDS = 4;
 
-    // ── KOLO 1: Každý odpoví ──
-    addDivider(aisDiv, assistants.length>1 ? '💬 PRVNÍ ODPOVĚDI' : '💬 ODPOVĚĎ');
-    for(const key of assistants){
+    // ── KOLO 1: Sekvenční odpovědi – každý vidí předchozí ──
+    addDivider(aisDiv, assistants.length>1 ? '💬 PRVNÍ ODPOVĚDI (každý vidí předchozí)' : '💬 ODPOVĚĎ');
+    for(let i=0; i<assistants.length; i++){
+      const key = assistants[i];
       const bubble = addBubble(aisDiv, key, `${AI[key].name} · přemýšlí...`);
       try{
-        const p = `${baseMsg}${webNote}`;
-        const text = await callTeamAI(key, p);
+        // Sestav kontext z odpovědí kolegů kteří již odpověděli
+        const prevAnswers = assistants.slice(0,i)
+          .filter(k => kb[k]?.text)
+          .map(k => `${AI[k].name} napsal: ${kb[k].text.slice(0,600)}`)
+          .join('\n\n');
+        const contextNote = prevAnswers
+          ? `\n\n📋 Kolegové již odpověděli:\n${prevAnswers}\n\nTy jsi na řadě – přidej svůj pohled, doplň nebo oprav co vidíš jinak.`
+          : '';
+        const p = `${baseMsg}${autoCalcResult}${webNote}${contextNote}`;
+        // ⚙️ ReAct loop
+        let text = await reactLoop(key, p, aisDiv, async (msgs) => {
+          const lastUserMsg = msgs.filter(m=>m.role==='user').pop()?.content || p;
+          return await callTeamAI(key, lastUserMsg);
+        });
         kb[key] = {text, vote:'souhlas'};
         assistantAnswers[key] = text;
         updateBubbleLabel(bubble, `${AI[key].name}`);
         finishBubble(bubble, text);
       }catch(e){
         kb[key] = {text:'', vote:'nesouhlas'};
-        finishBubble(bubble, null, e.message);
+        // Zaznamenej chybu – možná limit nebo špatný klíč
+        const errLow = e.message.toLowerCase();
+        if(errLow.includes('quota') || errLow.includes('rate') || errLow.includes('limit') || errLow.includes('insufficient') || errLow.includes('billing')){
+          AI[key]._limitHit = true;
+          finishBubble(bubble, null, `⚠️ Limit: ${e.message.slice(0,80)} – AI přeskočena v dalších kolech`);
+        } else {
+          finishBubble(bubble, null, e.message);
+        }
       }
       scrollBottom();
     }
@@ -1233,22 +1455,38 @@ async function sendMessage() {
             .map(k=>`**${AI[k].name}:**\n${kb[k].text.slice(0,500)}`)
             .join('\n\n');
           if(!others) { votes[key]='souhlas'; continue; }
+          // Přeskoč AI která narazila na limit
+          if(AI[key]._limitHit){ votes[key]='souhlas'; continue; }
 
           const bubble = addBubble(aisDiv, key, `${AI[key].name} · čte kolegy...`);
           roundBubbles[key] = bubble;
           try{
-            const p = `Otázka: ${msgText}${webNote}
+            // Devil's advocate – první AI v každém kole musí aktivně kritizovat
+            const isDevilsAdvocate = (key === assistants[0] && consensusRound === 1);
+            const roleNote = isDevilsAdvocate
+              ? `\n\n⚡ TVŮJ ÚKOL: Jsi kritik – MUSÍŠ najít co je špatně nebo nepřesně v odpovědích kolegů. Hledej chyby, nepřesnosti, chybějící informace. Pokud vše souhlasí, najdi aspoň co by šlo vylepšit.`
+              : '';
 
-Tvoje odpověď:
+            const p = `Otázka: ${msgText}${webNote}${roleNote}
+
+Tvoje předchozí odpověď:
 ${(kb[key]?.text||'').slice(0,400)}
 
 Kolegové říkají:
 ${others}
 
-Uděl jednu z těchto akcí:
-- Pokud SOUHLASÍŠ a nemáš co přidat → napiš: HLAS: souhlas\n[jedna věta proč souhlasíš]
-- Pokud máš CO DOPLNIT → napiš: HLAS: doplnění\n[co konkrétně přidáváš]
-- Pokud NESOUHLASÍŠ a máš důvod → napiš: HLAS: nesouhlas\n[co je špatně a jak to správně je]`;
+KRITICKY zhodnoť – hledej:
+• Faktické chyby nebo nepřesnosti
+• Chybějící důležité informace
+• Slabá místa v argumentaci
+• Lepší alternativy nebo přístupy
+
+Pak napiš JEDNU z možností:
+HLAS: souhlas → [jednadvěta – co konkrétně oceňuješ]
+HLAS: doplnění → [co přesně přidáváš a proč to kolegové vynechali]
+HLAS: nesouhlas → [co přesně je špatně + jak to správně je]
+
+Buď konkrétní – žádné vágní "souhlasím, vše je správně".`;
 
             const raw = await callTeamAI(key, p);
             const voteMatch = (raw||'').match(/HLAS:\s*(souhlas|doplnění|nesouhlas)/i);
@@ -1290,8 +1528,20 @@ Uděl jednu z těchto akcí:
       addDivider(aisDiv, '✅ FINÁLNÍ ODPOVĚĎ TÝMU');
       const bubble = addBubble(aisDiv, synth, `${AI[synth].name} · syntetizuje...`);
       try{
-        const allK = assistants.filter(k=>kb[k]?.text).map(k=>`${AI[k].name}: ${kb[k].text.slice(0,500)}`).join('\n\n');
-        const p = `Otázka: ${msgText}${webNote}\n\nCo tým diskutoval:\n${allK}\n\nNapiš jednu finální, přesnou a úplnou odpověď která zahrnuje to nejlepší co tým zjistil. Mluv přímo.`;
+        const allK = assistants.filter(k=>kb[k]?.text).map(k=>`### ${AI[k].name} (${kb[k].vote||'souhlas'}):\n${kb[k].text.slice(0,600)}`).join('\n\n');
+        const disagreements = assistants.filter(k=>kb[k]?.vote==='nesouhlas').map(k=>`${AI[k].name}: ${kb[k].text.slice(0,300)}`).join('\n');
+        const p = `Otázka: ${msgText}${webNote}
+
+Tým diskutoval ${assistants.length > 1 ? assistants.length+' AI' : ''}:
+${allK}
+
+${disagreements ? 'Neshody které je třeba vyřešit:\n'+disagreements : 'Tým dosáhl konsenzu.'}
+
+Tvůj úkol jako syntetizátor:
+1. Vyber to nejlepší z každé odpovědi
+2. Vyřeš neshody – rozhodni co je správně a proč
+3. Napiš jednu jasnou, přesnou a úplnou odpověď
+4. Mluv přímo jako jeden hlas týmu, ne jako přehled odpovědí`;
         const reply = await callTeamAI(synth, p);
         assistantAnswers['_synth'] = reply;
         updateBubbleLabel(bubble, `${AI[synth].name} · ✓ tým`);
@@ -1370,10 +1620,13 @@ Uděl jednu z těchto akcí:
         if(isOpenRouter&&openRouterCount>0) await new Promise(r=>setTimeout(r,1500));
         if(isOpenRouter) openRouterCount++;
         const assignedTask = (subtasks ? `${enrichedMsg}\n\nTvůj konkrétní podúkol: ${subtasks[i % subtasks.length]}` : enrichedMsg) + projPrompt;
-        let reply='';
-        if(key==='gemini') reply=await callGemini(assignedTask,assistantAnswers);
-        else if(key==='chatgpt') reply=await callChatGPT(assignedTask,assistantAnswers);
-        else reply=await callCustom(key,assignedTask,assistantAnswers);
+        // ⚙️ ReAct loop pro asistenty
+        let reply = await reactLoop(key, assignedTask, aisDiv, async (msgs) => {
+          const lastMsg = msgs.filter(m=>m.role==='user').pop()?.content || assignedTask;
+          if(key==='gemini') return await callGemini(lastMsg, assistantAnswers);
+          else if(key==='chatgpt') return await callChatGPT(lastMsg, assistantAnswers);
+          else return await callCustom(key, lastMsg, assistantAnswers);
+        });
         // 🔄 Iterace
         if(!task.isSimple){
           updateBubbleLabel(bubble,`${AI[key].name.toUpperCase()} · hodnotí...`);
@@ -1394,7 +1647,7 @@ Uděl jednu z těchto akcí:
     addDivider(aisDiv,round===1?'👑 CLAUDE HODNOTÍ':`👑 CLAUDE REVIDUJE · kolo ${round}`);
     const claudeBubble=addBubble(aisDiv,'claude','CLAUDE · vyhodnocuje...',true);
     try{
-      const result=await callClaude(fullMsg,assistantAnswers,claudeVerdict,round);
+      const result=await callClaude(fullMsg,assistantAnswers,claudeVerdict,round,fileSnap);
       claudeVerdict=result.text;
       updateBubbleLabel(claudeBubble,`CLAUDE · ${result.modelLabel} · šéf`);
       finishBubble(claudeBubble,claudeVerdict);
@@ -1429,7 +1682,7 @@ Uděl jednu z těchto akcí:
   addDivider(aisDiv,'👑 FINÁLNÍ ODPOVĚĎ · CLAUDE OPUS');
   const finalBubble=addBubble(aisDiv,'claude','CLAUDE · Opus · finální verifikace',true);
   try{
-    const finalText=await callClaudeFinal(fullMsg,claudeVerdict,assistantAnswers);
+    const finalText=await callClaudeFinal(fullMsg,claudeVerdict,assistantAnswers,fileSnap);
     finishBubble(finalBubble,finalText,null,true);
     updateBubbleLabel(finalBubble,'CLAUDE · Opus · ✓ finální');
     claudeVerdict=finalText;
@@ -1476,14 +1729,14 @@ function buildGroupHistory(currentMsg, currentResponses={}) {
 
 `;
   
-  for (const t of chatLog) {
-    transcript += `Uživatel: ${t.user}
-`;
+  // Posílej max posledních 8 zpráv – úspora tokenů
+  const recentLog = chatLog.slice(-8);
+  for (const t of recentLog) {
+    transcript += `Uživatel: ${t.user}\n`;
     for (const [k, v] of Object.entries(t)) {
-      if (k === 'user' || k === '_file') continue;
+      if (k === 'user' || k === '_file' || k === '_synth' || typeof v !== 'string') continue;
       const name = AI[k]?.name || k;
-      transcript += `${name}: ${v}
-`;
+      transcript += `${name}: ${v.slice(0,600)}\n`;
     }
     transcript += '\n';
   }
@@ -1491,7 +1744,7 @@ function buildGroupHistory(currentMsg, currentResponses={}) {
   // Aktuální kolo
   transcript += `Uživatel: ${currentMsg}
 `;
-  for (const [k, v] of Object.entries(currentResponses)) {
+  for (const [k, v] of Object.entries(currentResponses||{})) {
     const name = AI[k]?.name || k;
     transcript += `${name}: ${v}
 `;
@@ -1511,11 +1764,11 @@ async function pickModel(msg){
 async function callClaude(msg,assistantAnswers,prevVerdict,round,fileSnap=null){
   const modelKey=await pickModel(msg);const model=CLAUDE_MODELS[modelKey];
   const hasA=Object.keys(assistantAnswers).length>0;
-  let system=MD_SYSTEM+getDatePrompt()+getMemoryPrompt()+getSearchPrompt()+'\nJsi hlavní AI. Dej nejlepší možnou odpověď.';
+  let system=getMdSystem('claude')+getDatePrompt()+getMemoryPrompt()+getSearchPrompt()+'\nJsi hlavní AI šéf týmu. Dej nejlepší možnou odpověď.';
   let userContent=msg;
   if(hasA){
     const summary=Object.entries(assistantAnswers).map(([k,v])=>`${AI[k]?.name||k}: ${v}`).join('\n\n');
-    system=MD_SYSTEM+getDatePrompt()+getMemoryPrompt()+getSearchPrompt()+(round===1?'\nJsi hlavní AI šéf. Zkontroluj odpovědi asistentů, oprav chyby, dej finální odpověď.':'\nJsi hlavní AI šéf. Zohledni výhrady asistentů a dej revidovanou odpověď.');
+    system=getMdSystem('claude')+getDatePrompt()+getMemoryPrompt()+getSearchPrompt()+(round===1?'\nZkontroluj odpovědi asistentů, oprav chyby, dej finální odpověď.':'\nZohledni výhrady asistentů a dej revidovanou odpověď.');
     userContent=round===1?`Otázka: ${msg}\n\nOdpovědi asistentů:\n${summary}\n\nTvoje finální odpověď:`:`Otázka: ${msg}\n\nTvůj předchozí verdikt: ${prevVerdict}\n\nVýhrady:\n${summary}\n\nRevidovaná odpověď:`;
   }
   // Použij plnou historii skupinového chatu
@@ -1534,22 +1787,26 @@ async function callClaude(msg,assistantAnswers,prevVerdict,round,fileSnap=null){
   const d=await r.json();return{text:d.content[0].text,modelLabel:model.label};
 }
 
-async function callClaudeFinal(msg,verdict,allContext){
+async function callClaudeFinal(msg,verdict,allContext,fileSnap=null){
   const ctx=Object.entries(allContext).map(([k,v])=>`${AI[k]?.name||k}: ${v}`).join('\n\n');
-  const system=MD_SYSTEM+getDatePrompt()+getMemoryPrompt()+getSearchPrompt()+'\nVydej tu nejdokonalejší možnou odpověď. Integruj to nejlepší z celé diskuze.';
-  const r=await fetch('https://api.anthropic.com/v1/messages',{method:'POST',headers:{'Content-Type':'application/json','x-api-key':AI.claude.key,'anthropic-version':'2023-06-01','anthropic-dangerous-direct-browser-access':'true'},body:JSON.stringify({model:'claude-opus-4-5-20251101',max_tokens:4096,system,messages:[{role:'user',content:`Otázka: ${msg}\n\nDiskuze:\n${ctx}\n\nPoslední verdikt: ${verdict}\n\nFinální dokonalá odpověď:`}]})});
+  const system=getMdSystem('claude')+getDatePrompt()+getMemoryPrompt()+getSearchPrompt()+'\nVydej tu nejdokonalejší možnou odpověď. Integruj to nejlepší z celé diskuze.';
+  const userText=`Otázka: ${msg}\n\nDiskuze:\n${ctx}\n\nPoslední verdikt: ${verdict}\n\nFinální dokonalá odpověď:`;
+  let msgContent;
+  if(fileSnap?.isImage){const b64=fileSnap.content.split(',')[1];msgContent=[{type:'image',source:{type:'base64',media_type:fileSnap.type||'image/jpeg',data:b64}},{type:'text',text:userText}];}
+  else msgContent=userText;
+  const r=await fetch('https://api.anthropic.com/v1/messages',{method:'POST',headers:{'Content-Type':'application/json','x-api-key':AI.claude.key,'anthropic-version':'2023-06-01','anthropic-dangerous-direct-browser-access':'true'},body:JSON.stringify({model:'claude-opus-4-5-20251101',max_tokens:4096,system,messages:[{role:'user',content:msgContent}]})});
   if(!r.ok){const e=await r.json();throw new Error(e.error?.message||r.status);}
   const d=await r.json();return d.content[0].text;
 }
 
 async function callGemini(msg,context){
   const groupHist = buildGroupHistory(msg, context);
-  const memStr=getDatePrompt()+(userMemory?`\n\nInformace o uživateli: ${userMemory}`:'');
-  const teamNames = active.map(k=>AI[k].name).join(', ');
-  const prompt=`${MD_SYSTEM}${memStr}\n\nJsi součástí AI týmu: ${teamNames}. Čteš skupinový chat a reaguješ jako jeho člen. Vidíš co řekli ostatní.\n\n${groupHist}\nTvoje odpověď:`;
-  const r=await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${AI.gemini.key}`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({contents:[{role:'user',parts:[{text:prompt}]}],generationConfig:{maxOutputTokens:2048}})});
+  const r=await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${AI.gemini.key}`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({systemInstruction:{parts:[{text:getMdSystem('gemini')+getDatePrompt()+getMemoryPrompt()+getSearchPrompt()}]},contents:[{role:'user',parts:[{text:groupHist}]}],generationConfig:{maxOutputTokens:2048}})});
   if(!r.ok){const e=await r.json();throw new Error(e.error?.message||r.status);}
-  const d=await r.json();return d.candidates[0].content.parts[0].text;
+  const d=await r.json();
+  const text=d.candidates?.[0]?.content?.parts?.[0]?.text;
+  if(!text) throw new Error('Gemini: prázdná odpověď');
+  return text;
 }
 
 async function reviewGemini(originalMsg,verdict){
@@ -1557,18 +1814,21 @@ async function reviewGemini(originalMsg,verdict){
   const r=await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${AI.gemini.key}`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({contents:[{role:'user',parts:[{text:prompt}]}],generationConfig:{maxOutputTokens:200}})});
   if(!r.ok){const e=await r.json();throw new Error(e.error?.message||r.status);}
   const d=await r.json();
-  try{return JSON.parse(d.candidates[0].content.parts[0].text.replace(/```json|```/g,''));}
-  catch{return{approved:true,comment:d.candidates[0].content.parts[0].text};}
+  const raw=d.candidates?.[0]?.content?.parts?.[0]?.text||'{}';
+  try{return JSON.parse(raw.replace(/```json|```/g,''));}
+  catch{return{approved:true,comment:raw};}
 }
 
 async function callChatGPT(msg,context){
   const groupHist = buildGroupHistory(msg, context);
-  const teamNames = active.map(k=>AI[k].name).join(', ');
   const userContent=`${groupHist}\nTvoje odpověď:`;
-  const sysPrompt=MD_SYSTEM+getDatePrompt()+(userMemory?`\nInformace o uživateli: ${userMemory}`:'')+getSearchPrompt()+`\nJsi součástí AI týmu: ${teamNames}. Čteš skupinový chat a reaguješ jako jeho člen. Vidíš co řekli ostatní.`;
+  const sysPrompt=getMdSystem('chatgpt')+getDatePrompt()+getMemoryPrompt()+getSearchPrompt();
   const r=await fetch('https://api.openai.com/v1/chat/completions',{method:'POST',headers:{'Content-Type':'application/json','Authorization':`Bearer ${AI.chatgpt.key}`},body:JSON.stringify({model:'gpt-4o',max_tokens:2048,messages:[{role:'system',content:sysPrompt},{role:'user',content:userContent}]})});
   if(!r.ok){const e=await r.json();throw new Error(e.error?.message||r.status);}
-  const d=await r.json();return d.choices[0].message.content;
+  const d=await r.json();
+  const text=d.choices?.[0]?.message?.content;
+  if(!text) throw new Error(d.error?.message||'ChatGPT: prázdná odpověď');
+  return text;
 }
 
 async function reviewChatGPT(originalMsg,verdict){
@@ -1579,24 +1839,45 @@ async function reviewChatGPT(originalMsg,verdict){
   catch{return{approved:true,comment:d.choices[0].message.content};}
 }
 
+function normalizeModel(ai){
+  let model = ai.model||'';
+  if(ai.url?.includes('cerebras.ai')){
+    if(!model || model.includes('llama-3.3') || model.includes('llama3.3')) return 'gpt-oss-120b';
+    if(model.toLowerCase().includes('120b') || model.toLowerCase().includes('gpt-oss')) return 'gpt-oss-120b';
+    if(model.toLowerCase().includes('8b')) return 'llama3.1-8b';
+    return 'gpt-oss-120b';
+  }
+  if(ai.url?.includes('groq.com')){
+    if(!model || model.includes('versatile') || model.includes('llama-3.3-70b')) return 'llama3-8b-8192';
+  }
+  return model;
+}
+
 async function callCustom(key,msg,context){
   const ai=AI[key];
+  const model=normalizeModel(ai);
   const groupHist = buildGroupHistory(msg, context);
-  const teamNames = active.map(k=>AI[k].name).join(', ');
   const userContent=`${groupHist}\nTvoje odpověď:`;
-  const sysPrompt=MD_SYSTEM+getDatePrompt()+(userMemory?`\nInformace o uživateli: ${userMemory}`:'')+getSearchPrompt()+`\nJsi součástí AI týmu: ${teamNames}. Čteš skupinový chat a reaguješ jako jeho člen. Vidíš co řekli ostatní.`;
-  const r=await fetch(`${ai.url}/chat/completions`,{method:'POST',headers:{'Content-Type':'application/json','Authorization':`Bearer ${ai.key}`},body:JSON.stringify({model:ai.model,max_tokens:2048,messages:[{role:'system',content:sysPrompt},{role:'user',content:userContent}]})});
-  if(!r.ok){const e=await r.json();throw new Error(e.error?.message||r.status);}
-  const d=await r.json();return d.choices[0].message.content;
+  const sysPrompt=getMdSystem(key)+getDatePrompt()+getMemoryPrompt()+getSearchPrompt();
+  if(ai.url?.includes('openrouter')) await new Promise(r=>setTimeout(r,900));
+  const r=await fetch(`${ai.url}/chat/completions`,{method:'POST',headers:{'Content-Type':'application/json','Authorization':`Bearer ${ai.key}`},body:JSON.stringify({model,max_tokens:2048,messages:[{role:'system',content:sysPrompt},{role:'user',content:userContent}]})});
+  if(!r.ok){let em=`${r.status}`;try{const e=await r.json();em=e.error?.message||em;}catch{}throw new Error(em);}
+  const d=await r.json();
+  const text=d.choices?.[0]?.message?.content;
+  if(!text) throw new Error('Prázdná odpověď');
+  return text;
 }
 
 async function reviewCustom(key,originalMsg,verdict){
   const ai=AI[key];
-  const r=await fetch(`${ai.url}/chat/completions`,{method:'POST',headers:{'Content-Type':'application/json','Authorization':`Bearer ${ai.key}`},body:JSON.stringify({model:ai.model,max_tokens:200,messages:[{role:'system',content:'Zkontroluj odpověď. Odpověz POUZE jako JSON: {"approved":true/false,"comment":"komentář"}'},{role:'user',content:`Otázka: "${originalMsg}"\nClaude odpověděl: "${verdict}"\nJe správná a úplná?`}]})});
-  if(!r.ok){const e=await r.json();throw new Error(e.error?.message||r.status);}
+  const model=normalizeModel(ai);
+  if(ai.url?.includes('openrouter')) await new Promise(r=>setTimeout(r,900));
+  const r=await fetch(`${ai.url}/chat/completions`,{method:'POST',headers:{'Content-Type':'application/json','Authorization':`Bearer ${ai.key}`},body:JSON.stringify({model,max_tokens:200,messages:[{role:'system',content:'Zkontroluj odpověď. Odpověz POUZE jako JSON: {"approved":true/false,"comment":"komentář"}'},{role:'user',content:`Otázka: "${originalMsg}"\nClaude odpověděl: "${verdict}"\nJe správná a úplná?`}]})});
+  if(!r.ok){let em=`${r.status}`;try{const e=await r.json();em=e.error?.message||em;}catch{}throw new Error(em);}
   const d=await r.json();
-  try{return JSON.parse(d.choices[0].message.content.replace(/```json|```/g,''));}
-  catch{return{approved:true,comment:d.choices[0].message.content};}
+  const raw=d.choices?.[0]?.message?.content||'';
+  try{return JSON.parse(raw.replace(/```json|```/g,''));}
+  catch{return{approved:true,comment:raw};}
 }
 
 function scrollBottom(){const m=document.getElementById('messages');setTimeout(()=>m.scrollTop=m.scrollHeight,50);}
