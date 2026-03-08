@@ -646,6 +646,7 @@ function deleteAI(key){
   const saved = JSON.parse(localStorage.getItem('custom-ais')||'[]');
   const updated = saved.filter(a=>a.id!==key);
   localStorage.setItem('custom-ais', JSON.stringify(updated));
+  localStorage.setItem('local-updated-at', Date.now().toString());
   delete AI[key];
   active = active.filter(k=>k!==key);
   selected = selected.filter(k=>k!==key);
@@ -701,6 +702,7 @@ function saveEditAi() {
     const idx=customs.findIndex(c=>c.id===editingKey);
     if(idx>=0){customs[idx]={...customs[idx],name:ai.name,key:ai.key,url:ai.url,model:ai.model,color:ai.rawColor};}
     localStorage.setItem('custom-ais',JSON.stringify(customs));
+    localStorage.setItem('local-updated-at', Date.now().toString());
   } else {
     // Vestavěná AI – ulož jen klíč
     localStorage.setItem('key-'+editingKey, newKey);
@@ -1588,6 +1590,14 @@ async function fbLoad(){
   try{
     const data=await window._fbLoad(user.uid);
     if(!data) return;
+    // Porovnej timestamps – použij novější data
+    const cloudTime = data.updatedAt ? new Date(data.updatedAt).getTime() : 0;
+    const localTime = parseInt(localStorage.getItem('local-updated-at')||'0');
+    if(cloudTime <= localTime){
+      // Lokální data jsou novější – nepřepisuj
+      document.getElementById('lb-status').innerHTML=`<span class="sync-dot"></span>Lokální data jsou aktuálnější`;
+      return;
+    }
     if(data.keyClaude){localStorage.setItem('key-claude',data.keyClaude);document.getElementById('key-claude').value=data.keyClaude;}
     if(data.keyGemini){localStorage.setItem('key-gemini',data.keyGemini);document.getElementById('key-gemini').value=data.keyGemini;}
     if(data.keyChatgpt){localStorage.setItem('key-chatgpt',data.keyChatgpt);document.getElementById('key-chatgpt').value=data.keyChatgpt;}
