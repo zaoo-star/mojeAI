@@ -327,6 +327,7 @@ onAuthStateChanged(auth, user => {
       <button class="input-btn" onclick="goBack()" title="Nastavení" style="width:32px;height:32px;font-size:14px;border-radius:8px;flex-shrink:0">⚙️</button>
       <div class="chat-header-title" id="chatTitle" style="flex:1;font-size:14px">AI Chat</div>
       <button class="header-btn" id="selectorToggle" onclick="toggleSelector()" title="AI" style="font-size:11px;padding:4px 8px">▾ AI</button>
+      <button class="header-btn" onclick="openProjectModal()" id="projectBtn" title="Kontext projektu" style="font-size:13px;padding:4px 8px">🗂️</button>
       <button class="header-btn" id="autoSearchToggle" onclick="toggleAutoSearch()" title="Web" style="font-size:13px;padding:4px 8px">🌐</button>
       <button class="header-btn" onclick="openHistory()" title="Historie" style="font-size:13px;padding:4px 8px">📋</button>
       <button class="header-btn" onclick="newChat()" title="Nový chat" style="font-size:13px;padding:4px 8px">✏️</button>
@@ -350,6 +351,20 @@ onAuthStateChanged(auth, user => {
         <line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/>
       </svg>
     </button>
+  </div>
+</div>
+
+<!-- MODAL: Kontext projektu -->
+<div id="projectModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.7);z-index:300;align-items:center;justify-content:center;padding:20px" onclick="if(event.target===this)this.style.display='none'">
+  <div style="background:var(--card2);border:1px solid var(--border2);border-radius:20px;padding:20px;width:100%;max-width:480px;display:flex;flex-direction:column;gap:12px">
+    <h3 style="font-size:16px;font-weight:700">🗂️ Kontext projektu</h3>
+    <p style="font-size:12px;color:var(--muted)">Instrukce a paměť platí jen pro tento chat – jako Claude Projects.</p>
+    <textarea id="proj-instructions" placeholder="Instrukce pro AI v tomto projektu… (např. Jsme startup, vyvíjíme mobilní app, piš vždy technicky a stručně)" style="background:var(--card);border:1px solid var(--border);border-radius:10px;color:var(--text);font-family:'Outfit',sans-serif;font-size:13px;padding:10px;min-height:80px;resize:vertical"></textarea>
+    <textarea id="proj-memory" placeholder="Paměť projektu… (např. Používáme React Native, backend je Node.js, máme 3 vývojáře)" style="background:var(--card);border:1px solid var(--border);border-radius:10px;color:var(--text);font-family:'Outfit',sans-serif;font-size:13px;padding:10px;min-height:60px;resize:vertical"></textarea>
+    <div style="display:flex;gap:8px">
+      <button onclick="document.getElementById('projectModal').style.display='none'" style="flex:1;background:var(--card);border:1px solid var(--border);color:var(--text);border-radius:10px;padding:10px;font-family:'Outfit',sans-serif;font-size:14px;cursor:pointer">Zrušit</button>
+      <button onclick="saveProject()" style="flex:1;background:var(--accent);border:none;color:#fff;border-radius:10px;padding:10px;font-family:'Outfit',sans-serif;font-size:14px;font-weight:700;cursor:pointer">Uložit</button>
+    </div>
   </div>
 </div>
 
@@ -591,6 +606,7 @@ function startChat() {
   if(localStorage.getItem('selector-collapsed')==='1'){document.getElementById('aiSelector').classList.add('collapsed');const b=document.getElementById('selectorToggle');if(b)b.textContent='▸';}
   document.getElementById('msgInput').focus();
   updateAutoSearchBtn();
+  updateProjectIndicator();
   requestNotifPermission();
 }
 
@@ -884,6 +900,186 @@ function download(filename, content, type) {
 function handleKey(e){if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();sendMessage();}}
 function autoResize(el){el.style.height='auto';el.style.height=Math.min(el.scrollHeight,120)+'px';}
 
+// ════ AGENT ENGINE ════
+
+// 🗂️ KONTEXT PROJEKTŮ
+let projectContext = null;
+function getProjectContext(){
+  const chatId = currentChatId;
+  if(!chatId) return null;
+  const projects = JSON.parse(localStorage.getItem('chat-projects')||'{}');
+  return projects[chatId]||null;
+}
+function saveProjectContext(ctx){
+  const projects = JSON.parse(localStorage.getItem('chat-projects')||'{}');
+  projects[currentChatId] = ctx;
+  localStorage.setItem('chat-projects', JSON.stringify(projects));
+}
+function getProjectPrompt(){
+  const ctx = getProjectContext();
+  if(!ctx) return '';
+  return `\n\n📁 Kontext projektu:\n${ctx.instructions||''}\n${ctx.memory||''}`;
+}
+function openProjectModal(){
+  const ctx = getProjectContext();
+  document.getElementById('proj-instructions').value = ctx?.instructions||'';
+  document.getElementById('proj-memory').value = ctx?.memory||'';
+  document.getElementById('projectModal').style.display='flex';
+}
+function saveProject(){
+  saveProjectContext({
+    instructions: document.getElementById('proj-instructions').value.trim(),
+    memory: document.getElementById('proj-memory').value.trim()
+  });
+  document.getElementById('projectModal').style.display='none';
+  // Update title indicator
+  updateProjectIndicator();
+}
+function updateProjectIndicator(){
+  const ctx = getProjectContext();
+  const btn = document.getElementById('projectBtn');
+  if(btn) btn.style.background = ctx?.instructions ? 'rgba(249,115,22,0.2)' : '';
+}
+
+// 🧰 NÁSTROJE – kalkulačka
+function tryCalculator(msg) {
+  const match = msg.match(/[\d\s\+\-\*\/\(\)\.]+[\+\-\*\/][\d\s\+\-\*\/\(\)\.]+/);
+  if(!match) return null;
+  try {
+    const expr = match[0].trim();
+    const result = Function('"use strict"; return (' + expr + ')')();
+    if(isFinite(result)) return `🧮 Kalkulačka: ${expr} = **${result}**`;
+  } catch {}
+  return null;
+}
+
+// 📝 VÝSTUPNÍ FORMÁTY – detekce ideálního formátu
+function detectOutputFormat(msg){
+  const t = msg.toLowerCase();
+  if(/tabulku|porovnej|srovnej|vs\.|versus|rozdíly mezi/.test(t)) return 'table';
+  if(/kód|program|funkci|script|naprogramuj|html|css|javascript|python/.test(t)) return 'code';
+  if(/seznam|vyjmenuj|kroky|postup|návod|jak na|odrážky/.test(t)) return 'list';
+  if(/napiš text|dopis|email|zprávu|článek|popis/.test(t)) return 'prose';
+  return 'auto';
+}
+function getFormatInstruction(fmt){
+  if(fmt==='table') return '\n\nOdpověz formou přehledné Markdown tabulky.';
+  if(fmt==='code') return '\n\nOdpověz s kódovými bloky a krátkým vysvětlením.';
+  if(fmt==='list') return '\n\nOdpověz jako strukturovaný seznam s odrážkami.';
+  if(fmt==='prose') return '\n\nOdpověz jako plynulý text bez zbytečného formátování.';
+  return '';
+}
+
+// 🎯 SPECIALIZACE – vyber nejlepší AI pro dotaz
+function routeMessage(msg, assistants) {
+  if(assistants.length <= 1) return assistants;
+  const t = msg.toLowerCase();
+  const groqKey  = assistants.find(k => AI[k].url?.includes('groq'));
+  const deepKey  = assistants.find(k => AI[k].url?.includes('openrouter') || AI[k].url?.includes('mistral') || AI[k].url?.includes('deepseek'));
+  const chatgptKey = assistants.find(k=>k==='chatgpt');
+  const isQuick  = t.length < 40 || /^(co je|kdo|kdy|kde|jak se|jaká)/.test(t);
+  const isHeavy  = /analyzuj|porovnej|napiš|vytvoř|vysvětli podrobně|plán|kód|program|strategi|kompletní/.test(t);
+  if(isQuick && !isHeavy && groqKey) return [groqKey];
+  if(isHeavy && !isQuick){
+    const best = chatgptKey || deepKey;
+    if(best) return [best];
+  }
+  return assistants;
+}
+
+// 🧩 PLÁNOVÁNÍ – AI nejdříve napíše plán
+async function makePlan(msg, key){
+  const ai = AI[key];
+  const prompt = `Napiš krátký plán (2-4 kroky) jak odpovíš na tento dotaz. Každý krok na nový řádek jako "1. krok". Nic neřeš, jen plánuj.\n\nDotaz: ${msg}`;
+  try {
+    let text = '';
+    if(key==='chatgpt'){
+      const r=await fetch('https://api.openai.com/v1/chat/completions',{method:'POST',headers:{'Content-Type':'application/json','Authorization':`Bearer ${ai.key}`},body:JSON.stringify({model:'gpt-4o',max_tokens:200,messages:[{role:'user',content:prompt}]})});
+      const d=await r.json(); text=d.choices?.[0]?.message?.content||'';
+    } else if(key==='claude'){
+      const r=await fetch('https://api.anthropic.com/v1/messages',{method:'POST',headers:{'Content-Type':'application/json','x-api-key':ai.key,'anthropic-version':'2023-06-01','anthropic-dangerous-direct-browser-access':'true'},body:JSON.stringify({model:'claude-haiku-4-5-20251001',max_tokens:200,messages:[{role:'user',content:prompt}]})});
+      const d=await r.json(); text=d.content?.[0]?.text||'';
+    } else {
+      const r=await fetch(`${ai.url}/chat/completions`,{method:'POST',headers:{'Content-Type':'application/json','Authorization':`Bearer ${ai.key}`},body:JSON.stringify({model:ai.model,max_tokens:200,messages:[{role:'user',content:prompt}]})});
+      const d=await r.json(); text=d.choices?.[0]?.message?.content||'';
+    }
+    return text.trim();
+  } catch(e){ return null; }
+}
+
+// 📋 ROZLOŽENÍ ÚKOLU
+async function decomposeTask(msg, assistants) {
+  if(!assistants.length) return null;
+  const key = assistants[0];
+  const ai  = AI[key];
+  try {
+    const prompt = `Rozlož tento úkol na 2-4 konkrétní podúkoly. Odpověz POUZE jako JSON array bez markdown: ["podúkol 1", "podúkol 2"]\n\nÚkol: ${msg}`;
+    let text = '';
+    if(key==='chatgpt'){
+      const r=await fetch('https://api.openai.com/v1/chat/completions',{method:'POST',headers:{'Content-Type':'application/json','Authorization':`Bearer ${ai.key}`},body:JSON.stringify({model:'gpt-4o',max_tokens:200,messages:[{role:'user',content:prompt}]})});
+      const d=await r.json(); text=d.choices?.[0]?.message?.content||'';
+    } else if(key==='gemini'){
+      const r=await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${ai.key}`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({contents:[{parts:[{text:prompt}]}]})});
+      const d=await r.json(); text=d.candidates?.[0]?.content?.parts?.[0]?.text||'';
+    } else {
+      const r=await fetch(`${ai.url}/chat/completions`,{method:'POST',headers:{'Content-Type':'application/json','Authorization':`Bearer ${ai.key}`},body:JSON.stringify({model:ai.model,max_tokens:200,messages:[{role:'system',content:'Odpovídej POUZE jako JSON array.'},{role:'user',content:prompt}]})});
+      const d=await r.json(); text=d.choices?.[0]?.message?.content||'';
+    }
+    const match=text.match(/\[[\s\S]*?\]/);
+    if(match) return JSON.parse(match[0]);
+  } catch(e){ console.log('decompose:', e); }
+  return null;
+}
+
+// 🔁 SEBEKRITIKA
+async function selfCritique(key, originalMsg, reply) {
+  const ai = AI[key];
+  const prompt = `Ohodnoť svou odpověď na škále 1-5. Odpověz jako JSON:\n{"score": N, "reason": "proč", "better": "přepis nebo null pokud je dobré"}\n\nOtázka: ${originalMsg.slice(0,300)}\nTvoje odpověď: ${reply.slice(0,600)}`;
+  try {
+    let text = '';
+    if(key==='chatgpt'){
+      const r=await fetch('https://api.openai.com/v1/chat/completions',{method:'POST',headers:{'Content-Type':'application/json','Authorization':`Bearer ${ai.key}`},body:JSON.stringify({model:'gpt-4o',max_tokens:400,messages:[{role:'system',content:'Odpovídej POUZE jako JSON.'},{role:'user',content:prompt}]})});
+      const d=await r.json(); text=d.choices?.[0]?.message?.content||'';
+    } else if(key==='gemini'){
+      const r=await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${ai.key}`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({contents:[{parts:[{text:'Odpovídej POUZE jako JSON.\n\n'+prompt}]}]})});
+      const d=await r.json(); text=d.candidates?.[0]?.content?.parts?.[0]?.text||'';
+    } else {
+      const r=await fetch(`${ai.url}/chat/completions`,{method:'POST',headers:{'Content-Type':'application/json','Authorization':`Bearer ${ai.key}`},body:JSON.stringify({model:ai.model,max_tokens:400,messages:[{role:'system',content:'Odpovídej POUZE jako JSON.'},{role:'user',content:prompt}]})});
+      const d=await r.json(); text=d.choices?.[0]?.message?.content||'';
+    }
+    const match=text.match(/\{[\s\S]*?\}/);
+    if(match){ const r=JSON.parse(match[0]); return {score:r.score||3,reason:r.reason||'',better:r.better||null}; }
+  } catch(e){ console.log('critique:', e); }
+  return {score:3,reason:'',better:null};
+}
+
+// 🔄 ITERACE – AI opakuje pokud skóre < threshold
+async function iterateIfNeeded(key, originalMsg, reply, maxIter=2){
+  let current = reply;
+  for(let i=0; i<maxIter; i++){
+    const critique = await selfCritique(key, originalMsg, current);
+    if(critique.score >= 4) return {reply: current, score: critique.score, iterations: i};
+    if(critique.better) current = critique.better;
+    else break;
+  }
+  const finalCritique = await selfCritique(key, originalMsg, current);
+  return {reply: current, score: finalCritique.score, iterations: maxIter};
+}
+
+// Analýza zprávy
+function analyzeMsg(txt) {
+  const t = txt.trim().toLowerCase();
+  const words = txt.trim().split(/\s+/).length;
+  return {
+    isSimple: t.length < 30 || /^(ahoj|čau|hey|hi|hello|dobrý den|díky|ok|jo|super|👍|🙏|haha)/.test(t),
+    needsDebate: words > 15 && /proč|jak|vysvětli|porovnej|rozdíl|doporuč|analyz|napiš|vytvoř|pomoz/.test(t),
+    needsSubtasks: words > 40 && /a (také|navíc|zároveň)|za (prvé|druhé)|jednak|několik|více věcí|krok za krokem|kompletní|celý plán/.test(t),
+    needsPlan: words > 25 && /jak|napiš|vytvoř|navrhni|pomoz mi|co bych měl|jak bych/.test(t),
+    hasMath: /[\d]+[\s]*[\+\-\*\/][\s]*[\d]+/.test(txt),
+    outputFormat: detectOutputFormat(txt),
+  };
+}
+
 async function sendMessage() {
   if(isBusy)return;
   const input=document.getElementById('msgInput');
@@ -922,45 +1118,96 @@ async function sendMessage() {
   let claudeVerdict='', assistantAnswers={};
 
   if(!hasClaude){
-    // ════ DEBATA BEZ CLAUDE ════
-    // Kolo 1 – každý odpoví samostatně
-    if(assistants.length>0){
-      addDivider(aisDiv,'💬 KOLO 1 · PRVNÍ ODPOVĚDI');
-      let openRouterCount=0;
-      for(const key of assistants){
-        const bubble=addBubble(aisDiv,key,`${AI[key].name.toUpperCase()} · první odpověď`);
-        try{
-          const isOpenRouter=AI[key].url?.includes('openrouter');
-          if(isOpenRouter&&openRouterCount>0) await new Promise(r=>setTimeout(r,1500));
-          if(isOpenRouter) openRouterCount++;
-          let reply='';
-          if(key==='gemini') reply=await callGemini(fullMsg,{});
-          else if(key==='chatgpt') reply=await callChatGPT(fullMsg,{});
-          else reply=await callCustom(key,fullMsg,{});
-          assistantAnswers[key]=reply;
-          finishBubble(bubble,reply);
-        }catch(e){finishBubble(bubble,null,e.message);}
-        scrollBottom();
-      }
+    // ════ AGENT FLOW ════
+    const task = analyzeMsg(msgText);
+    const projPrompt = getProjectPrompt();
+    const fmtInstruction = getFormatInstruction(task.outputFormat);
+    const enrichedMsg = fullMsg + fmtInstruction;
+
+    // 🧰 Kalkulačka
+    if(task.hasMath){
+      const calcResult = tryCalculator(msgText);
+      if(calcResult){const d=document.createElement('div');d.className='round-divider';d.innerHTML=`<span>${calcResult}</span>`;aisDiv.appendChild(d);}
     }
 
-    // Kolo 2 – každý si přečte odpovědi ostatních a reaguje
-    if(assistants.length>1){
-      addDivider(aisDiv,'🔍 KOLO 2 · REAKCE A KONTROLA');
+    // 📝 Formát indikátor
+    if(task.outputFormat!=='auto' && !task.isSimple){
+      const fmtMap={'table':'📊 tabulka','code':'💻 kód','list':'📋 seznam','prose':'📄 text'};
+      const d=document.createElement('div');d.className='round-divider';d.innerHTML=`<span>📝 Formát: ${fmtMap[task.outputFormat]}</span>`;aisDiv.appendChild(d);
+    }
+
+    // 🎯 Specializace
+    const routed = routeMessage(msgText, assistants);
+    if(routed.length < assistants.length){
+      const skipped = assistants.filter(k=>!routed.includes(k)).map(k=>AI[k].name).join(', ');
+      addDivider(aisDiv,`🎯 Specializace → ${routed.map(k=>AI[k].name).join(', ')} (${skipped} přeskočen)`);
+    }
+
+    // 📋 Rozložení úkolu
+    let subtasks = null;
+    if(task.needsSubtasks && routed.length > 0){
+      addDivider(aisDiv,'📋 ROZKLÁDÁM ÚKOL...');
+      subtasks = await decomposeTask(msgText, routed);
+      if(subtasks && subtasks.length > 1){
+        const d=document.createElement('div');d.className='round-divider';
+        d.innerHTML=`<span>📋 ${subtasks.length} podúkoly: ${subtasks.map((s,i)=>`${i+1}. ${escHtml(s)}`).join(' · ')}</span>`;
+        aisDiv.appendChild(d);
+      } else { subtasks = null; }
+    }
+
+    // 🧩 Plánování
+    if(task.needsPlan && !task.isSimple && routed.length > 0){
+      const planBubble = addBubble(aisDiv, routed[0], `${AI[routed[0]].name.toUpperCase()} · plánuje...`);
+      const plan = await makePlan(msgText, routed[0]);
+      if(plan){ finishBubble(planBubble, `🧩 **Plán:**\n${plan}`); }
+      else { document.querySelector(`.bubble-${planBubble}`)?.closest('.msg-ai')?.remove(); }
+      scrollBottom();
+    }
+
+    if(!task.isSimple) addDivider(aisDiv, subtasks ? '💬 ŘEŠÍM PODÚKOLY' : '💬 ODPOVĚDI');
+
+    let openRouterCount=0;
+    for(let i=0; i<routed.length; i++){
+      const key=routed[i];
+      const bubble=addBubble(aisDiv,key,AI[key].name.toUpperCase());
+      try{
+        const isOpenRouter=AI[key].url?.includes('openrouter');
+        if(isOpenRouter&&openRouterCount>0) await new Promise(r=>setTimeout(r,1500));
+        if(isOpenRouter) openRouterCount++;
+        const assignedTask = (subtasks ? `${enrichedMsg}\n\nTvůj konkrétní podúkol: ${subtasks[i % subtasks.length]}` : enrichedMsg) + projPrompt;
+        let reply='';
+        if(key==='gemini') reply=await callGemini(assignedTask,{});
+        else if(key==='chatgpt') reply=await callChatGPT(assignedTask,{});
+        else reply=await callCustom(key,assignedTask,{});
+
+        // 🔄 Iterace + sebekritika
+        if(!task.isSimple){
+          updateBubbleLabel(bubble,`${AI[key].name.toUpperCase()} · hodnotí...`);
+          const result = await iterateIfNeeded(key, msgText, reply);
+          reply = result.reply;
+          const scoreEmoji = result.score>=4?'⭐':(result.score>=3?'🔶':'🔴');
+          const iterLabel = result.iterations>0?` ↺${result.iterations}`:'';
+          updateBubbleLabel(bubble,`${AI[key].name.toUpperCase()} · ${scoreEmoji}${result.score}/5${iterLabel}`);
+        }
+        assistantAnswers[key]=reply;
+        finishBubble(bubble,reply);
+      }catch(e){finishBubble(bubble,null,e.message);}
+      scrollBottom();
+    }
+
+    // ── Debata ──
+    if(task.needsDebate && routed.length>1){
+      addDivider(aisDiv,'🔍 REAGUJÍ NA SEBE');
       const reactions={};
-      let openRouterCount=0;
-      for(const key of assistants){
+      let orCount=0;
+      for(const key of routed){
         const bubble=addBubble(aisDiv,key,`${AI[key].name.toUpperCase()} · reaguje`);
         try{
           const isOpenRouter=AI[key].url?.includes('openrouter');
-          if(isOpenRouter&&openRouterCount>0) await new Promise(r=>setTimeout(r,1500));
-          if(isOpenRouter) openRouterCount++;
-          // Sestav kontext odpovědí ostatních
-          const othersText=Object.entries(assistantAnswers)
-            .filter(([k])=>k!==key)
-            .map(([k,v])=>`${AI[k]?.name||k} odpověděl(a):\n${v}`)
-            .join('\n\n');
-          const debateMsg=`Otázka: ${fullMsg}\n\nTvoje předchozí odpověď:\n${assistantAnswers[key]||'(žádná)'}\n\nOdpovědi ostatních členů týmu:\n${othersText}\n\nZkontroluj odpovědi ostatních. Souhlasíš nebo nesouhlasíš? Proč? Oprav případné chyby nebo doplň co jim chybí. Buď konkrétní.`;
+          if(isOpenRouter&&orCount>0) await new Promise(r=>setTimeout(r,1500));
+          if(isOpenRouter) orCount++;
+          const othersText=Object.entries(assistantAnswers).filter(([k])=>k!==key).map(([k,v])=>`${AI[k]?.name||k}: ${v.slice(0,400)}`).join('\n\n');
+          const debateMsg=`Otázka: ${msgText}\n\nTvoje odpověď: ${(assistantAnswers[key]||'').slice(0,400)}\n\nOstatní: ${othersText}\n\nSouhlasíš? Co zlepšit?`;
           let reply='';
           if(key==='gemini') reply=await callGemini(debateMsg,{});
           else if(key==='chatgpt') reply=await callChatGPT(debateMsg,{});
@@ -970,26 +1217,25 @@ async function sendMessage() {
         }catch(e){finishBubble(bubble,null,e.message);}
         scrollBottom();
       }
-
-      // Kolo 3 – finální shodná odpověď
-      addDivider(aisDiv,'✅ KOLO 3 · FINÁLNÍ SHODA');
-      const allContext=Object.entries(assistantAnswers).map(([k,v])=>`${AI[k]?.name||k}: ${v}`).join('\n\n')
-        +'\n\nReakce:\n'+Object.entries(reactions).map(([k,v])=>`${AI[k]?.name||k}: ${v}`).join('\n\n');
-      let openRouterCount2=0;
-      for(const key of assistants){
-        const bubble=addBubble(aisDiv,key,`${AI[key].name.toUpperCase()} · finální`);
-        try{
-          const isOpenRouter=AI[key].url?.includes('openrouter');
-          if(isOpenRouter&&openRouterCount2>0) await new Promise(r=>setTimeout(r,1500));
-          if(isOpenRouter) openRouterCount2++;
-          const finalMsg=`Otázka: ${fullMsg}\n\nCelá dosavadní diskuze týmu:\n${allContext}\n\nNa základě diskuze dej jednu stručnou finální odpověď která reflektuje to nejlepší z debaty.`;
-          let reply='';
-          if(key==='gemini') reply=await callGemini(finalMsg,{});
-          else if(key==='chatgpt') reply=await callChatGPT(finalMsg,{});
-          else reply=await callCustom(key,finalMsg,{});
-          finishBubble(bubble,reply,null,true);
-        }catch(e){finishBubble(bubble,null,e.message);}
-        scrollBottom();
+      const disagreed=/nesouhlasím|ale|oprava|chyba|spíše|jinak|naopak|vlastně/.test(Object.values(reactions).join(' ').toLowerCase());
+      if(disagreed){
+        addDivider(aisDiv,'✅ FINÁLNÍ SHODA');
+        const ctx=Object.entries(assistantAnswers).map(([k,v])=>`${AI[k]?.name||k}: ${v.slice(0,300)}`).join('\n')+'\nReakce:\n'+Object.entries(reactions).map(([k,v])=>`${AI[k]?.name||k}: ${v.slice(0,300)}`).join('\n');
+        let orCount2=0;
+        for(const key of routed){
+          const bubble=addBubble(aisDiv,key,`${AI[key].name.toUpperCase()} · finální`);
+          try{
+            const isOR=AI[key].url?.includes('openrouter');
+            if(isOR&&orCount2>0) await new Promise(r=>setTimeout(r,1500));
+            if(isOR) orCount2++;
+            let reply='';
+            if(key==='gemini') reply=await callGemini(`Otázka: ${msgText}\n\nDiskuze:\n${ctx}\n\nFinální stručná odpověď:`,{});
+            else if(key==='chatgpt') reply=await callChatGPT(`Otázka: ${msgText}\n\nDiskuze:\n${ctx}\n\nFinální stručná odpověď:`,{});
+            else reply=await callCustom(key,`Otázka: ${msgText}\n\nDiskuze:\n${ctx}\n\nFinální stručná odpověď:`,{});
+            finishBubble(bubble,reply,null,true);
+          }catch(e){finishBubble(bubble,null,e.message);}
+          scrollBottom();
+        }
       }
     }
 
@@ -1008,8 +1254,84 @@ async function sendMessage() {
     isBusy=false;document.getElementById('sendBtn').disabled=false;return;
   }
 
+  // ════ CLAUDE PATH – s agent features ════
+  const task = analyzeMsg(msgText);
+  const projPrompt = getProjectPrompt();
+  const fmtInstruction = getFormatInstruction(task.outputFormat);
+  const enrichedMsg = fullMsg + fmtInstruction;
+
+  // 🧰 Kalkulačka
+  if(task.hasMath){
+    const calcResult = tryCalculator(msgText);
+    if(calcResult){const d=document.createElement('div');d.className='round-divider';d.innerHTML=`<span>${calcResult}</span>`;aisDiv.appendChild(d);}
+  }
+
+  // 📝 Formát
+  if(task.outputFormat!=='auto' && !task.isSimple){
+    const fmtMap={'table':'📊 tabulka','code':'💻 kód','list':'📋 seznam','prose':'📄 text'};
+    const d=document.createElement('div');d.className='round-divider';d.innerHTML=`<span>📝 Formát: ${fmtMap[task.outputFormat]}</span>`;aisDiv.appendChild(d);
+  }
+
+  // 📋 Rozložení úkolu
+  let subtasks = null;
+  if(task.needsSubtasks && assistants.length > 0){
+    addDivider(aisDiv,'📋 ROZKLÁDÁM ÚKOL...');
+    subtasks = await decomposeTask(msgText, assistants);
+    if(subtasks && subtasks.length > 1){
+      const d=document.createElement('div');d.className='round-divider';
+      d.innerHTML=`<span>📋 ${subtasks.length} podúkoly: ${subtasks.map((s,i)=>`${i+1}. ${escHtml(s)}`).join(' · ')}</span>`;
+      aisDiv.appendChild(d);
+    } else { subtasks = null; }
+  }
+
+  // 🎯 Specializace asistentů
+  const routed = routeMessage(msgText, assistants);
+  if(routed.length < assistants.length){
+    const skipped = assistants.filter(k=>!routed.includes(k)).map(k=>AI[k].name).join(', ');
+    addDivider(aisDiv,`🎯 Specializace → ${routed.map(k=>AI[k].name).join(', ')} (${skipped} přeskočen)`);
+  }
+
+  // Kolo 1 – asistenti (s plánováním, sebekritikou, iterací)
+  if(routed.length>0){
+    if(task.needsPlan && !task.isSimple){
+      const planBubble = addBubble(aisDiv, routed[0], `${AI[routed[0]].name.toUpperCase()} · plánuje...`);
+      const plan = await makePlan(msgText, routed[0]);
+      if(plan){ finishBubble(planBubble, `🧩 **Plán:**\n${plan}`); }
+      else { document.querySelector(`.bubble-${planBubble}`)?.closest('.msg-ai')?.remove(); }
+      scrollBottom();
+    }
+    addDivider(aisDiv, task.isSimple ? 'ASISTENTI ODPOVÍDAJÍ' : '💬 ASISTENTI · PRVNÍ ODPOVĚDI');
+    let openRouterCount=0;
+    for(let i=0;i<routed.length;i++){
+      const key=routed[i];
+      const bubble=addBubble(aisDiv,key,`${AI[key].name.toUpperCase()} · asistent`);
+      try{
+        const isOpenRouter=AI[key].url?.includes('openrouter');
+        if(isOpenRouter&&openRouterCount>0) await new Promise(r=>setTimeout(r,1500));
+        if(isOpenRouter) openRouterCount++;
+        const assignedTask = (subtasks ? `${enrichedMsg}\n\nTvůj konkrétní podúkol: ${subtasks[i % subtasks.length]}` : enrichedMsg) + projPrompt;
+        let reply='';
+        if(key==='gemini') reply=await callGemini(assignedTask,assistantAnswers);
+        else if(key==='chatgpt') reply=await callChatGPT(assignedTask,assistantAnswers);
+        else reply=await callCustom(key,assignedTask,assistantAnswers);
+        // 🔄 Iterace
+        if(!task.isSimple){
+          updateBubbleLabel(bubble,`${AI[key].name.toUpperCase()} · hodnotí...`);
+          const result=await iterateIfNeeded(key,msgText,reply);
+          reply=result.reply;
+          const scoreEmoji=result.score>=4?'⭐':(result.score>=3?'🔶':'🔴');
+          const iterLabel=result.iterations>0?` ↺${result.iterations}`:'';
+          updateBubbleLabel(bubble,`${AI[key].name.toUpperCase()} · ${scoreEmoji}${result.score}/5${iterLabel}`);
+        }
+        assistantAnswers[key]=reply;
+        finishBubble(bubble,reply);
+      }catch(e){finishBubble(bubble,null,e.message);}
+      scrollBottom();
+    }
+  }
+
   for(let round=1;round<=MAX_ROUNDS;round++){
-    addDivider(aisDiv,round===1?'CLAUDE HODNOTÍ':`CLAUDE REVIDUJE · kolo ${round}`);
+    addDivider(aisDiv,round===1?'👑 CLAUDE HODNOTÍ':`👑 CLAUDE REVIDUJE · kolo ${round}`);
     const claudeBubble=addBubble(aisDiv,'claude','CLAUDE · vyhodnocuje...',true);
     try{
       const result=await callClaude(fullMsg,assistantAnswers,claudeVerdict,round);
@@ -1019,11 +1341,11 @@ async function sendMessage() {
     }catch(e){finishBubble(claudeBubble,null,e.message);break;}
     scrollBottom();
 
-    if(assistants.length===0||round===MAX_ROUNDS)break;
+    if(routed.length===0||round===MAX_ROUNDS)break;
 
-    addDivider(aisDiv,'ASISTENTI KONTROLUJÍ');
+    addDivider(aisDiv,'🔍 ASISTENTI KONTROLUJÍ');
     const reviews={};
-    for(const key of assistants){
+    for(const key of routed){
       const bubble=addBubble(aisDiv,key,`${AI[key].name.toUpperCase()} · kontroluje`);
       try{
         const review=key==='gemini'?await reviewGemini(msgText,claudeVerdict)
@@ -1036,7 +1358,7 @@ async function sendMessage() {
     }
 
     const approveCount=Object.values(reviews).filter(r=>r.approved).length;
-    const total=assistants.length;
+    const total=routed.length;
     if(approveCount>=Math.ceil(total/2)){
       addDivider(aisDiv,approveCount===total?'✅ KONSENZUS':'✅ VĚTŠINA SOUHLASÍ ('+approveCount+'/'+total+')');
       break;
@@ -1265,6 +1587,7 @@ function newChat(){
   history = [];
   document.getElementById('messages').innerHTML='';
   document.getElementById('chatTitle').textContent='AI Chat';
+  updateProjectIndicator();
 }
 
 function loadChat(id){
@@ -1297,6 +1620,7 @@ function loadChat(id){
   document.getElementById('chatTitle').textContent = chat.title.slice(0,20)+'…';
   scrollBottom();
   closeHistory();
+  updateProjectIndicator();
 }
 
 function deleteChat(id, e){
