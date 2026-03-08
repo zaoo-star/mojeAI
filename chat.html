@@ -70,7 +70,7 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:'DM San
 .back-btn{background:none;border:none;color:var(--muted);font-size:20px;cursor:pointer;padding:4px;line-height:1;}
 .chat-header-title{font-weight:600;font-size:16px;flex:1;}
 .header-btn{background:none;border:1px solid var(--border);border-radius:8px;color:var(--muted);font-size:12px;padding:6px 10px;cursor:pointer;font-family:'DM Sans',sans-serif;white-space:nowrap;}
-.ai-selector{background:var(--surface);border-bottom:1px solid var(--border);padding:10px 16px;display:flex;gap:8px;overflow-x:auto;flex-shrink:0;}
+.ai-selector{background:var(--surface);border-bottom:1px solid var(--border);padding:10px 16px;display:flex;gap:8px;flex-wrap:wrap;flex-shrink:0;}
 .ai-selector::-webkit-scrollbar{display:none;}
 .ai-chip{display:flex;align-items:center;gap:6px;padding:7px 12px;border-radius:20px;border:1px solid var(--border);background:var(--card);cursor:pointer;white-space:nowrap;transition:all .15s;user-select:none;}
 .ai-chip.selected{border-color:var(--chip-color);background:color-mix(in srgb,var(--chip-color) 15%,transparent);}
@@ -134,6 +134,23 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:'DM San
 .ai-bubble a{color:#93c5fd;text-decoration:none;}
 .ai-bubble strong{font-weight:600;}.ai-bubble em{font-style:italic;}
 .ai-bubble hr{border:none;border-top:1px solid var(--border);margin:12px 0;}
+
+
+/* HISTORY PANEL */
+.history-panel{position:fixed;inset:0;background:rgba(0,0,0,0.7);z-index:150;display:flex;justify-content:flex-end;}
+.history-box{width:min(320px,90vw);height:100%;background:var(--surface);display:flex;flex-direction:column;animation:slideIn .2s ease;}
+@keyframes slideIn{from{transform:translateX(100%)}to{transform:translateX(0)}}
+.history-header{padding:16px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:10px;}
+.history-header h3{flex:1;font-size:16px;font-weight:600;}
+.history-close{background:none;border:none;color:var(--muted);font-size:20px;cursor:pointer;}
+.history-new{margin:12px 16px;padding:12px;background:var(--claude);color:#0e0e12;border:none;border-radius:12px;font-size:14px;font-weight:700;cursor:pointer;width:calc(100% - 32px);}
+.history-list{flex:1;overflow-y:auto;padding:8px;}
+.history-item{padding:12px 14px;border-radius:12px;cursor:pointer;margin-bottom:4px;border:1px solid transparent;}
+.history-item:hover{background:var(--card);}
+.history-item.active{background:var(--card);border-color:var(--border);}
+.history-item-title{font-size:13px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.history-item-meta{font-size:11px;color:var(--muted);margin-top:3px;}
+.history-item-del{float:right;background:none;border:none;color:var(--muted);cursor:pointer;font-size:14px;padding:0 4px;}
 
 /* CHIP CONTEXT MENU */
 .chip-menu{position:fixed;background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:6px;z-index:200;min-width:160px;box-shadow:0 8px 24px rgba(0,0,0,0.4);animation:fadeSlide .15s ease;}
@@ -239,8 +256,10 @@ onAuthStateChanged(auth, user => {
 <div id="chat" class="screen">
   <div class="chat-header">
     <button class="back-btn" onclick="goBack()">←</button>
-    <div class="chat-header-title">AI Chat</div>
-    <button class="header-btn" onclick="openExportModal()">⬇ Export</button>
+    <div class="chat-header-title" id="chatTitle">AI Chat</div>
+    <button class="header-btn" onclick="newChat()">✚ Nový</button>
+    <button class="header-btn" onclick="openHistory()">📋</button>
+    <button class="header-btn" onclick="openExportModal()">⬇</button>
     <button class="header-btn" onclick="goBack()">⚙</button>
   </div>
   <div class="ai-selector" id="aiSelector"></div>
@@ -394,9 +413,12 @@ function startChat() {
   const customs=JSON.parse(localStorage.getItem('custom-ais')||'[]');
   for(const c of customs){const inp=document.getElementById('key-'+c.id);if(inp){c.key=inp.value.trim();AI[c.id].key=c.key;}}
   localStorage.setItem('custom-ais',JSON.stringify(customs));
+  if(!currentChatId) currentChatId=genId();
   active=Object.entries(AI).filter(([,v])=>v.key).map(([k])=>k);
   if(!active.length){alert('Vlož aspoň jeden API klíč!');return;}
-  selected=[...active];
+  const savedSel=JSON.parse(localStorage.getItem('selected-ais')||'null');
+  selected=savedSel?savedSel.filter(k=>active.includes(k)):[...active];
+  if(!selected.length) selected=[...active];
   buildSelector();
   showScreen('chat');
   document.getElementById('msgInput').focus();
@@ -429,6 +451,7 @@ function buildSelector() {
 function toggleAI(key){
   if(selected.includes(key)){if(selected.length===1)return;selected=selected.filter(k=>k!==key);}
   else selected.push(key);
+  localStorage.setItem('selected-ais',JSON.stringify(selected));
   buildSelector();
 }
 
@@ -627,7 +650,20 @@ function exportAs(format) {
         msgs+=`<div class="msg-ai" style="border-left:3px solid ${ai?.rawColor||'#888'}"><strong style="color:${ai?.rawColor||'#888'}">${ai?.name||k}</strong><div>${marked.parse(v)}</div></div>`;
       }
     }
-    const html=`<!DOCTYPE html><html lang="cs"><head><meta charset="UTF-8"><title>AI Chat – ${date}</title><style>body{font-family:system-ui,sans-serif;max-width:800px;margin:40px auto;padding:20px;background:#f9f9f9;color:#111;}.msg-user{background:#fff;border-radius:12px;padding:16px;margin:16px 0;box-shadow:0 1px 4px rgba(0,0,0,.08)}.msg-ai{background:#fff;border-radius:12px;padding:16px;margin:8px 0 16px 24px;box-shadow:0 1px 4px rgba(0,0,0,.08)}table{border-collapse:collapse;width:100%}td,th{border:1px solid #ddd;padding:8px}pre{background:#f4f4f4;padding:12px;border-radius:8px;overflow:auto}code{background:#f4f4f4;padding:2px 4px;border-radius:4px}</style></head><body><h1>AI Chat – ${date}</h1>${msgs}</body></html>`;;
+    const html=`<!DOCTYPE html><html lang="cs"><head><meta charset="UTF-8"><title>AI Chat – ${date}</title><style>body{font-family:system-ui,sans-serif;max-width:800px;margin:40px auto;padding:20px;background:#f9f9f9;color:#111;}.msg-user{background:#fff;border-radius:12px;padding:16px;margin:16px 0;box-shadow:0 1px 4px rgba(0,0,0,.08)}.msg-ai{background:#fff;border-radius:12px;padding:16px;margin:8px 0 16px 24px;box-shadow:0 1px 4px rgba(0,0,0,.08)}table{border-collapse:collapse;width:100%}td,th{border:1px solid #ddd;padding:8px}pre{background:#f4f4f4;padding:12px;border-radius:8px;overflow:auto}code{background:#f4f4f4;padding:2px 4px;border-radius:4px}</style></head><body><h1>AI Chat – ${date}</h1>${msgs}
+<!-- HISTORY PANEL -->
+<div id="historyPanel" style="display:none" onclick="closeHistoryOutside(event)">
+  <div class="history-box">
+    <div class="history-header">
+      <h3>💬 Historie chatů</h3>
+      <button class="history-close" onclick="closeHistory()">✕</button>
+    </div>
+    <button class="history-new" onclick="newChat();closeHistory()">✚ Nový chat</button>
+    <div class="history-list" id="historyList"></div>
+  </div>
+</div>
+
+</body></html>`;;
     download('konverzace.html', html, 'text/html');
   }
 }
@@ -692,21 +728,24 @@ async function sendMessage() {
 
   if(assistants.length>0){
     addDivider(aisDiv,'ASISTENTI ODPOVÍDAJÍ');
-    await Promise.all(assistants.map(async key=>{
+    // Sekvenčně – každý vidí odpovědi předchozích
+    for(const key of assistants){
       const bubble=addBubble(aisDiv,key,`${AI[key].name.toUpperCase()} · asistent`);
       try{
+        // Předáme dosavadní odpovědi ostatních jako kontext
         let reply='';
-        if(key==='gemini')reply=await callGemini(fullMsg,{});
-        else if(key==='chatgpt')reply=await callChatGPT(fullMsg,{});
-        else reply=await callCustom(key,fullMsg,{});
+        if(key==='gemini')reply=await callGemini(fullMsg,assistantAnswers);
+        else if(key==='chatgpt')reply=await callChatGPT(fullMsg,assistantAnswers);
+        else reply=await callCustom(key,fullMsg,assistantAnswers);
         assistantAnswers[key]=reply;finishBubble(bubble,reply);
       }catch(e){finishBubble(bubble,null,e.message);}
       scrollBottom();
-    }));
+    }
   }
 
   if(!hasClaude){
     history.push({user:msgText,...assistantAnswers});
+    saveCurrent();
     isBusy=false;document.getElementById('sendBtn').disabled=false;return;
   }
 
@@ -725,7 +764,7 @@ async function sendMessage() {
 
     addDivider(aisDiv,'ASISTENTI KONTROLUJÍ');
     const reviews={};
-    await Promise.all(assistants.map(async key=>{
+    for(const key of assistants){
       const bubble=addBubble(aisDiv,key,`${AI[key].name.toUpperCase()} · kontroluje`);
       try{
         const review=key==='gemini'?await reviewGemini(msgText,claudeVerdict)
@@ -735,7 +774,7 @@ async function sendMessage() {
         finishBubble(bubble,`${review.approved?'✅':'❌'} ${review.comment}`);
       }catch(e){reviews[key]={approved:true,comment:''};finishBubble(bubble,null,e.message);}
       scrollBottom();
-    }));
+    }
 
     const approveCount=Object.values(reviews).filter(r=>r.approved).length;
     const total=assistants.length;
@@ -757,6 +796,7 @@ async function sendMessage() {
   scrollBottom();
 
   history.push({user:msgText,claude:claudeVerdict,...(fileSnap?{_file:fileSnap.name}:{})});
+  saveCurrent();
   isBusy=false;document.getElementById('sendBtn').disabled=false;
 }
 
@@ -904,6 +944,103 @@ function scrollBottom(){const m=document.getElementById('messages');setTimeout((
 function escHtml(t){return String(t).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}
 function formatText(t){try{return marked.parse(t);}catch(e){return escHtml(t).replace(/\n/g,'<br>');}}
 
+// ════ CHAT HISTORY ════
+let currentChatId = null;
+
+function genId(){ return 'chat_'+Date.now(); }
+
+function getChats(){
+  return JSON.parse(localStorage.getItem('chat-history')||'[]');
+}
+
+function saveChats(chats){
+  localStorage.setItem('chat-history', JSON.stringify(chats));
+}
+
+function saveCurrent(){
+  if(!history.length) return;
+  const chats = getChats();
+  const title = history[0]?.user?.slice(0,40) || 'Chat';
+  const existing = chats.findIndex(c=>c.id===currentChatId);
+  const entry = { id:currentChatId, title, date:new Date().toISOString(), messages:history };
+  if(existing>=0) chats[existing]=entry;
+  else chats.unshift(entry);
+  // Keep max 50 chats
+  saveChats(chats.slice(0,50));
+}
+
+function newChat(){
+  saveCurrent();
+  currentChatId = genId();
+  history = [];
+  document.getElementById('messages').innerHTML='';
+  document.getElementById('chatTitle').textContent='AI Chat';
+}
+
+function loadChat(id){
+  saveCurrent();
+  const chats = getChats();
+  const chat = chats.find(c=>c.id===id);
+  if(!chat) return;
+  currentChatId = id;
+  history = chat.messages;
+  // Re-render messages
+  const msgsEl = document.getElementById('messages');
+  msgsEl.innerHTML='';
+  for(const h of history){
+    const userDiv=document.createElement('div');
+    userDiv.className='msg-user';
+    userDiv.innerHTML=`<div class="msg-user-bubble">${escHtml(h.user)}</div>`;
+    msgsEl.appendChild(userDiv);
+    const aisDiv=document.createElement('div');
+    aisDiv.className='msg-ais';
+    for(const [k,v] of Object.entries(h)){
+      if(k==='user'||k==='_file') continue;
+      const ai=AI[k];
+      const wrap=document.createElement('div');
+      wrap.className='msg-ai';
+      wrap.innerHTML=`<div class="ai-avatar" style="background:${ai?.rawColor||'#888'}22;color:${ai?.rawColor||'#888'}">${(ai?.name||k).slice(0,2).toUpperCase()}</div><div class="ai-bubble-wrap"><div class="ai-name" style="color:${ai?.rawColor||'#888'}">${ai?.name||k}</div><div class="ai-bubble">${formatText(v)}</div></div>`;
+      aisDiv.appendChild(wrap);
+    }
+    msgsEl.appendChild(aisDiv);
+  }
+  document.getElementById('chatTitle').textContent = chat.title.slice(0,20)+'…';
+  scrollBottom();
+  closeHistory();
+}
+
+function deleteChat(id, e){
+  e.stopPropagation();
+  const chats = getChats().filter(c=>c.id!==id);
+  saveChats(chats);
+  if(currentChatId===id){ history=[]; document.getElementById('messages').innerHTML=''; currentChatId=genId(); }
+  renderHistoryList();
+}
+
+function openHistory(){
+  renderHistoryList();
+  document.getElementById('historyPanel').style.display='flex';
+}
+
+function closeHistory(){
+  document.getElementById('historyPanel').style.display='none';
+}
+
+function closeHistoryOutside(e){
+  if(e.target===document.getElementById('historyPanel')) closeHistory();
+}
+
+function renderHistoryList(){
+  const list = document.getElementById('historyList');
+  const chats = getChats();
+  if(!chats.length){ list.innerHTML='<div style="padding:20px;text-align:center;color:var(--muted);font-size:13px">Žádné chaty zatím</div>'; return; }
+  list.innerHTML = chats.map(c=>`
+    <div class="history-item${c.id===currentChatId?' active':''}" onclick="loadChat('${c.id}')">
+      <button class="history-item-del" onclick="deleteChat('${c.id}',event)">🗑</button>
+      <div class="history-item-title">${escHtml(c.title)}</div>
+      <div class="history-item-meta">${new Date(c.date).toLocaleString('cs-CZ')}</div>
+    </div>`).join('');
+}
 // ════ FIREBASE AUTH ════
 window.onFbAuthChange = async (user) => {
   const nameEl=document.getElementById('lb-name');
@@ -993,6 +1130,19 @@ async function fbLoad(){
       <button class="btn-cancel" onclick="closeEditModal()">Zrušit</button>
       <button class="btn-save" onclick="saveEditAi()">Uložit</button>
     </div>
+  </div>
+</div>
+
+
+<!-- HISTORY PANEL -->
+<div id="historyPanel" style="display:none" onclick="closeHistoryOutside(event)">
+  <div class="history-box">
+    <div class="history-header">
+      <h3>💬 Historie chatů</h3>
+      <button class="history-close" onclick="closeHistory()">✕</button>
+    </div>
+    <button class="history-new" onclick="newChat();closeHistory()">✚ Nový chat</button>
+    <div class="history-list" id="historyList"></div>
   </div>
 </div>
 
