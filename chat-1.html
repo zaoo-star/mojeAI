@@ -1,0 +1,1207 @@
+<!DOCTYPE html>
+<html lang="cs">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+<title>AI Chat</title>
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/marked/9.1.6/marked.min.js"></script>
+<style>
+:root{--bg:#0e0e12;--surface:#17171e;--card:#1e1e28;--border:rgba(255,255,255,0.07);--claude:#c084fc;--gemini:#38bdf8;--chatgpt:#4ade80;--text:#f0f0f5;--muted:rgba(240,240,245,0.4);--input-bg:#1e1e28;}
+*{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent;}
+html,body{height:100%;background:var(--bg);color:var(--text);font-family:'DM Sans',sans-serif;overflow:hidden;}
+.screen{height:100vh;display:none;flex-direction:column;}
+.screen.active{display:flex;}
+#setup{overflow-y:auto;padding:24px 20px 40px;gap:20px;}
+
+
+/* LOGIN BAR */
+.login-bar{display:flex;align-items:center;gap:10px;background:var(--card);border:1px solid var(--border);border-radius:14px;padding:12px 16px;margin-bottom:4px;}
+.login-bar img{width:32px;height:32px;border-radius:50%;border:2px solid var(--border);}
+.login-bar .lb-info{flex:1;min-width:0;}
+.login-bar .lb-name{font-size:14px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.login-bar .lb-status{font-size:11px;color:var(--muted);}
+.login-bar .lb-btn{padding:7px 14px;border-radius:10px;border:none;font-size:13px;font-weight:600;cursor:pointer;white-space:nowrap;}
+.lb-btn-signin{background:white;color:#111;}
+.lb-btn-signout{background:var(--border);color:var(--text);}
+.lb-btn-sync{background:var(--claude);color:#0e0e12;margin-right:4px;}
+.sync-dot{width:8px;height:8px;border-radius:50%;background:#4ade80;display:inline-block;margin-right:4px;}
+
+/* SETUP */
+.setup-header{text-align:center;padding:20px 0 8px;}
+.setup-header h1{font-size:26px;font-weight:600;letter-spacing:-.5px;}
+.setup-header p{color:var(--muted);font-size:14px;margin-top:6px;}
+.section-title{font-size:11px;font-weight:600;letter-spacing:1px;color:var(--muted);text-transform:uppercase;padding:4px 0;}
+.ai-card{background:var(--card);border:1px solid var(--border);border-radius:16px;padding:16px;}
+.ai-card-header{display:flex;align-items:center;gap:10px;margin-bottom:12px;}
+.ai-dot{width:10px;height:10px;border-radius:50%;flex-shrink:0;}
+.ai-card-header span{font-weight:600;font-size:15px;}
+.ai-card-header small{color:var(--muted);font-size:12px;margin-left:auto;}
+.ai-card input{width:100%;background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:12px 14px;color:var(--text);font-family:'DM Mono',monospace;font-size:12px;outline:none;margin-bottom:6px;}
+.ai-card input:focus{border-color:rgba(255,255,255,0.2);}
+.ai-card input::placeholder{color:var(--muted);}
+.hint{font-size:11px;color:var(--muted);}
+.memory-card{background:var(--card);border:1px solid var(--border);border-radius:16px;padding:16px;display:flex;flex-direction:column;gap:10px;}
+.memory-card label{font-size:13px;font-weight:600;}
+.memory-card textarea{width:100%;background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:12px 14px;color:var(--text);font-family:'DM Sans',sans-serif;font-size:13px;outline:none;resize:none;min-height:80px;line-height:1.5;}
+.memory-card textarea:focus{border-color:rgba(255,255,255,0.2);}
+.start-btn{background:var(--text);color:var(--bg);border:none;border-radius:14px;padding:16px;font-family:'DM Sans',sans-serif;font-size:16px;font-weight:600;width:100%;cursor:pointer;}
+.text-btn{background:none;border:1px dashed var(--border);border-radius:12px;padding:12px;color:var(--muted);font-family:'DM Sans',sans-serif;font-size:14px;width:100%;cursor:pointer;text-align:center;}
+
+/* MODAL */
+#modal,#exportModal{position:fixed;inset:0;background:rgba(0,0,0,0.8);display:none;align-items:flex-end;z-index:100;}
+#modal.open,#exportModal.open{display:flex;}
+.modal-box{background:var(--surface);border-radius:20px 20px 0 0;padding:24px 20px 40px;width:100%;display:flex;flex-direction:column;gap:14px;max-height:90vh;overflow-y:auto;}
+.modal-box h3{font-size:17px;font-weight:600;}
+.modal-box input,.modal-box select,.modal-box textarea{width:100%;background:var(--card);border:1px solid var(--border);border-radius:10px;padding:12px 14px;color:var(--text);font-family:'DM Sans',sans-serif;font-size:14px;outline:none;}
+.modal-box textarea{resize:none;min-height:120px;line-height:1.5;}
+.modal-row{display:flex;gap:10px;}
+.modal-row button{flex:1;padding:13px;border-radius:12px;font-family:'DM Sans',sans-serif;font-size:15px;font-weight:600;cursor:pointer;border:none;}
+.btn-cancel{background:var(--card);color:var(--muted);}
+.btn-save{background:var(--text);color:var(--bg);}
+.export-option{background:var(--card);border:1px solid var(--border);border-radius:12px;padding:14px 16px;cursor:pointer;display:flex;align-items:center;gap:12px;transition:border-color .15s;}
+.export-option:hover{border-color:rgba(255,255,255,0.2);}
+.export-icon{font-size:24px;}
+.export-info strong{display:block;font-size:14px;font-weight:600;}
+.export-info span{font-size:12px;color:var(--muted);}
+
+/* CHAT */
+.chat-header{background:var(--surface);border-bottom:1px solid var(--border);padding:12px 16px;display:flex;align-items:center;gap:10px;flex-shrink:0;}
+.back-btn{background:none;border:none;color:var(--muted);font-size:20px;cursor:pointer;padding:4px;line-height:1;}
+.chat-header-title{font-weight:600;font-size:16px;flex:1;}
+.header-btn{background:none;border:1px solid var(--border);border-radius:8px;color:var(--muted);font-size:12px;padding:6px 10px;cursor:pointer;font-family:'DM Sans',sans-serif;white-space:nowrap;}
+.ai-selector{background:var(--surface);border-bottom:1px solid var(--border);padding:10px 16px;display:flex;gap:8px;flex-wrap:wrap;flex-shrink:0;}
+.ai-selector::-webkit-scrollbar{display:none;}
+.ai-chip{display:flex;align-items:center;gap:6px;padding:7px 12px;border-radius:20px;border:1px solid var(--border);background:var(--card);cursor:pointer;white-space:nowrap;transition:all .15s;user-select:none;}
+.ai-chip.selected{border-color:var(--chip-color);background:color-mix(in srgb,var(--chip-color) 15%,transparent);}
+.ai-chip-dot{width:7px;height:7px;border-radius:50%;}
+.ai-chip span{font-size:12px;font-weight:600;color:var(--muted);}
+.ai-chip.selected span{color:var(--text);}
+
+/* FILE PREVIEW */
+.file-preview{background:var(--card);border:1px solid var(--border);border-radius:12px;padding:10px 14px;margin:8px 16px 0;display:none;align-items:center;gap:10px;flex-shrink:0;}
+.file-preview.visible{display:flex;}
+.file-preview-icon{font-size:20px;}
+.file-preview-name{font-size:13px;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.file-preview-remove{background:none;border:none;color:var(--muted);font-size:16px;cursor:pointer;padding:4px;}
+
+.messages{flex:1;overflow-y:auto;padding:16px;display:flex;flex-direction:column;gap:20px;scroll-behavior:smooth;}
+.msg-user{display:flex;justify-content:flex-end;}
+.msg-user-bubble{background:var(--card);border:1px solid var(--border);border-radius:18px 18px 4px 18px;padding:12px 16px;max-width:85%;font-size:15px;line-height:1.5;}
+.msg-file-badge{display:inline-flex;align-items:center;gap:6px;background:rgba(255,255,255,0.06);border-radius:8px;padding:4px 8px;font-size:11px;color:var(--muted);margin-top:6px;}
+.msg-ais{display:flex;flex-direction:column;gap:10px;}
+.round-divider{display:flex;align-items:center;gap:8px;margin:4px 0;}
+.round-divider span{font-size:10px;color:var(--muted);letter-spacing:1px;white-space:nowrap;}
+.round-divider::before,.round-divider::after{content:'';flex:1;height:1px;background:var(--border);}
+.msg-ai{display:flex;gap:10px;align-items:flex-start;animation:fadeSlide .3s ease;}
+@keyframes fadeSlide{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:translateY(0)}}
+.ai-avatar{width:30px;height:30px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;font-family:'DM Mono',monospace;flex-shrink:0;margin-top:2px;}
+.ai-bubble-wrap{flex:1;min-width:0;}
+.ai-name{font-size:11px;font-weight:600;margin-bottom:5px;letter-spacing:.5px;text-transform:uppercase;}
+.ai-bubble{background:var(--card);border:1px solid var(--border);border-radius:4px 18px 18px 18px;padding:12px 14px;font-size:14px;line-height:1.6;color:var(--text);overflow-x:auto;}
+.ai-bubble.loading{display:flex;gap:5px;align-items:center;padding:14px;}
+.ai-bubble.final{border-color:rgba(192,132,252,0.3);background:rgba(192,132,252,0.05);}
+.dot-anim{width:6px;height:6px;border-radius:50%;animation:bounce 1.2s infinite;}
+.dot-anim:nth-child(2){animation-delay:.2s;}
+.dot-anim:nth-child(3){animation-delay:.4s;}
+@keyframes bounce{0%,60%,100%{transform:translateY(0)}30%{transform:translateY(-6px)}}
+
+/* INPUT AREA */
+.input-area{background:var(--surface);border-top:1px solid var(--border);padding:10px 16px;display:flex;gap:8px;align-items:flex-end;flex-shrink:0;}
+.input-btn{width:36px;height:36px;border-radius:50%;background:var(--card);border:1px solid var(--border);color:var(--muted);cursor:pointer;display:flex;align-items:center;justify-content:center;flex-shrink:0;font-size:16px;transition:all .15s;}
+.input-btn:hover{border-color:rgba(255,255,255,0.2);color:var(--text);}
+.input-btn.recording{background:rgba(239,68,68,0.2);border-color:#ef4444;color:#ef4444;animation:pulse 1s infinite;}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.5}}
+#msgInput{flex:1;background:var(--input-bg);border:1px solid var(--border);border-radius:20px;padding:11px 16px;color:var(--text);font-family:'DM Sans',sans-serif;font-size:15px;outline:none;resize:none;max-height:120px;line-height:1.4;}
+#msgInput::placeholder{color:var(--muted);}
+.send-btn{width:40px;height:40px;border-radius:50%;background:var(--text);border:none;cursor:pointer;display:flex;align-items:center;justify-content:center;flex-shrink:0;}
+.send-btn:disabled{background:#333;cursor:default;}
+.send-btn svg{width:17px;height:17px;}
+
+/* MARKDOWN */
+.ai-bubble h1,.ai-bubble h2,.ai-bubble h3{font-weight:600;margin:12px 0 6px;line-height:1.3;}
+.ai-bubble h1{font-size:18px;}.ai-bubble h2{font-size:16px;}.ai-bubble h3{font-size:15px;}
+.ai-bubble p{margin:0 0 8px;}.ai-bubble p:last-child{margin:0;}
+.ai-bubble ul,.ai-bubble ol{margin:6px 0 8px 18px;}.ai-bubble li{margin:3px 0;}
+.ai-bubble code{font-family:'DM Mono',monospace;font-size:12px;background:rgba(255,255,255,0.08);padding:2px 6px;border-radius:4px;}
+.ai-bubble pre{background:#111;border:1px solid var(--border);border-radius:10px;padding:12px 14px;overflow-x:auto;margin:8px 0;}
+.ai-bubble pre code{background:none;padding:0;font-size:12px;line-height:1.6;}
+.ai-bubble table{border-collapse:collapse;width:100%;margin:10px 0;font-size:13px;}
+.ai-bubble th{background:rgba(255,255,255,0.07);padding:8px 12px;text-align:left;font-weight:600;border:1px solid var(--border);}
+.ai-bubble td{padding:7px 12px;border:1px solid var(--border);}
+.ai-bubble tr:nth-child(even) td{background:rgba(255,255,255,0.03);}
+.ai-bubble blockquote{border-left:3px solid var(--border);margin:8px 0;padding:4px 12px;color:var(--muted);}
+.ai-bubble a{color:#93c5fd;text-decoration:none;}
+.ai-bubble strong{font-weight:600;}.ai-bubble em{font-style:italic;}
+.ai-bubble hr{border:none;border-top:1px solid var(--border);margin:12px 0;}
+
+
+/* HISTORY PANEL */
+.history-panel{position:fixed;inset:0;background:rgba(0,0,0,0.7);z-index:150;display:flex;justify-content:flex-end;}
+.history-box{width:min(320px,90vw);height:100%;background:var(--surface);display:flex;flex-direction:column;animation:slideIn .2s ease;}
+@keyframes slideIn{from{transform:translateX(100%)}to{transform:translateX(0)}}
+.history-header{padding:16px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:10px;}
+.history-header h3{flex:1;font-size:16px;font-weight:600;}
+.history-close{background:none;border:none;color:var(--muted);font-size:20px;cursor:pointer;}
+.history-new{margin:12px 16px;padding:12px;background:var(--claude);color:#0e0e12;border:none;border-radius:12px;font-size:14px;font-weight:700;cursor:pointer;width:calc(100% - 32px);}
+.history-list{flex:1;overflow-y:auto;padding:8px;}
+.history-item{padding:12px 14px;border-radius:12px;cursor:pointer;margin-bottom:4px;border:1px solid transparent;}
+.history-item:hover{background:var(--card);}
+.history-item.active{background:var(--card);border-color:var(--border);}
+.history-item-title{font-size:13px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.history-item-meta{font-size:11px;color:var(--muted);margin-top:3px;}
+.history-item-del{float:right;background:none;border:none;color:var(--muted);cursor:pointer;font-size:14px;padding:0 4px;}
+
+/* CHIP CONTEXT MENU */
+.chip-menu{position:fixed;background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:6px;z-index:200;min-width:160px;box-shadow:0 8px 24px rgba(0,0,0,0.4);animation:fadeSlide .15s ease;}
+.chip-menu-item{display:flex;align-items:center;gap:10px;padding:10px 12px;border-radius:10px;cursor:pointer;font-size:14px;font-weight:500;}
+.chip-menu-item:hover{background:var(--card);}
+.chip-menu-item.danger{color:#f87171;}
+.chip-menu-item.danger:hover{background:rgba(248,113,113,0.1);}
+.chip-menu-divider{height:1px;background:var(--border);margin:4px 0;}
+</style>
+<script type="module">
+// ════ FIREBASE ════
+import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
+import { getAuth, GoogleAuthProvider, signInWithPopup, signOut, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js";
+import { getFirestore, doc, setDoc, getDoc } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
+
+const firebaseConfig = {
+  apiKey: "AIzaSyAUPDJgkwPq3tTrz539jEr5CjxSpwFe3pg",
+  authDomain: "mojeai-15f93.firebaseapp.com",
+  projectId: "mojeai-15f93",
+  storageBucket: "mojeai-15f93.firebasestorage.app",
+  messagingSenderId: "476163889728",
+  appId: "1:476163889728:web:361492a39ab0488aa89da5"
+};
+
+const app = initializeApp(firebaseConfig);
+const auth = getAuth(app);
+const db = getFirestore(app);
+
+// Expose to global scope
+window._fbAuth = auth;
+window._fbDb = db;
+window._fbProvider = new GoogleAuthProvider();
+window._fbSignIn = () => signInWithPopup(auth, window._fbProvider);
+window._fbSignOut = () => signOut(auth);
+
+window._fbSave = async (uid, data) => {
+  await setDoc(doc(db, 'users', uid), data);
+};
+
+window._fbLoad = async (uid) => {
+  const snap = await getDoc(doc(db, 'users', uid));
+  return snap.exists() ? snap.data() : null;
+};
+
+onAuthStateChanged(auth, user => {
+  window._fbUser = user;
+  if (typeof window.onFbAuthChange === 'function') window.onFbAuthChange(user);
+});
+</script>
+</head>
+<body>
+
+<!-- SETUP -->
+<div id="setup" class="screen active">
+  <div class="setup-header">
+    <h1>🤖 AI Chat</h1>
+    <p>Tvůj tým AI asistentů. Claude = šéf 👑</p>
+  </div>
+
+  <!-- LOGIN BAR -->
+  <div class="login-bar" id="loginBar">
+    <div id="lb-avatar" style="width:32px;height:32px;border-radius:50%;background:var(--border);display:flex;align-items:center;justify-content:center;font-size:18px;">👤</div>
+    <div class="lb-info">
+      <div class="lb-name" id="lb-name">Nepřihlášen</div>
+      <div class="lb-status" id="lb-status">Nastavení uložena jen v tomto prohlížeči</div>
+    </div>
+    <button class="lb-btn lb-btn-sync" id="lb-sync-btn" onclick="fbSync()" style="display:none">☁ Sync</button>
+    <button class="lb-btn lb-btn-signin" id="lb-signin-btn" onclick="fbSignIn()">🔑 Google</button>
+  </div>
+
+  <div class="section-title">API Klíče</div>
+
+  <div class="ai-card">
+    <div class="ai-card-header"><div class="ai-dot" style="background:#c084fc"></div><span>Claude (CEO 👑)</span><small>šéf · Anthropic</small></div>
+    <input type="password" id="key-claude" placeholder="sk-ant-..." autocomplete="off">
+    <div class="hint">→ console.anthropic.com</div>
+  </div>
+  <div class="ai-card">
+    <div class="ai-card-header"><div class="ai-dot" style="background:#38bdf8"></div><span>Gemini (Analytik 📊)</span><small>Google</small></div>
+    <input type="password" id="key-gemini" placeholder="AIza..." autocomplete="off">
+    <div class="hint">→ aistudio.google.com/app/apikey</div>
+  </div>
+  <div class="ai-card">
+    <div class="ai-card-header"><div class="ai-dot" style="background:#4ade80"></div><span>ChatGPT (Generalista 🎯)</span><small>OpenAI</small></div>
+    <input type="password" id="key-chatgpt" placeholder="sk-proj-..." autocomplete="off">
+    <div class="hint">→ platform.openai.com/api-keys</div>
+  </div>
+  <div id="customAiCards"></div>
+  <button class="text-btn" onclick="openModal('add')">+ Přidat vlastní AI (Groq, Mistral, DeepSeek...)</button>
+
+  <div class="section-title" style="margin-top:4px">🧠 Paměť – kdo jsi</div>
+  <div class="memory-card">
+    <label>O tobě (AI si tě zapamatují)</label>
+    <textarea id="memoryText" placeholder="Např: Jmenuji se Martin, žiji v ČR. Pracuji jako... Mám rád... Moje cíle jsou... Alergie na..."></textarea>
+    <div class="hint">Toto dostanou všechny AI jako kontext před každou odpovědí.</div>
+  </div>
+
+  <button class="start-btn" onclick="startChat()">Spustit chat →</button>
+  <button class="start-btn" onclick="downloadHtml()" style="background:var(--card);color:var(--text);border:1px solid var(--border);margin-top:8px;">⬇ Stáhnout chat.html</button>
+  <div style="text-align:center;font-size:11px;color:var(--muted)">Vše se uloží v prohlížeči pro příště</div>
+</div>
+
+<!-- CHAT -->
+<div id="chat" class="screen">
+  <div class="chat-header">
+    <button class="back-btn" onclick="goBack()">←</button>
+    <div class="chat-header-title" id="chatTitle">AI Chat</div>
+    <button class="header-btn" onclick="newChat()">✚ Nový</button>
+    <button class="header-btn" onclick="openHistory()">📋</button>
+    <button class="header-btn" onclick="openExportModal()">⬇</button>
+    <button class="header-btn" onclick="goBack()">⚙</button>
+  </div>
+  <div class="ai-selector" id="aiSelector"></div>
+  <div class="file-preview" id="filePreview">
+    <span class="file-preview-icon">📎</span>
+    <span class="file-preview-name" id="filePreviewName"></span>
+    <button class="file-preview-remove" onclick="removeFile()">✕</button>
+  </div>
+  <div id="searchBar" style="display:none;padding:8px 16px;background:var(--card);border-bottom:1px solid var(--border);font-size:12px;color:var(--muted);flex-shrink:0;">🔍 <span id="searchStatus"></span></div>
+  <div class="messages" id="messages"></div>
+  <div class="input-area">
+    <button class="input-btn" onclick="triggerFileUpload()" title="Přiložit soubor">📎</button>
+    <button class="input-btn" id="voiceBtn" onclick="toggleVoice()" title="Hlasový vstup">🎙️</button>
+    <button class="input-btn" id="searchBtn" onclick="webSearch()" title="Hledat na webu">🔍</button>
+    <input type="file" id="fileInput" style="display:none" accept=".txt,.pdf,.md,.js,.py,.html,.css,.json,.csv" onchange="handleFile(event)">
+    <textarea id="msgInput" placeholder="Napiš zprávu…" rows="1" onkeydown="handleKey(event)" oninput="autoResize(this)"></textarea>
+    <button class="send-btn" id="sendBtn" onclick="sendMessage()">
+      <svg viewBox="0 0 24 24" fill="none" stroke="#0e0e12" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+        <line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/>
+      </svg>
+    </button>
+  </div>
+</div>
+
+<!-- MODAL: Přidat AI -->
+<div id="modal" onclick="closeModalOutside(event)">
+  <div class="modal-box">
+    <h3>Přidat vlastní AI</h3>
+    <input type="text" id="m-name" placeholder="Název (např. Groq / Mistral)" maxlength="20">
+    <input type="password" id="m-key" placeholder="API klíč">
+    <input type="text" id="m-url" placeholder="API URL (OpenAI-compatible)">
+    <input type="text" id="m-model" placeholder="Model (např. llama-3.3-70b-versatile)">
+    <input type="text" id="m-color" placeholder="Barva hex (např. #f97316)" value="#f97316">
+    <div class="hint">Groq: https://api.groq.com/openai/v1<br>Mistral: https://api.mistral.ai/v1<br>DeepSeek: https://api.deepseek.com/v1</div>
+    <div class="modal-row">
+      <button class="btn-cancel" onclick="closeModal()">Zrušit</button>
+      <button class="btn-save" onclick="saveCustomAi()">Přidat</button>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL: Export -->
+<div id="exportModal" onclick="closeExportOutside(event)">
+  <div class="modal-box">
+    <h3>⬇ Export konverzace</h3>
+    <div class="export-option" onclick="exportAs('txt')">
+      <span class="export-icon">📄</span>
+      <div class="export-info"><strong>Prostý text (.txt)</strong><span>Celá konverzace jako text</span></div>
+    </div>
+    <div class="export-option" onclick="exportAs('md')">
+      <span class="export-icon">📝</span>
+      <div class="export-info"><strong>Markdown (.md)</strong><span>Formátovaný text s tabulkami</span></div>
+    </div>
+    <div class="export-option" onclick="exportAs('html')">
+      <span class="export-icon">🌐</span>
+      <div class="export-info"><strong>HTML stránka (.html)</strong><span>Hezky naformátovaná stránka</span></div>
+    </div>
+    <div class="export-option" onclick="exportAs('json')">
+      <span class="export-icon">💾</span>
+      <div class="export-info"><strong>JSON data (.json)</strong><span>Surová data konverzace</span></div>
+    </div>
+    <button class="btn-cancel" style="width:100%;padding:13px;border-radius:12px;font-family:'DM Sans',sans-serif;font-size:15px;font-weight:600;cursor:pointer;border:none;" onclick="closeExportModal()">Zavřít</button>
+  </div>
+</div>
+
+<script>
+// ════ DATA ════
+const BUILTIN_AI = {
+  claude:  { name:'Claude (CEO 👑)',          rawColor:'#c084fc', key:'', builtin:true, boss:true },
+  gemini:  { name:'Gemini (Analytik 📊)',     rawColor:'#38bdf8', key:'', builtin:true },
+  chatgpt: { name:'ChatGPT (Generalista 🎯)', rawColor:'#4ade80', key:'', builtin:true },
+};
+let AI = { ...BUILTIN_AI };
+let active=[], selected=[], history=[], isBusy=false;
+let userMemory='', attachedFile=null;
+let recognition=null, isRecording=false;
+
+const CLAUDE_MODELS = {
+  haiku:  { id:'claude-haiku-4-5-20251001',  label:'Haiku'  },
+  sonnet: { id:'claude-sonnet-4-5-20251022', label:'Sonnet' },
+  opus:   { id:'claude-opus-4-5-20251101',   label:'Opus'   },
+};
+
+const MD_SYSTEM = 'Odpovídej v Markdownu – používej tabulky, kód, seznamy, nadpisy kdykoli to dává smysl. Buď strukturovaný a přesný.';
+function getSearchPrompt(){ return webSearchContext ? '\n\n---\n' + webSearchContext + '\n---\nVyužij tato data z webu ve své odpovědi.' : ''; }
+
+// ════ INIT ════
+window.addEventListener('DOMContentLoaded', () => {
+  document.getElementById('key-claude').value  = localStorage.getItem('key-claude')  || '';
+  document.getElementById('key-gemini').value  = localStorage.getItem('key-gemini')  || '';
+  document.getElementById('key-chatgpt').value = localStorage.getItem('key-chatgpt') || '';
+  document.getElementById('memoryText').value  = localStorage.getItem('user-memory') || '';
+  loadCustomAIs();
+  initVoice();
+});
+
+// ════ MEMORY ════
+function getMemoryPrompt() {
+  if (!userMemory) return '';
+  return `\n\nInformace o uživateli (pamatuj si toto):\n${userMemory}`;
+}
+
+// ════ CUSTOM AIs ════
+function loadCustomAIs() {
+  const saved = JSON.parse(localStorage.getItem('custom-ais') || '[]');
+  const container = document.getElementById('customAiCards');
+  container.innerHTML = '';
+  for (const c of saved) {
+    AI[c.id] = { name:c.name, rawColor:c.color, key:c.key, url:c.url, model:c.model, builtin:false };
+    const card = document.createElement('div');
+    card.className = 'ai-card';
+    card.innerHTML = `
+      <div class="ai-card-header">
+        <div class="ai-dot" style="background:${c.color}"></div>
+        <span>${escHtml(c.name)}</span>
+        <small>vlastní &nbsp;<button onclick="removeCustomAi('${c.id}')" style="background:none;border:none;color:#f87171;cursor:pointer;font-size:11px;">✕</button></small>
+      </div>
+      <input type="password" id="key-${c.id}" value="${escHtml(c.key)}" placeholder="API klíč" autocomplete="off">
+      <div class="hint">→ ${escHtml(c.url)} · ${escHtml(c.model)}</div>`;
+    container.appendChild(card);
+  }
+}
+
+function saveCustomAi() {
+  const name=document.getElementById('m-name').value.trim();
+  const key=document.getElementById('m-key').value.trim();
+  const url=document.getElementById('m-url').value.trim().replace(/\/$/,'');
+  const model=document.getElementById('m-model').value.trim();
+  const color=document.getElementById('m-color').value.trim()||'#f97316';
+  if(!name||!url||!model){alert('Vyplň název, URL a model!');return;}
+  const id='custom_'+Date.now();
+  const saved=JSON.parse(localStorage.getItem('custom-ais')||'[]');
+  saved.push({id,name,key,url,model,color});
+  localStorage.setItem('custom-ais',JSON.stringify(saved));
+  closeModal(); loadCustomAIs();
+}
+
+function removeCustomAi(id) {
+  const saved=JSON.parse(localStorage.getItem('custom-ais')||'[]').filter(c=>c.id!==id);
+  localStorage.setItem('custom-ais',JSON.stringify(saved));
+  delete AI[id]; loadCustomAIs();
+}
+
+// ════ START CHAT ════
+function startChat() {
+  AI.claude.key  = document.getElementById('key-claude').value.trim();
+  AI.gemini.key  = document.getElementById('key-gemini').value.trim();
+  AI.chatgpt.key = document.getElementById('key-chatgpt').value.trim();
+  userMemory     = document.getElementById('memoryText').value.trim();
+  localStorage.setItem('key-claude',  AI.claude.key);
+  localStorage.setItem('key-gemini',  AI.gemini.key);
+  localStorage.setItem('key-chatgpt', AI.chatgpt.key);
+  localStorage.setItem('user-memory', userMemory);
+  const customs=JSON.parse(localStorage.getItem('custom-ais')||'[]');
+  for(const c of customs){const inp=document.getElementById('key-'+c.id);if(inp){c.key=inp.value.trim();AI[c.id].key=c.key;}}
+  localStorage.setItem('custom-ais',JSON.stringify(customs));
+  if(!currentChatId) currentChatId=genId();
+  active=Object.entries(AI).filter(([,v])=>v.key).map(([k])=>k);
+  if(!active.length){alert('Vlož aspoň jeden API klíč!');return;}
+  const savedSel=JSON.parse(localStorage.getItem('selected-ais')||'null');
+  selected=savedSel?savedSel.filter(k=>active.includes(k)):[...active];
+  if(!selected.length) selected=[...active];
+  buildSelector();
+  showScreen('chat');
+  document.getElementById('msgInput').focus();
+}
+
+function goBack(){showScreen('setup');}
+function showScreen(id){document.querySelectorAll('.screen').forEach(s=>s.classList.remove('active'));document.getElementById(id).classList.add('active');}
+
+// ════ AI SELECTOR ════
+function buildSelector() {
+  const bar=document.getElementById('aiSelector');
+  bar.innerHTML='';
+  const allChip=document.createElement('div');
+  allChip.className='ai-chip'+(active.every(k=>selected.includes(k))?' selected':'');
+  allChip.style.setProperty('--chip-color','#888');
+  allChip.innerHTML='<span>Všechny</span>';
+  allChip.onclick=()=>{selected=[...active];buildSelector();};
+  bar.appendChild(allChip);
+  for(const key of active){
+    const ai=AI[key];
+    const chip=document.createElement('div');
+    chip.className='ai-chip'+(selected.includes(key)?' selected':'');
+    chip.style.setProperty('--chip-color',ai.rawColor);
+    chip.innerHTML=`<div class="ai-chip-dot" style="background:${ai.rawColor}"></div><span>${ai.name}</span>`;
+    chip.onclick=(e)=>{ e.stopPropagation(); showChipMenu(key,chip); };
+    bar.appendChild(chip);
+  }
+}
+
+function toggleAI(key){
+  if(selected.includes(key)){if(selected.length===1)return;selected=selected.filter(k=>k!==key);}
+  else selected.push(key);
+  localStorage.setItem('selected-ais',JSON.stringify(selected));
+  buildSelector();
+}
+
+// ════ CHIP CONTEXT MENU ════
+let currentChipMenu=null;
+
+function showChipMenu(key, chipEl) {
+  closeChipMenu();
+  const ai=AI[key];
+  const rect=chipEl.getBoundingClientRect();
+  const menu=document.createElement('div');
+  menu.className='chip-menu';
+  menu.id='chipMenu';
+
+  const isOn=selected.includes(key);
+  menu.innerHTML=`
+    <div class="chip-menu-item" onclick="toggleAI('${key}');closeChipMenu();">
+      <span>${isOn?'⏸':'▶'}</span><span>${isOn?'Vypnout':'Zapnout'}</span>
+    </div>
+    <div class="chip-menu-item" onclick="openEditModal('${key}');closeChipMenu();">
+      <span>✏️</span><span>Upravit</span>
+    </div>`;
+
+  // Umísti menu
+  menu.style.left = Math.min(rect.left, window.innerWidth-180)+'px';
+  menu.style.top = (rect.bottom+6)+'px';
+  document.body.appendChild(menu);
+  currentChipMenu=menu;
+
+  // Zavři při kliknutí mimo
+  setTimeout(()=>document.addEventListener('click', closeChipMenuOutside), 10);
+}
+
+function closeChipMenu(){
+  if(currentChipMenu){currentChipMenu.remove();currentChipMenu=null;}
+  document.removeEventListener('click', closeChipMenuOutside);
+}
+
+function closeChipMenuOutside(e){
+  if(!currentChipMenu||currentChipMenu.contains(e.target))return;
+  closeChipMenu();
+}
+
+// ════ EDIT AI MODAL ════
+let editingKey=null;
+
+function openEditModal(key) {
+  editingKey=key;
+  const ai=AI[key];
+  document.getElementById('editModalTitle').textContent='Upravit: '+ai.name;
+  document.getElementById('e-name').value=ai.name;
+  document.getElementById('e-key').value=ai.key||'';
+  document.getElementById('e-url').value=ai.url||'';
+  document.getElementById('e-model').value=ai.model||'';
+  document.getElementById('e-color').value=ai.rawColor||'#888';
+  // Skryj URL a model pro vestavěné AI
+  const isBuiltin=ai.builtin;
+  document.getElementById('e-url').style.display=isBuiltin?'none':'block';
+  document.getElementById('e-model').style.display=isBuiltin?'none':'block';
+  const hints={claude:'console.anthropic.com',gemini:'aistudio.google.com/app/apikey',chatgpt:'platform.openai.com/api-keys'};
+  document.getElementById('e-hint').textContent=hints[key]?'→ '+hints[key]:'';
+  document.getElementById('editModal').style.display='flex';
+}
+
+function closeEditModal(){
+  document.getElementById('editModal').style.display='none';
+  editingKey=null;
+}
+
+function closeEditOutside(e){if(e.target===document.getElementById('editModal'))closeEditModal();}
+
+function saveEditAi() {
+  if(!editingKey)return;
+  const ai=AI[editingKey];
+  const newKey=document.getElementById('e-key').value.trim();
+  const newColor=document.getElementById('e-color').value.trim()||ai.rawColor;
+
+  // Ulož klíč
+  ai.key=newKey;
+  ai.rawColor=newColor;
+
+  if(!ai.builtin){
+    // Vlastní AI – ulož i name, url, model
+    ai.name=document.getElementById('e-name').value.trim()||ai.name;
+    ai.url=document.getElementById('e-url').value.trim()||ai.url;
+    ai.model=document.getElementById('e-model').value.trim()||ai.model;
+    // Ulož do localStorage
+    const customs=JSON.parse(localStorage.getItem('custom-ais')||'[]');
+    const idx=customs.findIndex(c=>c.id===editingKey);
+    if(idx>=0){customs[idx]={...customs[idx],name:ai.name,key:ai.key,url:ai.url,model:ai.model,color:ai.rawColor};}
+    localStorage.setItem('custom-ais',JSON.stringify(customs));
+  } else {
+    // Vestavěná AI – ulož jen klíč
+    localStorage.setItem('key-'+editingKey, newKey);
+    // Aktualizuj i vstup v setup
+    const inp=document.getElementById('key-'+editingKey);
+    if(inp)inp.value=newKey;
+  }
+
+  closeEditModal();
+  buildSelector(); // Obnov barvy
+}
+
+// ════ FILE HANDLING ════
+function triggerFileUpload(){document.getElementById('fileInput').click();}
+
+function handleFile(e) {
+  const file=e.target.files[0];
+  if(!file)return;
+  const reader=new FileReader();
+  reader.onload=(ev)=>{
+    attachedFile={name:file.name,content:ev.target.result,type:file.type};
+    document.getElementById('filePreviewName').textContent=file.name;
+    document.getElementById('filePreview').classList.add('visible');
+  };
+  reader.readAsText(file);
+  e.target.value='';
+}
+
+function removeFile(){
+  attachedFile=null;
+  document.getElementById('filePreview').classList.remove('visible');
+}
+
+// ════ VOICE INPUT ════
+function initVoice() {
+  const SpeechRecognition=window.SpeechRecognition||window.webkitSpeechRecognition;
+  if(!SpeechRecognition){document.getElementById('voiceBtn').style.opacity='0.3';document.getElementById('voiceBtn').title='Hlas není podporován';return;}
+  recognition=new SpeechRecognition();
+  recognition.lang='cs-CZ';
+  recognition.continuous=false;
+  recognition.interimResults=false;
+  recognition.onresult=(e)=>{
+    const txt=e.results[0][0].transcript;
+    document.getElementById('msgInput').value+=txt;
+    autoResize(document.getElementById('msgInput'));
+    stopVoice();
+  };
+  recognition.onerror=()=>stopVoice();
+  recognition.onend=()=>stopVoice();
+}
+
+function toggleVoice(){isRecording?stopVoice():startVoice();}
+function startVoice(){if(!recognition)return;recognition.start();isRecording=true;document.getElementById('voiceBtn').classList.add('recording');}
+function stopVoice(){if(recognition&&isRecording){try{recognition.stop();}catch(e){}}isRecording=false;document.getElementById('voiceBtn').classList.remove('recording');}
+
+// ════ MODALS ════
+function openModal(){document.getElementById('modal').classList.add('open');}
+function closeModal(){document.getElementById('modal').classList.remove('open');}
+function closeModalOutside(e){if(e.target===document.getElementById('modal'))closeModal();}
+function openExportModal(){document.getElementById('exportModal').classList.add('open');}
+function closeExportModal(){document.getElementById('exportModal').classList.remove('open');}
+function closeExportOutside(e){if(e.target===document.getElementById('exportModal'))closeExportModal();}
+
+// ════ EXPORT ════
+function exportAs(format) {
+  closeExportModal();
+  const date=new Date().toLocaleDateString('cs-CZ');
+  if(format==='json'){
+    download('konverzace.json', JSON.stringify(history, null, 2), 'application/json');
+    return;
+  }
+  if(format==='txt'){
+    let out=`AI Chat – ${date}\n${'='.repeat(40)}\n\n`;
+    for(const h of history){
+      out+=`Ty: ${h.user}\n\n`;
+      for(const [k,v] of Object.entries(h)){
+        if(k==='user')continue;
+        out+=`${AI[k]?.name||k}:\n${v}\n\n`;
+      }
+      out+=`${'-'.repeat(40)}\n\n`;
+    }
+    download('konverzace.txt', out, 'text/plain');
+    return;
+  }
+  if(format==='md'){
+    let out=`# AI Chat – ${date}\n\n`;
+    for(const h of history){
+      out+=`## 💬 ${escHtml(h.user)}\n\n`;
+      for(const [k,v] of Object.entries(h)){
+        if(k==='user')continue;
+        out+=`### ${AI[k]?.name||k}\n\n${v}\n\n`;
+      }
+      out+=`---\n\n`;
+    }
+    download('konverzace.md', out, 'text/markdown');
+    return;
+  }
+  if(format==='html'){
+    let msgs='';
+    for(const h of history){
+      msgs+=`<div class="msg-user"><strong>Ty:</strong> ${escHtml(h.user)}</div>`;
+      for(const [k,v] of Object.entries(h)){
+        if(k==='user')continue;
+        const ai=AI[k];
+        msgs+=`<div class="msg-ai" style="border-left:3px solid ${ai?.rawColor||'#888'}"><strong style="color:${ai?.rawColor||'#888'}">${ai?.name||k}</strong><div>${marked.parse(v)}</div></div>`;
+      }
+    }
+    const html=`<!DOCTYPE html><html lang="cs"><head><meta charset="UTF-8"><title>AI Chat – ${date}</title><style>body{font-family:system-ui,sans-serif;max-width:800px;margin:40px auto;padding:20px;background:#f9f9f9;color:#111;}.msg-user{background:#fff;border-radius:12px;padding:16px;margin:16px 0;box-shadow:0 1px 4px rgba(0,0,0,.08)}.msg-ai{background:#fff;border-radius:12px;padding:16px;margin:8px 0 16px 24px;box-shadow:0 1px 4px rgba(0,0,0,.08)}table{border-collapse:collapse;width:100%}td,th{border:1px solid #ddd;padding:8px}pre{background:#f4f4f4;padding:12px;border-radius:8px;overflow:auto}code{background:#f4f4f4;padding:2px 4px;border-radius:4px}</style></head><body><h1>AI Chat – ${date}</h1>${msgs}
+<!-- HISTORY PANEL -->
+<div id="historyPanel" style="display:none" onclick="closeHistoryOutside(event)">
+  <div class="history-box">
+    <div class="history-header">
+      <h3>💬 Historie chatů</h3>
+      <button class="history-close" onclick="closeHistory()">✕</button>
+    </div>
+    <button class="history-new" onclick="newChat();closeHistory()">✚ Nový chat</button>
+    <div class="history-list" id="historyList"></div>
+  </div>
+</div>
+
+</body></html>`;;
+    download('konverzace.html', html, 'text/html');
+  }
+}
+
+function download(filename, content, type) {
+  const a=document.createElement('a');
+  a.href=URL.createObjectURL(new Blob([content],{type}));
+  a.download=filename;
+  a.click();
+}
+
+// ════ CHAT LOGIC ════
+function handleKey(e){if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();sendMessage();}}
+function autoResize(el){el.style.height='auto';el.style.height=Math.min(el.scrollHeight,120)+'px';}
+
+async function sendMessage() {
+  if(isBusy)return;
+  const input=document.getElementById('msgInput');
+  const text=input.value.trim();
+  if(!text&&!attachedFile)return;
+  const msgText=text||'Analyzuj přiložený soubor.';
+  const fileSnap=attachedFile;
+  input.value='';input.style.height='auto';
+  removeFile();
+  isBusy=true;
+  document.getElementById('sendBtn').disabled=true;
+
+  const msgs=document.getElementById('messages');
+  const userDiv=document.createElement('div');
+  userDiv.className='msg-user';
+  userDiv.innerHTML=`<div class="msg-user-bubble">${escHtml(msgText)}${fileSnap?`<div class="msg-file-badge">📎 ${escHtml(fileSnap.name)}</div>`:''}</div>`;
+  msgs.appendChild(userDiv);
+
+  const aisDiv=document.createElement('div');
+  aisDiv.className='msg-ais';
+  msgs.appendChild(aisDiv);
+  scrollBottom();
+
+  const currentSelected=[...selected];
+  const assistants=currentSelected.filter(k=>!AI[k].boss);
+  const hasClaude=currentSelected.includes('claude');
+  const MAX_ROUNDS=5;
+  const fullMsg=fileSnap?`${msgText}\n\nObsah souboru "${fileSnap.name}":\n\`\`\`\n${fileSnap.content.slice(0,8000)}\n\`\`\``:msgText;
+
+  let claudeVerdict='', assistantAnswers={};
+
+  if(currentSelected.length===1){
+    const key=currentSelected[0];
+    const bubble=addBubble(aisDiv,key,AI[key].name.toUpperCase());
+    try{
+      let reply='';
+      if(key==='claude'){const r=await callClaude(fullMsg,{},  '',1);reply=r.text;updateBubbleLabel(bubble,`CLAUDE · ${r.modelLabel}`);}
+      else if(key==='gemini')reply=await callGemini(fullMsg,{});
+      else if(key==='chatgpt')reply=await callChatGPT(fullMsg,{});
+      else reply=await callCustom(key,fullMsg,{});
+      finishBubble(bubble,reply);
+    }catch(e){finishBubble(bubble,null,e.message);}
+    scrollBottom();
+    history.push({user:msgText,...(fileSnap?{_file:fileSnap.name}:{})});
+    isBusy=false;document.getElementById('sendBtn').disabled=false;return;
+  }
+
+  if(assistants.length>0){
+    addDivider(aisDiv,'ASISTENTI ODPOVÍDAJÍ');
+    // Sekvenčně – každý vidí odpovědi předchozích
+    for(const key of assistants){
+      const bubble=addBubble(aisDiv,key,`${AI[key].name.toUpperCase()} · asistent`);
+      try{
+        // Předáme dosavadní odpovědi ostatních jako kontext
+        let reply='';
+        if(key==='gemini')reply=await callGemini(fullMsg,assistantAnswers);
+        else if(key==='chatgpt')reply=await callChatGPT(fullMsg,assistantAnswers);
+        else reply=await callCustom(key,fullMsg,assistantAnswers);
+        assistantAnswers[key]=reply;finishBubble(bubble,reply);
+      }catch(e){finishBubble(bubble,null,e.message);}
+      scrollBottom();
+    }
+  }
+
+  if(!hasClaude){
+    clearSearchContext();
+    history.push({user:msgText,...assistantAnswers});
+    saveCurrent();
+    isBusy=false;document.getElementById('sendBtn').disabled=false;return;
+  }
+
+  for(let round=1;round<=MAX_ROUNDS;round++){
+    addDivider(aisDiv,round===1?'CLAUDE HODNOTÍ':`CLAUDE REVIDUJE · kolo ${round}`);
+    const claudeBubble=addBubble(aisDiv,'claude','CLAUDE · vyhodnocuje...',true);
+    try{
+      const result=await callClaude(fullMsg,assistantAnswers,claudeVerdict,round);
+      claudeVerdict=result.text;
+      updateBubbleLabel(claudeBubble,`CLAUDE · ${result.modelLabel} · šéf`);
+      finishBubble(claudeBubble,claudeVerdict);
+    }catch(e){finishBubble(claudeBubble,null,e.message);break;}
+    scrollBottom();
+
+    if(assistants.length===0||round===MAX_ROUNDS)break;
+
+    addDivider(aisDiv,'ASISTENTI KONTROLUJÍ');
+    const reviews={};
+    for(const key of assistants){
+      const bubble=addBubble(aisDiv,key,`${AI[key].name.toUpperCase()} · kontroluje`);
+      try{
+        const review=key==='gemini'?await reviewGemini(msgText,claudeVerdict)
+          :key==='chatgpt'?await reviewChatGPT(msgText,claudeVerdict)
+          :await reviewCustom(key,msgText,claudeVerdict);
+        reviews[key]=review;
+        finishBubble(bubble,`${review.approved?'✅':'❌'} ${review.comment}`);
+      }catch(e){reviews[key]={approved:true,comment:''};finishBubble(bubble,null,e.message);}
+      scrollBottom();
+    }
+
+    const approveCount=Object.values(reviews).filter(r=>r.approved).length;
+    const total=assistants.length;
+    if(approveCount>=Math.ceil(total/2)){
+      addDivider(aisDiv,approveCount===total?'✅ KONSENZUS':'✅ VĚTŠINA SOUHLASÍ ('+approveCount+'/'+total+')');
+      break;
+    }
+    assistantAnswers={...assistantAnswers,...Object.fromEntries(Object.entries(reviews).filter(([,v])=>!v.approved).map(([k,v])=>[k,v.comment]))};
+  }
+
+  addDivider(aisDiv,'👑 FINÁLNÍ ODPOVĚĎ · CLAUDE OPUS');
+  const finalBubble=addBubble(aisDiv,'claude','CLAUDE · Opus · finální verifikace',true);
+  try{
+    const finalText=await callClaudeFinal(fullMsg,claudeVerdict,assistantAnswers);
+    finishBubble(finalBubble,finalText,null,true);
+    updateBubbleLabel(finalBubble,'CLAUDE · Opus · ✓ finální');
+    claudeVerdict=finalText;
+  }catch(e){finishBubble(finalBubble,null,e.message);}
+  scrollBottom();
+
+  clearSearchContext();
+  history.push({user:msgText,claude:claudeVerdict,...(fileSnap?{_file:fileSnap.name}:{})});
+  saveCurrent();
+  isBusy=false;document.getElementById('sendBtn').disabled=false;
+}
+
+// ════ UI HELPERS ════
+let bc=0;
+function addBubble(container,aiKey,label,isBoss=false){
+  const id='b'+(++bc);
+  const ai=AI[aiKey];const c=ai.rawColor;
+  const wrap=document.createElement('div');wrap.className='msg-ai';
+  wrap.innerHTML=`<div class="ai-avatar" style="background:${c}22;color:${c};border:${isBoss?'2px':'1px'} solid ${c}${isBoss?'88':'44'}">${ai.name[0]}</div><div class="ai-bubble-wrap"><div class="ai-name bubble-label-${id}" style="color:${c}">${label}</div><div class="ai-bubble loading bubble-${id}"><div class="dot-anim" style="background:${c}88"></div><div class="dot-anim" style="background:${c}88"></div><div class="dot-anim" style="background:${c}88"></div></div></div>`;
+  container.appendChild(wrap);scrollBottom();return id;
+}
+function finishBubble(id,text,error=null,isFinal=false){
+  const el=document.querySelector(`.bubble-${id}`);if(!el)return;
+  el.classList.remove('loading');if(isFinal)el.classList.add('final');
+  el.innerHTML=error?`<span style="color:#f87171">Chyba: ${escHtml(error)}</span>`:formatText(text);
+}
+function updateBubbleLabel(id,label){const el=document.querySelector(`.bubble-label-${id}`);if(el)el.textContent=label;}
+function addDivider(container,label){const d=document.createElement('div');d.className='round-divider';d.innerHTML=`<span>${label}</span>`;container.appendChild(d);}
+
+// ════ GROUP CHAT HISTORY ════
+function buildGroupHistory(currentMsg, currentResponses={}) {
+  // Builds a full group chat transcript for context
+  const teamNames = active.map(k => AI[k].name).join(', ');
+  let transcript = `[Skupinový chat – účastníci: Uživatel, ${teamNames}]
+
+`;
+  
+  for (const t of history) {
+    transcript += `Uživatel: ${t.user}
+`;
+    for (const [k, v] of Object.entries(t)) {
+      if (k === 'user' || k === '_file') continue;
+      const name = AI[k]?.name || k;
+      transcript += `${name}: ${v}
+`;
+    }
+    transcript += '\n';
+  }
+  
+  // Aktuální kolo
+  transcript += `Uživatel: ${currentMsg}
+`;
+  for (const [k, v] of Object.entries(currentResponses)) {
+    const name = AI[k]?.name || k;
+    transcript += `${name}: ${v}
+`;
+  }
+  
+  return transcript;
+}
+
+// ════ API CALLS ════
+async function pickModel(msg){
+  const r=await fetch('https://api.anthropic.com/v1/messages',{method:'POST',headers:{'Content-Type':'application/json','x-api-key':AI.claude.key,'anthropic-version':'2023-06-01','anthropic-dangerous-direct-browser-access':'true'},body:JSON.stringify({model:'claude-haiku-4-5-20251001',max_tokens:10,system:'Ohodnoť složitost. Odpověz POUZE: haiku, sonnet, nebo opus.\n- haiku: pozdrav, jednoduchá otázka\n- sonnet: vysvětlení, analýza\n- opus: kód, matematika, věda, velký dokument',messages:[{role:'user',content:msg.slice(0,500)}]})});
+  if(!r.ok)return'sonnet';
+  const d=await r.json();const c=d.content[0].text.trim().toLowerCase();
+  return CLAUDE_MODELS[c]?c:'sonnet';
+}
+
+async function callClaude(msg,assistantAnswers,prevVerdict,round){
+  const modelKey=await pickModel(msg);const model=CLAUDE_MODELS[modelKey];
+  const hasA=Object.keys(assistantAnswers).length>0;
+  let system=MD_SYSTEM+getMemoryPrompt()+getSearchPrompt()+'\nJsi hlavní AI. Dej nejlepší možnou odpověď.';
+  let userContent=msg;
+  if(hasA){
+    const summary=Object.entries(assistantAnswers).map(([k,v])=>`${AI[k]?.name||k}: ${v}`).join('\n\n');
+    system=MD_SYSTEM+getMemoryPrompt()+getSearchPrompt()+(round===1?'\nJsi hlavní AI šéf. Zkontroluj odpovědi asistentů, oprav chyby, dej finální odpověď.':'\nJsi hlavní AI šéf. Zohledni výhrady asistentů a dej revidovanou odpověď.');
+    userContent=round===1?`Otázka: ${msg}\n\nOdpovědi asistentů:\n${summary}\n\nTvoje finální odpověď:`:`Otázka: ${msg}\n\nTvůj předchozí verdikt: ${prevVerdict}\n\nVýhrady:\n${summary}\n\nRevidovaná odpověď:`;
+  }
+  // Použij plnou historii skupinového chatu
+  const groupHist = buildGroupHistory(msg, assistantAnswers);
+  const messages=[{role:'user',content:groupHist+'\n\n'+userContent}];
+  const r=await fetch('https://api.anthropic.com/v1/messages',{method:'POST',headers:{'Content-Type':'application/json','x-api-key':AI.claude.key,'anthropic-version':'2023-06-01','anthropic-dangerous-direct-browser-access':'true'},body:JSON.stringify({model:model.id,max_tokens:2048,system,messages})});
+  if(!r.ok){const e=await r.json();throw new Error(e.error?.message||r.status);}
+  const d=await r.json();return{text:d.content[0].text,modelLabel:model.label};
+}
+
+async function callClaudeFinal(msg,verdict,allContext){
+  const ctx=Object.entries(allContext).map(([k,v])=>`${AI[k]?.name||k}: ${v}`).join('\n\n');
+  const system=MD_SYSTEM+getMemoryPrompt()+getSearchPrompt()+'\nVydej tu nejdokonalejší možnou odpověď. Integruj to nejlepší z celé diskuze.';
+  const r=await fetch('https://api.anthropic.com/v1/messages',{method:'POST',headers:{'Content-Type':'application/json','x-api-key':AI.claude.key,'anthropic-version':'2023-06-01','anthropic-dangerous-direct-browser-access':'true'},body:JSON.stringify({model:'claude-opus-4-5-20251101',max_tokens:4096,system,messages:[{role:'user',content:`Otázka: ${msg}\n\nDiskuze:\n${ctx}\n\nPoslední verdikt: ${verdict}\n\nFinální dokonalá odpověď:`}]})});
+  if(!r.ok){const e=await r.json();throw new Error(e.error?.message||r.status);}
+  const d=await r.json();return d.content[0].text;
+}
+
+async function callGemini(msg,context){
+  const groupHist = buildGroupHistory(msg, context);
+  const memStr=userMemory?`\n\nInformace o uživateli: ${userMemory}`:'';
+  const teamNames = active.map(k=>AI[k].name).join(', ');
+  const prompt=`${MD_SYSTEM}${memStr}\n\nJsi součástí AI týmu: ${teamNames}. Čteš skupinový chat a reaguješ jako jeho člen. Vidíš co řekli ostatní.\n\n${groupHist}\nTvoje odpověď:`;
+  const r=await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${AI.gemini.key}`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({contents:[{role:'user',parts:[{text:prompt}]}],generationConfig:{maxOutputTokens:2048}})});
+  if(!r.ok){const e=await r.json();throw new Error(e.error?.message||r.status);}
+  const d=await r.json();return d.candidates[0].content.parts[0].text;
+}
+
+async function reviewGemini(originalMsg,verdict){
+  const prompt=`Otázka: "${originalMsg}"\nClaude odpověděl: "${verdict}"\nJe odpověď správná a úplná? Odpověz jako JSON: {"approved":true/false,"comment":"komentář"}`;
+  const r=await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${AI.gemini.key}`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({contents:[{role:'user',parts:[{text:prompt}]}],generationConfig:{maxOutputTokens:200}})});
+  if(!r.ok){const e=await r.json();throw new Error(e.error?.message||r.status);}
+  const d=await r.json();
+  try{return JSON.parse(d.candidates[0].content.parts[0].text.replace(/```json|```/g,''));}
+  catch{return{approved:true,comment:d.candidates[0].content.parts[0].text};}
+}
+
+async function callChatGPT(msg,context){
+  const groupHist = buildGroupHistory(msg, context);
+  const teamNames = active.map(k=>AI[k].name).join(', ');
+  const userContent=`${groupHist}\nTvoje odpověď:`;
+  const sysPrompt=MD_SYSTEM+(userMemory?`\nInformace o uživateli: ${userMemory}`:'')+getSearchPrompt()+`\nJsi součástí AI týmu: ${teamNames}. Čteš skupinový chat a reaguješ jako jeho člen. Vidíš co řekli ostatní.`;
+  const r=await fetch('https://api.openai.com/v1/chat/completions',{method:'POST',headers:{'Content-Type':'application/json','Authorization':`Bearer ${AI.chatgpt.key}`},body:JSON.stringify({model:'gpt-4o',max_tokens:2048,messages:[{role:'system',content:sysPrompt},{role:'user',content:userContent}]})});
+  if(!r.ok){const e=await r.json();throw new Error(e.error?.message||r.status);}
+  const d=await r.json();return d.choices[0].message.content;
+}
+
+async function reviewChatGPT(originalMsg,verdict){
+  const r=await fetch('https://api.openai.com/v1/chat/completions',{method:'POST',headers:{'Content-Type':'application/json','Authorization':`Bearer ${AI.chatgpt.key}`},body:JSON.stringify({model:'gpt-4o',max_tokens:200,messages:[{role:'system',content:'Zkontroluj odpověď. Odpověz POUZE jako JSON: {"approved":true/false,"comment":"komentář"}'},{role:'user',content:`Otázka: "${originalMsg}"\nClaude odpověděl: "${verdict}"\nJe správná a úplná?`}]})});
+  if(!r.ok){const e=await r.json();throw new Error(e.error?.message||r.status);}
+  const d=await r.json();
+  try{return JSON.parse(d.choices[0].message.content.replace(/```json|```/g,''));}
+  catch{return{approved:true,comment:d.choices[0].message.content};}
+}
+
+async function callCustom(key,msg,context){
+  const ai=AI[key];
+  const groupHist = buildGroupHistory(msg, context);
+  const teamNames = active.map(k=>AI[k].name).join(', ');
+  const userContent=`${groupHist}\nTvoje odpověď:`;
+  const sysPrompt=MD_SYSTEM+(userMemory?`\nInformace o uživateli: ${userMemory}`:'')+getSearchPrompt()+`\nJsi součástí AI týmu: ${teamNames}. Čteš skupinový chat a reaguješ jako jeho člen. Vidíš co řekli ostatní.`;
+  const r=await fetch(`${ai.url}/chat/completions`,{method:'POST',headers:{'Content-Type':'application/json','Authorization':`Bearer ${ai.key}`},body:JSON.stringify({model:ai.model,max_tokens:2048,messages:[{role:'system',content:sysPrompt},{role:'user',content:userContent}]})});
+  if(!r.ok){const e=await r.json();throw new Error(e.error?.message||r.status);}
+  const d=await r.json();return d.choices[0].message.content;
+}
+
+async function reviewCustom(key,originalMsg,verdict){
+  const ai=AI[key];
+  const r=await fetch(`${ai.url}/chat/completions`,{method:'POST',headers:{'Content-Type':'application/json','Authorization':`Bearer ${ai.key}`},body:JSON.stringify({model:ai.model,max_tokens:200,messages:[{role:'system',content:'Zkontroluj odpověď. Odpověz POUZE jako JSON: {"approved":true/false,"comment":"komentář"}'},{role:'user',content:`Otázka: "${originalMsg}"\nClaude odpověděl: "${verdict}"\nJe správná a úplná?`}]})});
+  if(!r.ok){const e=await r.json();throw new Error(e.error?.message||r.status);}
+  const d=await r.json();
+  try{return JSON.parse(d.choices[0].message.content.replace(/```json|```/g,''));}
+  catch{return{approved:true,comment:d.choices[0].message.content};}
+}
+
+function scrollBottom(){const m=document.getElementById('messages');setTimeout(()=>m.scrollTop=m.scrollHeight,50);}
+function escHtml(t){return String(t).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}
+function formatText(t){try{return marked.parse(t);}catch(e){return escHtml(t).replace(/\n/g,'<br>');}}
+
+// ════ CHAT HISTORY ════
+let currentChatId = null;
+
+function genId(){ return 'chat_'+Date.now(); }
+
+function getChats(){
+  return JSON.parse(localStorage.getItem('chat-history')||'[]');
+}
+
+function saveChats(chats){
+  localStorage.setItem('chat-history', JSON.stringify(chats));
+}
+
+function saveCurrent(){
+  if(!history.length) return;
+  const chats = getChats();
+  const title = history[0]?.user?.slice(0,40) || 'Chat';
+  const existing = chats.findIndex(c=>c.id===currentChatId);
+  const entry = { id:currentChatId, title, date:new Date().toISOString(), messages:history };
+  if(existing>=0) chats[existing]=entry;
+  else chats.unshift(entry);
+  // Keep max 50 chats
+  saveChats(chats.slice(0,50));
+}
+
+function newChat(){
+  saveCurrent();
+  currentChatId = genId();
+  history = [];
+  document.getElementById('messages').innerHTML='';
+  document.getElementById('chatTitle').textContent='AI Chat';
+}
+
+function loadChat(id){
+  saveCurrent();
+  const chats = getChats();
+  const chat = chats.find(c=>c.id===id);
+  if(!chat) return;
+  currentChatId = id;
+  history = chat.messages;
+  // Re-render messages
+  const msgsEl = document.getElementById('messages');
+  msgsEl.innerHTML='';
+  for(const h of history){
+    const userDiv=document.createElement('div');
+    userDiv.className='msg-user';
+    userDiv.innerHTML=`<div class="msg-user-bubble">${escHtml(h.user)}</div>`;
+    msgsEl.appendChild(userDiv);
+    const aisDiv=document.createElement('div');
+    aisDiv.className='msg-ais';
+    for(const [k,v] of Object.entries(h)){
+      if(k==='user'||k==='_file') continue;
+      const ai=AI[k];
+      const wrap=document.createElement('div');
+      wrap.className='msg-ai';
+      wrap.innerHTML=`<div class="ai-avatar" style="background:${ai?.rawColor||'#888'}22;color:${ai?.rawColor||'#888'}">${(ai?.name||k).slice(0,2).toUpperCase()}</div><div class="ai-bubble-wrap"><div class="ai-name" style="color:${ai?.rawColor||'#888'}">${ai?.name||k}</div><div class="ai-bubble">${formatText(v)}</div></div>`;
+      aisDiv.appendChild(wrap);
+    }
+    msgsEl.appendChild(aisDiv);
+  }
+  document.getElementById('chatTitle').textContent = chat.title.slice(0,20)+'…';
+  scrollBottom();
+  closeHistory();
+}
+
+function deleteChat(id, e){
+  e.stopPropagation();
+  const chats = getChats().filter(c=>c.id!==id);
+  saveChats(chats);
+  if(currentChatId===id){ history=[]; document.getElementById('messages').innerHTML=''; currentChatId=genId(); }
+  renderHistoryList();
+}
+
+function openHistory(){
+  renderHistoryList();
+  document.getElementById('historyPanel').style.display='flex';
+}
+
+function closeHistory(){
+  document.getElementById('historyPanel').style.display='none';
+}
+
+function closeHistoryOutside(e){
+  if(e.target===document.getElementById('historyPanel')) closeHistory();
+}
+
+function renderHistoryList(){
+  const list = document.getElementById('historyList');
+  const chats = getChats();
+  if(!chats.length){ list.innerHTML='<div style="padding:20px;text-align:center;color:var(--muted);font-size:13px">Žádné chaty zatím</div>'; return; }
+  list.innerHTML = chats.map(c=>`
+    <div class="history-item${c.id===currentChatId?' active':''}" onclick="loadChat('${c.id}')">
+      <button class="history-item-del" onclick="deleteChat('${c.id}',event)">🗑</button>
+      <div class="history-item-title">${escHtml(c.title)}</div>
+      <div class="history-item-meta">${new Date(c.date).toLocaleString('cs-CZ')}</div>
+    </div>`).join('');
+}
+
+function downloadHtml(){
+  const a=document.createElement('a');
+  a.href=location.href;
+  a.download='chat.html';
+  a.click();
+}
+
+// ════ WEB SEARCH ════
+let webSearchContext = null;
+
+async function webSearch() {
+  const query = document.getElementById('msgInput').value.trim();
+  if(!query){ alert('Nejdřív napiš co chceš hledat, pak klikni 🔍'); return; }
+  
+  const btn = document.getElementById('searchBtn');
+  const bar = document.getElementById('searchBar');
+  const status = document.getElementById('searchStatus');
+  
+  btn.textContent = '⏳';
+  btn.disabled = true;
+  bar.style.display = 'block';
+  status.textContent = 'Hledám: ' + query + '…';
+  
+  try {
+    // Use Jina AI search - free, no key, CORS friendly
+    const res = await fetch('https://s.jina.ai/' + encodeURIComponent(query), {
+      headers: { 'Accept': 'text/plain', 'X-No-Cache': 'true' }
+    });
+    if(!res.ok) throw new Error('HTTP ' + res.status);
+    let text = await res.text();
+    // Trim to max 3000 chars to not overload context
+    if(text.length > 3000) text = text.slice(0, 3000) + '\n\n[...zkráceno]';
+    
+    webSearchContext = `Výsledky vyhledávání pro "${query}":\n\n${text}`;
+    status.innerHTML = '✅ Nalezeno – výsledky přidány do kontextu. Teď se zeptej AI.';
+    status.style.color = '#4ade80';
+  } catch(e) {
+    status.textContent = '❌ Vyhledávání selhalo: ' + e.message;
+    status.style.color = '#f87171';
+    webSearchContext = null;
+  }
+  btn.textContent = '🔍';
+  btn.disabled = false;
+}
+
+function clearSearchContext() {
+  webSearchContext = null;
+  document.getElementById('searchBar').style.display = 'none';
+}
+
+// ════ FIREBASE AUTH ════
+window.onFbAuthChange = async (user) => {
+  const nameEl=document.getElementById('lb-name');
+  const statusEl=document.getElementById('lb-status');
+  const signinBtn=document.getElementById('lb-signin-btn');
+  const syncBtn=document.getElementById('lb-sync-btn');
+  const avatarEl=document.getElementById('lb-avatar');
+  if(user){
+    nameEl.textContent=user.displayName||user.email;
+    statusEl.innerHTML='<span class="sync-dot"></span>Přihlášen – nastavení sync s cloudem';
+    signinBtn.textContent='Odhlásit';
+    signinBtn.className='lb-btn lb-btn-signout';
+    signinBtn.onclick=fbSignOut;
+    syncBtn.style.display='block';
+    if(user.photoURL) avatarEl.innerHTML=`<img src="${user.photoURL}" style="width:32px;height:32px;border-radius:50%">`;
+    await fbLoad();
+  } else {
+    nameEl.textContent='Nepřihlášen';
+    statusEl.textContent='Nastavení uložena jen v tomto prohlížeči';
+    signinBtn.textContent='🔑 Google';
+    signinBtn.className='lb-btn lb-btn-signin';
+    signinBtn.onclick=fbSignIn;
+    syncBtn.style.display='none';
+    avatarEl.innerHTML='👤';
+  }
+};
+
+async function fbSignIn(){
+  try{ await window._fbSignIn(); }
+  catch(e){ alert('Přihlášení selhalo: '+e.message); }
+}
+
+async function fbSignOut(){
+  await window._fbSignOut();
+}
+
+async function fbSync(){
+  const user=window._fbUser;
+  if(!user) return;
+  const btn=document.getElementById('lb-sync-btn');
+  btn.textContent='⏳';
+  try{
+    await window._fbSave(user.uid,{
+      keyClaude:  localStorage.getItem('key-claude')||'',
+      keyGemini:  localStorage.getItem('key-gemini')||'',
+      keyChatgpt: localStorage.getItem('key-chatgpt')||'',
+      customAis:  localStorage.getItem('custom-ais')||'[]',
+      userMemory: localStorage.getItem('user-memory')||'',
+      updatedAt:  new Date().toISOString()
+    });
+    btn.textContent='✅';
+    setTimeout(()=>btn.textContent='☁ Sync',2000);
+  } catch(e){
+    btn.textContent='❌';
+    setTimeout(()=>btn.textContent='☁ Sync',2000);
+  }
+}
+
+async function fbLoad(){
+  const user=window._fbUser;
+  if(!user) return;
+  try{
+    const data=await window._fbLoad(user.uid);
+    if(!data) return;
+    if(data.keyClaude){localStorage.setItem('key-claude',data.keyClaude);document.getElementById('key-claude').value=data.keyClaude;}
+    if(data.keyGemini){localStorage.setItem('key-gemini',data.keyGemini);document.getElementById('key-gemini').value=data.keyGemini;}
+    if(data.keyChatgpt){localStorage.setItem('key-chatgpt',data.keyChatgpt);document.getElementById('key-chatgpt').value=data.keyChatgpt;}
+    if(data.userMemory){localStorage.setItem('user-memory',data.userMemory);document.getElementById('memoryText').value=data.userMemory;}
+    if(data.customAis){localStorage.setItem('custom-ais',data.customAis);loadCustomAIs();}
+    const t=data.updatedAt?new Date(data.updatedAt).toLocaleString('cs-CZ'):'?';
+    document.getElementById('lb-status').innerHTML=`<span class="sync-dot"></span>Načteno z cloudu – ${t}`;
+  } catch(e){ console.error('fbLoad:',e); }
+}
+</script>
+
+<!-- MODAL: Upravit AI -->
+<div id="editModal" onclick="closeEditOutside(event)" style="position:fixed;inset:0;background:rgba(0,0,0,0.8);display:none;align-items:flex-end;z-index:100;">
+  <div class="modal-box">
+    <h3 id="editModalTitle">Upravit AI</h3>
+    <input type="text" id="e-name" placeholder="Název" maxlength="20">
+    <input type="password" id="e-key" placeholder="API klíč">
+    <input type="text" id="e-url" placeholder="API URL (pro vlastní AI)">
+    <input type="text" id="e-model" placeholder="Model">
+    <input type="text" id="e-color" placeholder="Barva hex">
+    <div id="e-hint" class="hint"></div>
+    <div class="modal-row">
+      <button class="btn-cancel" onclick="closeEditModal()">Zrušit</button>
+      <button class="btn-save" onclick="saveEditAi()">Uložit</button>
+    </div>
+  </div>
+</div>
+
+
+<!-- HISTORY PANEL -->
+<div id="historyPanel" style="display:none" onclick="closeHistoryOutside(event)">
+  <div class="history-box">
+    <div class="history-header">
+      <h3>💬 Historie chatů</h3>
+      <button class="history-close" onclick="closeHistory()">✕</button>
+    </div>
+    <button class="history-new" onclick="newChat();closeHistory()">✚ Nový chat</button>
+    <div class="history-list" id="historyList"></div>
+  </div>
+</div>
+
+</body>
+</html>
