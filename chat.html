@@ -577,8 +577,8 @@ async function reactLoop(key, initialPrompt, aisDiv, callFn) {
 
 const CLAUDE_MODELS = {
   haiku:  { id:'claude-haiku-4-5-20251001',  label:'Haiku'  },
-  sonnet: { id:'claude-sonnet-4-5-20251022', label:'Sonnet' },
-  opus:   { id:'claude-opus-4-5-20251101',   label:'Opus'   },
+  sonnet: { id:'claude-sonnet-4-6', label:'Sonnet' },
+  opus:   { id:'claude-opus-4-6',   label:'Opus'   },
 };
 
 // MD_SYSTEM je nyní funkce – injectuje persónu každého AI
@@ -1794,7 +1794,7 @@ async function callClaudeFinal(msg,verdict,allContext,fileSnap=null){
   let msgContent;
   if(fileSnap?.isImage){const b64=fileSnap.content.split(',')[1];msgContent=[{type:'image',source:{type:'base64',media_type:fileSnap.type||'image/jpeg',data:b64}},{type:'text',text:userText}];}
   else msgContent=userText;
-  const r=await fetch('https://api.anthropic.com/v1/messages',{method:'POST',headers:{'Content-Type':'application/json','x-api-key':AI.claude.key,'anthropic-version':'2023-06-01','anthropic-dangerous-direct-browser-access':'true'},body:JSON.stringify({model:'claude-opus-4-5-20251101',max_tokens:4096,system,messages:[{role:'user',content:msgContent}]})});
+  const r=await fetch('https://api.anthropic.com/v1/messages',{method:'POST',headers:{'Content-Type':'application/json','x-api-key':AI.claude.key,'anthropic-version':'2023-06-01','anthropic-dangerous-direct-browser-access':'true'},body:JSON.stringify({model:'claude-opus-4-6',max_tokens:4096,system,messages:[{role:'user',content:msgContent}]})});
   if(!r.ok){const e=await r.json();throw new Error(e.error?.message||r.status);}
   const d=await r.json();return d.content[0].text;
 }
