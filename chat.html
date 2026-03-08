@@ -92,7 +92,8 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:'Outfit
 .header-btn.web-on{border-color:var(--teal);color:var(--teal);}
 
 /* AI SELECTOR */
-.ai-selector{background:var(--surface);border-bottom:1px solid var(--border);padding:8px 12px;display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:6px;flex-shrink:0;}
+.ai-selector{background:var(--surface);border-bottom:1px solid var(--border);padding:8px 12px;display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:6px;flex-shrink:0;overflow:hidden;transition:max-height .25s ease, padding .25s ease;max-height:300px;}
+.ai-selector.collapsed{max-height:0;padding:0;border-bottom:none;}
 .ai-chip{display:flex;align-items:center;gap:7px;padding:8px 12px;border-radius:12px;border:1px solid var(--border);background:var(--card);cursor:pointer;transition:all .2s;user-select:none;}
 .ai-chip.selected{border-color:var(--chip-color);background:color-mix(in srgb,var(--chip-color) 12%,var(--card));}
 .ai-chip.selected .ai-chip-dot{box-shadow:0 0 6px var(--chip-color);}
@@ -310,6 +311,7 @@ onAuthStateChanged(auth, user => {
 <div id="chat" class="screen">
   <div class="chat-header">
     <div class="chat-header-title" id="chatTitle">AI Chat</div>
+    <button class="header-btn" id="selectorToggle" onclick="toggleSelector()" title="Zobrazit/skrýt AI">▾</button>
     <button class="header-btn" id="autoSearchToggle" onclick="toggleAutoSearch()" title="Web">🌐</button>
     <button class="header-btn" onclick="openHistory()" title="Historie">📋</button>
     <button class="header-btn" onclick="newChat()" title="Nový chat">✏️</button>
@@ -535,6 +537,7 @@ function startChat() {
   if(!selected.length) selected=[...active];
   buildSelector();
   showScreen('chat');
+  if(localStorage.getItem('selector-collapsed')==='1'){document.getElementById('aiSelector').classList.add('collapsed');const b=document.getElementById('selectorToggle');if(b)b.textContent='▸';}
   document.getElementById('msgInput').focus();
   updateAutoSearchBtn();
   requestNotifPermission();
@@ -562,6 +565,14 @@ function buildSelector() {
     chip.onclick=(e)=>{ e.stopPropagation(); showChipMenu(key,chip); };
     bar.appendChild(chip);
   }
+}
+
+function toggleSelector(){
+  const sel=document.getElementById('aiSelector');
+  const btn=document.getElementById('selectorToggle');
+  sel.classList.toggle('collapsed');
+  btn.textContent=sel.classList.contains('collapsed')?'▸':'▾';
+  localStorage.setItem('selector-collapsed', sel.classList.contains('collapsed')?'1':'0');
 }
 
 function toggleAI(key){
