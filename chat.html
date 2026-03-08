@@ -598,13 +598,19 @@ function showChipMenu(key, chipEl) {
   menu.id='chipMenu';
 
   const isOn=selected.includes(key);
+  const isCustom=!AI[key].builtin;
   menu.innerHTML=`
     <div class="chip-menu-item" onclick="toggleAI('${key}');closeChipMenu();">
       <span>${isOn?'⏸':'▶'}</span><span>${isOn?'Vypnout':'Zapnout'}</span>
     </div>
     <div class="chip-menu-item" onclick="openEditModal('${key}');closeChipMenu();">
       <span>✏️</span><span>Upravit</span>
-    </div>`;
+    </div>${isCustom?`
+    <div class="chip-menu-divider"></div>
+    <div class="chip-menu-item danger" onclick="deleteAI('${key}');closeChipMenu();">
+      <span>🗑</span><span>Smazat</span>
+    </div>`:''}`;
+
 
   // Umísti menu
   menu.style.left = Math.min(rect.left, window.innerWidth-180)+'px';
@@ -624,6 +630,18 @@ function closeChipMenu(){
 function closeChipMenuOutside(e){
   if(!currentChipMenu||currentChipMenu.contains(e.target))return;
   closeChipMenu();
+}
+
+function deleteAI(key){
+  if(!confirm(`Smazat ${AI[key].name}?`)) return;
+  const saved = JSON.parse(localStorage.getItem('custom-ais')||'[]');
+  const updated = saved.filter(a=>a.id!==key);
+  localStorage.setItem('custom-ais', JSON.stringify(updated));
+  delete AI[key];
+  active = active.filter(k=>k!==key);
+  selected = selected.filter(k=>k!==key);
+  if(!selected.length && active.length) selected=[active[0]];
+  buildSelector();
 }
 
 // ════ EDIT AI MODAL ════
@@ -872,11 +890,17 @@ async function sendMessage() {
 
   if(assistants.length>0){
     addDivider(aisDiv,'ASISTENTI ODPOVÍDAJÍ');
+    let openRouterCount=0;
     // Sekvenčně – každý vidí odpovědi předchozích
     for(const key of assistants){
       const bubble=addBubble(aisDiv,key,`${AI[key].name.toUpperCase()} · asistent`);
       try{
-        // Předáme dosavadní odpovědi ostatních jako kontext
+        // Zpoždění pro OpenRouter AI aby se nepřekročil rate limit
+        const isOpenRouter = AI[key].url?.includes('openrouter');
+        if(isOpenRouter && openRouterCount>0){
+          await new Promise(r=>setTimeout(r,1500)); // 1.5s pauza mezi OpenRouter voláními
+        }
+        if(isOpenRouter) openRouterCount++;
         let reply='';
         if(key==='gemini')reply=await callGemini(fullMsg,assistantAnswers);
         else if(key==='chatgpt')reply=await callChatGPT(fullMsg,assistantAnswers);
