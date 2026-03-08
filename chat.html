@@ -458,11 +458,34 @@ onAuthStateChanged(auth, user => {
   </div>
 
   <div id="longTermMemoryCard" style="background:var(--card);border:1px solid var(--border);border-radius:16px;padding:14px 16px;display:none">
-    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
       <span style="font-size:13px;font-weight:600">🧠 Co si AI pamatuje o tobě</span>
       <button onclick="clearLongTermMemory()" style="background:none;border:none;color:#f87171;font-size:12px;cursor:pointer">Smazat vše</button>
     </div>
-    <div id="longTermMemoryList" style="font-size:12px;color:var(--muted);line-height:1.8"></div>
+    <div id="longTermMemoryList"></div>
+  </div>
+
+  <div class="section-title" style="margin-top:4px">⏰ Naplánované prompty</div>
+  <div id="scheduledPromptsCard" style="background:var(--card);border:1px solid var(--border);border-radius:16px;padding:14px 16px;display:flex;flex-direction:column;gap:10px;">
+    <div id="scheduleList" style="display:flex;flex-direction:column;gap:6px;"></div>
+    <div id="scheduleForm" style="display:none;background:var(--surface);border:1px solid var(--border2);border-radius:12px;padding:12px;display:none;flex-direction:column;gap:8px;">
+      <div style="display:flex;gap:8px;flex-wrap:wrap;">
+        <input id="sch-time" type="time" value="08:00" style="background:var(--card);border:1px solid var(--border2);border-radius:8px;padding:6px 10px;color:var(--text);font-family:'Outfit',sans-serif;font-size:13px;flex:1;min-width:90px;">
+        <select id="sch-repeat" style="background:var(--card);border:1px solid var(--border2);border-radius:8px;padding:6px 10px;color:var(--text);font-family:'Outfit',sans-serif;font-size:13px;flex:1;min-width:110px;">
+          <option value="daily">Každý den</option>
+          <option value="weekdays">Pracovní dny</option>
+          <option value="weekly">Každý týden</option>
+          <option value="once">Jednou</option>
+        </select>
+      </div>
+      <input id="sch-label" type="text" placeholder="Název (např. Ranní brief)" style="background:var(--card);border:1px solid var(--border2);border-radius:8px;padding:7px 10px;color:var(--text);font-family:'Outfit',sans-serif;font-size:13px;width:100%;box-sizing:border-box;">
+      <textarea id="sch-prompt" placeholder="Prompt… (např. Udělej mi stručný přehled dnešního počasí v Ostravě a 3 tipy na produktivitu)" style="background:var(--card);border:1px solid var(--border2);border-radius:8px;padding:7px 10px;color:var(--text);font-family:'Outfit',sans-serif;font-size:13px;resize:none;min-height:70px;width:100%;box-sizing:border-box;line-height:1.5;"></textarea>
+      <div style="display:flex;gap:8px;">
+        <button onclick="saveSchedule()" style="flex:1;background:var(--accent);border:none;color:#fff;border-radius:8px;padding:8px;font-family:'Outfit',sans-serif;font-size:13px;font-weight:600;cursor:pointer;">✅ Uložit</button>
+        <button onclick="document.getElementById('scheduleForm').style.display='none'" style="background:var(--card2);border:1px solid var(--border);color:var(--muted);border-radius:8px;padding:8px 14px;font-family:'Outfit',sans-serif;font-size:13px;cursor:pointer;">Zrušit</button>
+      </div>
+    </div>
+    <button onclick="document.getElementById('scheduleForm').style.display='flex'" style="background:none;border:1px dashed var(--border2);border-radius:10px;padding:8px;color:var(--muted);font-family:'Outfit',sans-serif;font-size:13px;cursor:pointer;text-align:center;">+ Přidat naplánovaný prompt</button>
   </div>
   <button class="start-btn" onclick="startChat()">Spustit chat →</button>
   <button class="start-btn" onclick="downloadHtml()" style="background:var(--card);color:var(--text);border:1px solid var(--border);margin-top:8px;">⬇ Stáhnout chat.html</button>
@@ -1643,7 +1666,10 @@ async function generateImage(prompt, container){
   const dalleKey = localStorage.getItem('key-chatgpt');
   const pickerId = 'imgPicker_' + Date.now();
 
-  // Zeptej se uživatele co chce použít
+  // Ulož prompt a container globálně — bezpečnější než inline JSON
+  window._imgPickData = window._imgPickData || {};
+  window._imgPickData[pickerId] = { prompt, container };
+
   return new Promise(resolve => {
     const picker = document.createElement('div');
     picker.id = pickerId;
@@ -1651,12 +1677,12 @@ async function generateImage(prompt, container){
     picker.innerHTML = `
       <div style="font-size:13px;color:var(--muted2);font-weight:600;">🎨 Jak vygenerovat obrázek?</div>
       <div style="display:flex;flex-wrap:wrap;gap:8px;">
-        <button onclick="imgPickPollinations(${JSON.stringify(JSON.stringify(prompt))}, '${pickerId}', this.closest('.img-gen-result')||this.parentElement.parentElement.parentElement)"
+        <button onclick="imgPickPollinations('${pickerId}')"
           style="flex:1;min-width:140px;background:rgba(52,211,153,0.1);border:1px solid rgba(52,211,153,0.35);border-radius:10px;padding:10px 14px;color:#34d399;cursor:pointer;font-size:13px;font-family:'Outfit',sans-serif;text-align:left;line-height:1.4;">
           🆓 <strong>Pollinations</strong><br><span style="font-size:11px;opacity:.7">Zdarma · Flux model · ~10s</span>
         </button>
         ${dalleKey
-          ? `<button onclick="imgPickDalle(${JSON.stringify(JSON.stringify(prompt))}, '${pickerId}', this.closest('.img-gen-result')||this.parentElement.parentElement.parentElement)"
+          ? `<button onclick="imgPickDalle('${pickerId}')"
               style="flex:1;min-width:140px;background:rgba(251,191,36,0.1);border:1px solid rgba(251,191,36,0.35);border-radius:10px;padding:10px 14px;color:#fbbf24;cursor:pointer;font-size:13px;font-family:'Outfit',sans-serif;text-align:left;line-height:1.4;">
               ✨ <strong>DALL-E 3</strong><br><span style="font-size:11px;opacity:.7">Placené · Nejvyšší kvalita</span>
             </button>`
@@ -1672,21 +1698,25 @@ async function generateImage(prompt, container){
   });
 }
 
-async function imgPickPollinations(promptJson, pickerId, container){
-  const prompt = JSON.parse(promptJson);
+async function imgPickPollinations(pickerId){
+  const data = window._imgPickData?.[pickerId];
   document.getElementById(pickerId)?.remove();
   const resolve = window._imgPickResolve?.[pickerId];
-  delete (window._imgPickResolve||{})[pickerId]; // cleanup
-  const url = await generateWithPollinations(prompt, container);
+  delete (window._imgPickData||{})[pickerId];
+  delete (window._imgPickResolve||{})[pickerId];
+  if(!data){ resolve?.(null); return; }
+  const url = await generateWithPollinations(data.prompt, data.container);
   resolve?.(url);
 }
 
-async function imgPickDalle(promptJson, pickerId, container){
-  const prompt = JSON.parse(promptJson);
+async function imgPickDalle(pickerId){
+  const data = window._imgPickData?.[pickerId];
   document.getElementById(pickerId)?.remove();
   const resolve = window._imgPickResolve?.[pickerId];
-  delete (window._imgPickResolve||{})[pickerId]; // cleanup
-  const url = await generateWithDalle(prompt, container);
+  delete (window._imgPickData||{})[pickerId];
+  delete (window._imgPickResolve||{})[pickerId];
+  if(!data){ resolve?.(null); return; }
+  const url = await generateWithDalle(data.prompt, data.container);
   resolve?.(url);
 }
 
@@ -2354,6 +2384,7 @@ window.addEventListener('DOMContentLoaded', () => {
   renderPins();
   setModel(selectedModel);
   initDragDrop();
+  initScheduler();
   if(!statsEnabled) document.querySelectorAll('.msg-stats').forEach(el=>el.style.display='none');
   if(statsEnabled) document.getElementById('statsBtn').style.borderColor='var(--accent)';
   // Auto-start pokud máme klíče
@@ -2364,6 +2395,15 @@ window.addEventListener('DOMContentLoaded', () => {
 });
 
 // ════ MEMORY ════
+// Struktura: [{text, category, date}]
+// Kategorie: 'me' (O mně), 'project' (Projekty), 'pref' (Preference), 'decision' (Rozhodnutí)
+const MEM_CATS = {
+  me:       { icon: '🙋', label: 'O mně',       color: '#60a5fa' },
+  project:  { icon: '💼', label: 'Projekty',     color: '#34d399' },
+  pref:     { icon: '⚙️', label: 'Preference',  color: '#fbbf24' },
+  decision: { icon: '💡', label: 'Rozhodnutí',   color: '#a78bfa' },
+};
+
 function getMemoryPrompt() {
   const longTerm = getLongTermMemory();
   let prompt = '';
@@ -2372,58 +2412,120 @@ function getMemoryPrompt() {
   return prompt;
 }
 
-// LONG-TERM MEMORY
 function getLongTermMemory(){
   const facts = JSON.parse(localStorage.getItem('ai-longterm-memory')||'[]');
   if(!facts.length) return '';
-  return facts.slice(-30).map(f=>`• ${f}`).join('\n');
+  // Podpora starého formátu (plain string) i nového (objekt)
+  return facts.slice(-30).map(f=>{
+    const text = typeof f === 'string' ? f : f.text;
+    const cat = typeof f === 'object' && f.category ? MEM_CATS[f.category]?.icon || '•' : '•';
+    return `${cat} ${text}`;
+  }).join('\n');
+}
+
+function deleteFact(idx){
+  const facts = JSON.parse(localStorage.getItem('ai-longterm-memory')||'[]');
+  facts.splice(idx, 1);
+  localStorage.setItem('ai-longterm-memory', JSON.stringify(facts));
+  showLongTermMemory();
+}
+
+function showLongTermMemory(){
+  const facts = JSON.parse(localStorage.getItem('ai-longterm-memory')||'[]');
+  const card = document.getElementById('longTermMemoryCard');
+  const list = document.getElementById('longTermMemoryList');
+  if(!card || !list) return;
+  if(!facts.length){ card.style.display='none'; return; }
+  card.style.display='block';
+
+  // Seskup podle kategorie
+  const byCategory = {};
+  facts.forEach((f, idx) => {
+    const cat = (typeof f === 'object' && f.category) ? f.category : 'me';
+    if(!byCategory[cat]) byCategory[cat] = [];
+    byCategory[cat].push({ text: typeof f === 'string' ? f : f.text, date: f.date, idx });
+  });
+
+  list.innerHTML = Object.entries(byCategory).map(([cat, items]) => {
+    const c = MEM_CATS[cat] || MEM_CATS.me;
+    const rows = items.map(item => `
+      <div style="display:flex;align-items:flex-start;gap:6px;padding:4px 0;border-top:1px solid var(--border);group">
+        <span style="font-size:11px;color:var(--muted);flex:1;line-height:1.5;">${escHtml(item.text)}</span>
+        ${item.date ? `<span style="font-size:10px;color:var(--muted);opacity:.5;white-space:nowrap;padding-top:1px">${new Date(item.date).toLocaleDateString('cs-CZ',{day:'numeric',month:'short'})}</span>` : ''}
+        <button onclick="deleteFact(${item.idx})" title="Smazat" style="background:none;border:none;color:#f87171;cursor:pointer;font-size:12px;padding:0 2px;opacity:.6;flex-shrink:0">×</button>
+      </div>`).join('');
+    return `<div style="margin-bottom:8px;">
+      <div style="font-size:11px;font-weight:700;color:${c.color};text-transform:uppercase;letter-spacing:.8px;margin-bottom:2px;">${c.icon} ${c.label} <span style="font-weight:400;opacity:.5">(${items.length})</span></div>
+      ${rows}
+    </div>`;
+  }).join('');
+}
+
+function clearLongTermMemory(){
+  if(!confirm('Smazat celou paměť?')) return;
+  localStorage.removeItem('ai-longterm-memory');
+  document.getElementById('longTermMemoryCard').style.display='none';
 }
 
 // 📚 KUMULATIVNÍ PAMĚŤ – projde všechny staré chaty a extrahuje fakta
 async function buildCumulativeMemory(){
   const chats = getChats();
   if(!chats.length){ alert('Žádné uložené chaty.'); return; }
-  
   const btn = document.getElementById('buildMemoryBtn');
   if(btn){ btn.textContent = '⏳ Extrahuji...'; btn.disabled = true; }
-  
   let allFacts = JSON.parse(localStorage.getItem('ai-longterm-memory')||'[]');
   let processed = 0;
-  
   for(const chat of chats){
     const msgs = chat.messages || [];
     if(msgs.length < 2) continue;
     try {
       const convText = msgs.slice(-6).map(m=>{const aiParts=Object.entries(m).filter(([k])=>k!=='user'&&k!=='_file'&&k!=='_synth'&&typeof m[k]==='string').map(([k,v])=>v.slice(0,150)).join(' | ');return `Uživatel: ${m.user||''}\nAI: ${aiParts}`;}).join('\n');
       const newFacts = await extractFactsFromText(convText);
-      allFacts = [...allFacts, ...newFacts.filter(f=>!allFacts.some(e=>e.toLowerCase()===f.toLowerCase()))];
+      const existingTexts = allFacts.map(f=>typeof f==='string'?f.toLowerCase():f.text?.toLowerCase());
+      allFacts = [...allFacts, ...newFacts.filter(f=>!existingTexts.includes(f.text.toLowerCase()))];
       processed++;
     } catch(e){ console.log('cumulative memory skip:', e); }
   }
-  
-  allFacts = allFacts.slice(-80); // max 80 faktů
+  allFacts = allFacts.slice(-80);
   localStorage.setItem('ai-longterm-memory', JSON.stringify(allFacts));
   showLongTermMemory();
-  
   if(btn){ btn.textContent = `✅ Hotovo (${processed} chatů, ${allFacts.length} faktů)`; btn.disabled = false; }
 }
 
 async function extractFactsFromText(convText){
   const claudeKey = localStorage.getItem('key-claude');
   const groqAI = Object.values(AI).find(a=>a.url?.includes('groq') && a.key);
-  const memPrompt = `Z této konverzace vypiš max 5 faktů o uživateli které stojí za zapamatování (jméno, zájmy, práce, projekty, preference...). Každý fakt na nový řádek jako "• fakt". Pokud žádné nejsou, napiš jen "nic".`;
+  const memPrompt = `Z této konverzace vypiš max 6 faktů o uživateli které stojí za zapamatování.
+Každý fakt vrať na nový řádek ve formátu: KATEGORIE|fakt
+Kategorie: me (osobní info), project (projekty/práce), pref (preference/styl), decision (rozhodnutí/plány)
+Pokud žádné nejsou, napiš jen "nic".
+Příklady:
+me|Jmenuje se Martin a žije v Ostravě
+project|Pracuje na chat.html – multi-agent AI aplikaci v prohlížeči
+pref|Preferuje stručné odpovědi bez zbytečného textu
+decision|Chce přidat scheduler pro automatické prompty`;
   let text = '';
   try{
     if(claudeKey){
-      const resp=await fetch('https://api.anthropic.com/v1/messages',{method:'POST',headers:{'Content-Type':'application/json','x-api-key':claudeKey,'anthropic-version':'2023-06-01','anthropic-dangerous-direct-browser-access':'true'},body:JSON.stringify({model:'claude-haiku-4-5-20251001',max_tokens:300,system:memPrompt,messages:[{role:'user',content:convText}]})});
+      const resp=await fetch('https://api.anthropic.com/v1/messages',{method:'POST',headers:{'Content-Type':'application/json','x-api-key':claudeKey,'anthropic-version':'2023-06-01','anthropic-dangerous-direct-browser-access':'true'},body:JSON.stringify({model:'claude-haiku-4-5-20251001',max_tokens:400,system:memPrompt,messages:[{role:'user',content:convText}]})});
       const d=await resp.json(); text=d.content?.[0]?.text?.trim()||'';
     } else if(groqAI){
-      const resp=await fetch(`${groqAI.url}/chat/completions`,{method:'POST',headers:{'Content-Type':'application/json','Authorization':`Bearer ${groqAI.key}`},body:JSON.stringify({model:'llama-3.1-8b-instant',max_tokens:300,messages:[{role:'system',content:memPrompt},{role:'user',content:convText}]})});
+      const resp=await fetch(`${groqAI.url}/chat/completions`,{method:'POST',headers:{'Content-Type':'application/json','Authorization':`Bearer ${groqAI.key}`},body:JSON.stringify({model:'llama-3.1-8b-instant',max_tokens:400,messages:[{role:'system',content:memPrompt},{role:'user',content:convText}]})});
       const d=await resp.json(); text=d.choices?.[0]?.message?.content?.trim()||'';
     }
   } catch(e){ return []; }
   if(!text||text.toLowerCase().includes('nic')) return [];
-  return text.split('\n').map(l=>l.replace(/^[•\-*]\s*/,'')).filter(l=>l.length>5&&!l.toLowerCase().includes('nic'));
+  const now = new Date().toISOString();
+  return text.split('\n')
+    .map(l=>l.trim())
+    .filter(l=>l.includes('|') && l.length > 5)
+    .map(l=>{
+      const [cat, ...rest] = l.split('|');
+      const text = rest.join('|').trim();
+      const category = ['me','project','pref','decision'].includes(cat.trim()) ? cat.trim() : 'me';
+      return { text, category, date: now };
+    })
+    .filter(f=>f.text.length > 5 && !f.text.toLowerCase().includes('nic'));
 }
 
 async function extractAndSaveMemory(conversation){
@@ -2438,27 +2540,136 @@ async function extractAndSaveMemory(conversation){
     const newFacts = await extractFactsFromText(convText);
     if(!newFacts.length) return;
     const existing = JSON.parse(localStorage.getItem('ai-longterm-memory')||'[]');
-    const merged = [...existing, ...newFacts.filter(f=>!existing.some(e=>e.toLowerCase()===f.toLowerCase()))].slice(-80);
+    const existingTexts = existing.map(f=>typeof f==='string'?f.toLowerCase():f.text?.toLowerCase());
+    const merged = [...existing, ...newFacts.filter(f=>!existingTexts.includes(f.text.toLowerCase()))].slice(-80);
     localStorage.setItem('ai-longterm-memory', JSON.stringify(merged));
     showLongTermMemory();
   } catch(e){ console.log('Memory:', e); }
 }
 
-function showLongTermMemory(){
-  const facts = JSON.parse(localStorage.getItem('ai-longterm-memory')||'[]');
-  const card = document.getElementById('longTermMemoryCard');
-  const list = document.getElementById('longTermMemoryList');
-  if(!facts.length){ card.style.display='none'; return; }
-  card.style.display='block';
-  list.innerHTML = facts.map(f=>`• ${escHtml(f)}`).join('<br>');
+// ════ SCHEDULER ════
+// Struktura: [{id, label, prompt, time:'08:00', repeat:'daily'|'weekdays'|'weekly'|'once', enabled:true, lastRun:null, dayOfWeek:0}]
+
+function getSchedules(){
+  return JSON.parse(localStorage.getItem('scheduled-prompts')||'[]');
+}
+function saveSchedules(list){
+  localStorage.setItem('scheduled-prompts', JSON.stringify(list));
 }
 
-function clearLongTermMemory(){
-  localStorage.removeItem('ai-longterm-memory');
-  document.getElementById('longTermMemoryCard').style.display='none';
+function saveSchedule(){
+  const time   = document.getElementById('sch-time').value;
+  const repeat = document.getElementById('sch-repeat').value;
+  const label  = document.getElementById('sch-label').value.trim() || 'Naplánovaný prompt';
+  const prompt = document.getElementById('sch-prompt').value.trim();
+  if(!prompt){ alert('Zadej text promptu'); return; }
+  const list = getSchedules();
+  list.push({ id: Date.now(), label, prompt, time, repeat, enabled: true, lastRun: null });
+  saveSchedules(list);
+  renderSchedules();
+  document.getElementById('sch-prompt').value = '';
+  document.getElementById('sch-label').value = '';
+  document.getElementById('scheduleForm').style.display = 'none';
 }
 
-// ════ CUSTOM AIs ════
+function deleteSchedule(id){
+  saveSchedules(getSchedules().filter(s=>s.id!==id));
+  renderSchedules();
+}
+
+function toggleSchedule(id){
+  const list = getSchedules().map(s=>s.id===id?{...s,enabled:!s.enabled}:s);
+  saveSchedules(list);
+  renderSchedules();
+}
+
+function renderSchedules(){
+  const list = getSchedules();
+  const el = document.getElementById('scheduleList');
+  if(!el) return;
+  if(!list.length){
+    el.innerHTML = '<div style="font-size:12px;color:var(--muted);text-align:center;padding:4px 0">Žádné naplánované prompty</div>';
+    return;
+  }
+  const repeatLabel = {daily:'každý den',weekdays:'pracovní dny',weekly:'každý týden',once:'jednou'};
+  el.innerHTML = list.map(s=>`
+    <div style="background:var(--surface);border:1px solid var(--border2);border-radius:10px;padding:9px 12px;display:flex;align-items:flex-start;gap:8px;${s.enabled?'':'opacity:.5'}">
+      <div style="flex:1;min-width:0;">
+        <div style="font-size:12px;font-weight:600;color:var(--text);display:flex;align-items:center;gap:6px;">
+          <span style="color:var(--accent)">${s.time}</span>
+          <span style="color:var(--muted);font-weight:400;font-size:11px">${repeatLabel[s.repeat]||s.repeat}</span>
+          <span style="font-size:11px;color:var(--muted2)">${escHtml(s.label)}</span>
+        </div>
+        <div style="font-size:11px;color:var(--muted);margin-top:3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${escHtml(s.prompt.slice(0,80))}${s.prompt.length>80?'…':''}</div>
+        ${s.lastRun?`<div style="font-size:10px;color:var(--muted);opacity:.5;margin-top:2px">Naposledy: ${new Date(s.lastRun).toLocaleString('cs-CZ',{day:'numeric',month:'short',hour:'2-digit',minute:'2-digit'})}</div>`:''}
+      </div>
+      <div style="display:flex;gap:4px;flex-shrink:0;">
+        <button onclick="toggleSchedule(${s.id})" title="${s.enabled?'Pozastavit':'Spustit'}" style="background:${s.enabled?'rgba(52,211,153,0.15)':'rgba(255,255,255,0.05)'};border:1px solid ${s.enabled?'rgba(52,211,153,0.4)':'var(--border)'};border-radius:6px;color:${s.enabled?'#34d399':'var(--muted)'};cursor:pointer;font-size:11px;padding:3px 7px;">${s.enabled?'ON':'OFF'}</button>
+        <button onclick="runScheduleNow(${s.id})" title="Spustit hned" style="background:rgba(96,165,250,0.1);border:1px solid rgba(96,165,250,0.3);border-radius:6px;color:#60a5fa;cursor:pointer;font-size:11px;padding:3px 7px;">▶</button>
+        <button onclick="deleteSchedule(${s.id})" title="Smazat" style="background:none;border:none;color:#f87171;cursor:pointer;font-size:14px;padding:0 4px;">×</button>
+      </div>
+    </div>`).join('');
+}
+
+function runScheduleNow(id){
+  const s = getSchedules().find(s=>s.id===id);
+  if(!s) return;
+  fireScheduledPrompt(s);
+}
+
+async function fireScheduledPrompt(s){
+  // Přepni do chatu pokud jsme v nastavení
+  const chatEl = document.getElementById('chat');
+  if(chatEl && chatEl.style.display==='none') startChat();
+  await new Promise(r=>setTimeout(r,100));
+  // Nastav text a odešli
+  const input = document.getElementById('msgInput');
+  if(!input) return;
+  input.value = s.prompt;
+  autoResize(input);
+  sendMessage();
+  // Aktualizuj lastRun
+  const list = getSchedules().map(sc=>sc.id===s.id?{...sc,lastRun:new Date().toISOString()}:sc);
+  // Pro "once" - deaktivuj po spuštění
+  if(s.repeat==='once'){
+    saveSchedules(list.map(sc=>sc.id===s.id?{...sc,enabled:false}:sc));
+  } else {
+    saveSchedules(list);
+  }
+  renderSchedules();
+}
+
+function checkSchedules(){
+  const list = getSchedules();
+  if(!list.length) return;
+  const now = new Date();
+  const hhmm = `${String(now.getHours()).padStart(2,'0')}:${String(now.getMinutes()).padStart(2,'0')}`;
+  const day = now.getDay(); // 0=ne, 1=po...5=pá, 6=so
+  const isWeekday = day >= 1 && day <= 5;
+  for(const s of list){
+    if(!s.enabled) continue;
+    if(s.time !== hhmm) continue;
+    // Zkontroluj repeat
+    const shouldRun =
+      s.repeat === 'daily' ||
+      (s.repeat === 'weekdays' && isWeekday) ||
+      (s.repeat === 'weekly' && (s.dayOfWeek === undefined || s.dayOfWeek === day)) ||
+      s.repeat === 'once';
+    if(!shouldRun) continue;
+    // Nekontroluj pokud bylo spuštěno v posledních 90 sekundách (debounce)
+    if(s.lastRun && (now - new Date(s.lastRun)) < 90000) continue;
+    console.log(`⏰ Scheduler: spouštím "${s.label}"`);
+    fireScheduledPrompt(s);
+  }
+}
+
+function initScheduler(){
+  renderSchedules();
+  // Kontroluj každých 30 sekund
+  setInterval(checkSchedules, 30000);
+  // Kontroluj hned při startu (může být přesně čas)
+  setTimeout(checkSchedules, 2000);
+}
 function loadCustomAIs() {
   const saved = JSON.parse(localStorage.getItem('custom-ais') || '[]');
   const container = document.getElementById('customAiCards');
