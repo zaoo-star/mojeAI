@@ -1002,7 +1002,7 @@ async function executeTool(name, input, aisDiv){
         const prompt=`Podúkol: ${input.task}\n\nKontext:\n${input.context||'(žádný)'}`;
         let result='';
         if(agentKey==='gemini'){
-          const r=await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${ai.key}`,{method:'POST',signal:getSignal(),headers:{'Content-Type':'application/json'},body:JSON.stringify({systemInstruction:{parts:[{text:sys}]},contents:[{role:'user',parts:[{text:prompt}]}],generationConfig:{maxOutputTokens:2000}})});
+          const r=await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${ai.key}`,{method:'POST',signal:getSignal(),headers:{'Content-Type':'application/json'},body:JSON.stringify({systemInstruction:{parts:[{text:sys}]},contents:[{role:'user',parts:[{text:prompt}]}],generationConfig:{maxOutputTokens:2000}})});
           const d=await r.json();result=d.candidates?.[0]?.content?.parts?.[0]?.text||'Prázdná odpověď';
         } else if(agentKey==='chatgpt'){
           const r=await fetch('https://api.openai.com/v1/chat/completions',{method:'POST',signal:getSignal(),headers:{'Content-Type':'application/json','Authorization':`Bearer ${ai.key}`},body:JSON.stringify({model:'gpt-4o',max_tokens:2000,messages:[{role:'system',content:sys},{role:'user',content:prompt}]})});
@@ -1483,12 +1483,13 @@ async function openAIAgentLoop(key, userMsg, systemPrompt, aisDiv, bubbleId=null
   const ai=AI[key]; const isGPT=key==='chatgpt';
   const apiUrl=isGPT?'https://api.openai.com/v1/chat/completions':`${ai.url}/chat/completions`;
   const apiKey=isGPT?AI.chatgpt.key:ai.key;
-  const model=isGPT?'gpt-4o':normalizeModel(ai);
+  const isGroq = ai.url?.includes('groq.com');
+  let model=isGPT?'gpt-4o':normalizeModel(ai);
+  // Groq: max_tokens nižší aby se vyhnul credit/rate limitům
+  const maxTokens = isGroq ? 1024 : isGPT ? 2048 : 1500;
   const MAX_STEPS=10; const t0=Date.now(); let totalOut=0;
   const signal=currentAbortController?.signal;
-  // Only use streaming for gpt-4o and providers that support it; others get plain
   const supportsStream=isGPT||(!ai.url?.includes('openrouter'));
-  // Inject conversation history between system and current user message
   const history = getConvHistoryMessages(userMsg, key, 8);
   let messages=[{role:'system',content:systemPrompt}, ...history, {role:'user',content:userMsg}];
 
@@ -1503,7 +1504,12 @@ async function openAIAgentLoop(key, userMsg, systemPrompt, aisDiv, bubbleId=null
       if(streamer) streamer.finish();
       msg=m; usage=u;
     } else {
-      const r=await fetchWithRetry(apiUrl,{method:'POST',signal,headers:{'Content-Type':'application/json','Authorization':`Bearer ${apiKey}`},body:JSON.stringify({model,max_tokens:2048,messages,tools:getOpenAITools(),tool_choice:'auto'})});
+      let r=await fetchWithRetry(apiUrl,{method:'POST',signal,headers:{'Content-Type':'application/json','Authorization':`Bearer ${apiKey}`},body:JSON.stringify({model,max_tokens:maxTokens,messages,tools:getOpenAITools(),tool_choice:'auto'})});
+      // Groq rate limit fallback → přepni na rychlý malý model
+      if(isGroq && (r.status===429||r.status===413)){
+        model='llama-3.1-8b-instant';
+        r=await fetch(apiUrl,{method:'POST',signal,headers:{'Content-Type':'application/json','Authorization':`Bearer ${apiKey}`},body:JSON.stringify({model,max_tokens:800,messages,tools:getOpenAITools(),tool_choice:'auto'})});
+      }
       if(!r.ok){let em=`${r.status}`;try{const e=await r.json();em=e.error?.message||em;}catch{}throw new Error(em);}
       const data=await r.json(); msg=data.choices?.[0]?.message; usage=data.usage;
     }
@@ -1541,7 +1547,7 @@ async function geminiAgentLoop(userMsg, systemPrompt, aisDiv, fileSnap=null){
 
   for(let step=0;step<MAX_STEPS;step++){
     if(signal?.aborted) throw new Error('Zrušeno');
-    const r=await fetchWithRetry(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${AI.gemini.key}`,{
+    const r=await fetchWithRetry(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${AI.gemini.key}`,{
       method:'POST',signal,headers:{'Content-Type':'application/json'},
       body:JSON.stringify({systemInstruction:{parts:[{text:fullSystem}]},contents,tools:getGeminiTools(),toolConfig:{functionCallingConfig:{mode:'AUTO'}},generationConfig:{maxOutputTokens:2048}})
     });
@@ -1554,7 +1560,7 @@ async function geminiAgentLoop(userMsg, systemPrompt, aisDiv, fileSnap=null){
     contents.push({role:'model',parts:respParts});
     const funcCalls=respParts.filter(p=>p.functionCall);
     if(!funcCalls.length){
-      renderStats(aisDiv,Date.now()-t0,totalOut,'gemini-1.5-flash');
+      renderStats(aisDiv,Date.now()-t0,totalOut,'gemini-2.0-flash');
       return respParts.filter(p=>p.text).map(p=>p.text).join('')||'';
     }
     const funcResults=[];
@@ -1568,7 +1574,7 @@ async function geminiAgentLoop(userMsg, systemPrompt, aisDiv, fileSnap=null){
     }
     contents.push({role:'user',parts:funcResults});
   }
-  renderStats(aisDiv,Date.now()-t0,totalOut,'gemini-1.5-flash');
+  renderStats(aisDiv,Date.now()-t0,totalOut,'gemini-2.0-flash');
   const last=contents.filter(c=>c.role==='model').pop();
   return last?.parts?.filter(p=>p.text).map(p=>p.text).join('')||'(Max kroků)';
 }
@@ -1593,7 +1599,7 @@ const COST_PER_TOKEN = { // USD per output token
   'claude-haiku-4-5-20251001': 1.25/1e6,
   'claude-opus-4-6': 75/1e6,
   'gpt-4o': 10/1e6,
-  'gemini-1.5-flash': 0,
+  'gemini-2.0-flash': 0,
   '_default': 2/1e6
 };
 function getCost(model, tokens){ return (COST_PER_TOKEN[model]||COST_PER_TOKEN._default)*tokens; }
@@ -2403,7 +2409,7 @@ async function selfReflect(key, question, answer, signal){
       if(!r.ok) return null;
       const d=await r.json(); return d.choices?.[0]?.message?.content?.trim()||null;
     } else if(key==='gemini'){
-      const r=await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${AI.gemini.key}`,{method:'POST',signal,headers:{'Content-Type':'application/json'},body:JSON.stringify({contents:[{role:'user',parts:[{text:prompt}]}],generationConfig:{maxOutputTokens:80}})});
+      const r=await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${AI.gemini.key}`,{method:'POST',signal,headers:{'Content-Type':'application/json'},body:JSON.stringify({contents:[{role:'user',parts:[{text:prompt}]}],generationConfig:{maxOutputTokens:80}})});
       if(!r.ok) return null;
       const d=await r.json(); return d.candidates?.[0]?.content?.parts?.[0]?.text?.trim()||null;
     }
@@ -3655,7 +3661,7 @@ async function makePlan(msg, key){
       const r=await fetch('https://api.anthropic.com/v1/messages',{method:'POST',signal:sig,headers:{'Content-Type':'application/json','x-api-key':ai.key,'anthropic-version':'2023-06-01','anthropic-dangerous-direct-browser-access':'true'},body:JSON.stringify({model:'claude-haiku-4-5-20251001',max_tokens:200,messages:[{role:'user',content:prompt}]})});
       const d=await r.json(); text=d.content?.[0]?.text||'';
     } else if(key==='gemini'){
-      const r=await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${ai.key}`,{method:'POST',signal:sig,headers:{'Content-Type':'application/json'},body:JSON.stringify({contents:[{parts:[{text:prompt}]}],generationConfig:{maxOutputTokens:200}})});
+      const r=await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${ai.key}`,{method:'POST',signal:sig,headers:{'Content-Type':'application/json'},body:JSON.stringify({contents:[{parts:[{text:prompt}]}],generationConfig:{maxOutputTokens:200}})});
       const d=await r.json(); text=d.candidates?.[0]?.content?.parts?.[0]?.text||'';
     } else if(ai.url){
       if(ai.url?.includes('openrouter')) await new Promise(r=>setTimeout(r,900));
@@ -3677,7 +3683,7 @@ async function decomposeTask(msg, assistants) {
       const r=await fetch('https://api.openai.com/v1/chat/completions',{method:'POST',signal:sig,headers:{'Content-Type':'application/json','Authorization':`Bearer ${ai.key}`},body:JSON.stringify({model:'gpt-4o',max_tokens:200,messages:[{role:'user',content:prompt}]})});
       const d=await r.json(); text=d.choices?.[0]?.message?.content||'';
     } else if(key==='gemini'){
-      const r=await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${ai.key}`,{method:'POST',signal:sig,headers:{'Content-Type':'application/json'},body:JSON.stringify({contents:[{parts:[{text:prompt}]}]})});
+      const r=await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${ai.key}`,{method:'POST',signal:sig,headers:{'Content-Type':'application/json'},body:JSON.stringify({contents:[{parts:[{text:prompt}]}]})});
       const d=await r.json(); text=d.candidates?.[0]?.content?.parts?.[0]?.text||'';
     } else if(ai.url){
       if(ai.url?.includes('openrouter')) await new Promise(r=>setTimeout(r,900));
@@ -3701,7 +3707,7 @@ async function selfCritique(key, originalMsg, reply) {
       const r=await fetch('https://api.openai.com/v1/chat/completions',{method:'POST',signal:sig,headers:{'Content-Type':'application/json','Authorization':`Bearer ${ai.key}`},body:JSON.stringify({model:'gpt-4o',max_tokens:400,messages:[{role:'system',content:'Odpovídej POUZE jako JSON.'},{role:'user',content:prompt}]})});
       const d=await r.json(); text=d.choices?.[0]?.message?.content||'';
     } else if(key==='gemini'){
-      const r=await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${ai.key}`,{method:'POST',signal:sig,headers:{'Content-Type':'application/json'},body:JSON.stringify({contents:[{parts:[{text:'Odpovídej POUZE jako JSON.\n\n'+prompt}]}]})});
+      const r=await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${ai.key}`,{method:'POST',signal:sig,headers:{'Content-Type':'application/json'},body:JSON.stringify({contents:[{parts:[{text:'Odpovídej POUZE jako JSON.\n\n'+prompt}]}]})});
       const d=await r.json(); text=d.candidates?.[0]?.content?.parts?.[0]?.text||'';
     } else if(key==='claude'){
       const r=await fetch('https://api.anthropic.com/v1/messages',{method:'POST',signal:sig,headers:{'Content-Type':'application/json','x-api-key':ai.key,'anthropic-version':'2023-06-01','anthropic-dangerous-direct-browser-access':'true'},body:JSON.stringify({model:'claude-haiku-4-5-20251001',max_tokens:400,system:'Odpovídej POUZE jako JSON.',messages:[{role:'user',content:prompt}]})});
@@ -3741,7 +3747,7 @@ async function callAgentQuick(key, systemPrompt, userPrompt, maxTokens=500){
       const r=await fetchWithRetry('https://api.anthropic.com/v1/messages',{method:'POST',signal:sig,headers:{'Content-Type':'application/json','x-api-key':ai.key,'anthropic-version':'2023-06-01','anthropic-dangerous-direct-browser-access':'true'},body:JSON.stringify({model:'claude-haiku-4-5-20251001',max_tokens:maxTokens,system:systemPrompt,messages:[{role:'user',content:userPrompt}]})});
       const d=await r.json(); return d.content?.[0]?.text?.trim()||null;
     } else if(key==='gemini'){
-      const r=await fetchWithRetry(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${ai.key}`,{method:'POST',signal:sig,headers:{'Content-Type':'application/json'},body:JSON.stringify({systemInstruction:{parts:[{text:systemPrompt}]},contents:[{role:'user',parts:[{text:userPrompt}]}],generationConfig:{maxOutputTokens:maxTokens}})});
+      const r=await fetchWithRetry(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${ai.key}`,{method:'POST',signal:sig,headers:{'Content-Type':'application/json'},body:JSON.stringify({systemInstruction:{parts:[{text:systemPrompt}]},contents:[{role:'user',parts:[{text:userPrompt}]}],generationConfig:{maxOutputTokens:maxTokens}})});
       const d=await r.json(); return d.candidates?.[0]?.content?.parts?.[0]?.text?.trim()||null;
     } else if(key==='chatgpt' || ai.url){
       const url = ai.url ? `${ai.url}/chat/completions` : 'https://api.openai.com/v1/chat/completions';
@@ -4433,7 +4439,7 @@ Odpověz POUZE jako JSON:
   "reason": "proč toto doporučuješ šéfovi"
 }`;
 
-        const r = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${AI.gemini.key}`,{
+        const r = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${AI.gemini.key}`,{
           method:'POST', signal: currentAbortController?.signal,
           headers:{'Content-Type':'application/json'},
           body: JSON.stringify({contents:[{role:'user',parts:[{text:prompt}]}], generationConfig:{maxOutputTokens:600}})
@@ -4753,7 +4759,7 @@ Odpověz POUZE jako JSON (bez markdown):
 
 Škála: 1.0=perfektní, 0.75=dobré, 0.5=průměrné, 0.25=špatné, 0.0=chybné
 Pravidlo: score<0.75 POUZE pokud je skutečný problém. V comment vždy uveď CO konkrétně opravit.`;
-  const r=await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${AI.gemini.key}`,{method:'POST',signal:sig,headers:{'Content-Type':'application/json'},body:JSON.stringify({contents:[{role:'user',parts:[{text:prompt}]}],generationConfig:{maxOutputTokens:300}})});
+  const r=await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${AI.gemini.key}`,{method:'POST',signal:sig,headers:{'Content-Type':'application/json'},body:JSON.stringify({contents:[{role:'user',parts:[{text:prompt}]}],generationConfig:{maxOutputTokens:300}})});
   if(!r.ok){const e=await r.json();throw new Error(e.error?.message||r.status);}
   const d=await r.json();
   const raw=(d.candidates?.[0]?.content?.parts?.[0]?.text||'{}').replace(/```json|```/g,'').trim();
@@ -4793,11 +4799,28 @@ function normalizeModel(ai){
     return 'gpt-oss-120b';
   }
   if(ai.url?.includes('groq.com')){
-    // llama3-8b-8192 je decommissioned – použij llama-3.1-8b-instant
     if(!model || model==='llama3-8b-8192' || model.includes('llama3-8b')) return 'llama-3.1-8b-instant';
     if(model.includes('versatile') || model.includes('llama-3.3-70b')) return 'llama-3.3-70b-versatile';
+    if(model.includes('llama-3.1-8b') || model.includes('8b-instant')) return 'llama-3.1-8b-instant';
   }
   return model;
+}
+
+// Groq rate limit fallback — při 429 zkus menší model
+async function fetchGroqWithFallback(url, options, ai){
+  try {
+    const r = await fetch(url, options);
+    if(r.status === 429 || r.status === 413){
+      // Rate limit nebo příliš velký request — přepni na rychlý malý model
+      const body = JSON.parse(options.body);
+      body.model = 'llama-3.1-8b-instant';
+      body.max_tokens = Math.min(body.max_tokens||1000, 800);
+      const r2 = await fetch(url, {...options, body: JSON.stringify(body)});
+      if(!r2.ok){ const e=await r2.json(); throw new Error(`Groq fallback: ${e.error?.message||r2.status}`); }
+      return r2;
+    }
+    return r;
+  } catch(e){ throw e; }
 }
 
 async function reviewCustom(key,originalMsg,verdict){
