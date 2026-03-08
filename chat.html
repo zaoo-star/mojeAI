@@ -4878,8 +4878,25 @@ window.onFbAuthChange = async (user) => {
 };
 
 async function fbSignIn(){
-  try{ await window._fbSignIn(); }
-  catch(e){ alert('Přihlášení selhalo: '+e.message); }
+  const btn = document.getElementById('lb-signin-btn');
+  const status = document.getElementById('lb-status');
+  if(btn){ btn.textContent='⏳ Přihlašuji…'; btn.disabled=true; }
+  try{
+    await window._fbSignIn();
+  } catch(e){
+    if(btn){ btn.textContent='🔑 Google'; btn.disabled=false; }
+    const code = e.code||'';
+    if(code==='auth/popup-blocked'){
+      status.textContent='⚠️ Prohlížeč zablokoval popup – povol popupy pro tuto stránku a zkus znovu';
+    } else if(code==='auth/unauthorized-domain'){
+      status.innerHTML='⚠️ Tato doména není povolena ve Firebase konzoli.<br><small>Přidej <b>'+location.hostname+'</b> do Authentication → Settings → Authorized domains</small>';
+    } else if(code==='auth/popup-closed-by-user'){
+      status.textContent='Přihlášení zrušeno';
+    } else {
+      status.textContent='Chyba: '+e.message;
+      console.error('fbSignIn error:', e);
+    }
+  }
 }
 
 async function fbSignOut(){
