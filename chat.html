@@ -286,6 +286,11 @@ onAuthStateChanged(auth, user => {
     <input type="password" id="key-chatgpt" placeholder="sk-proj-..." autocomplete="off">
     <div class="hint">→ platform.openai.com/api-keys</div>
   </div>
+  <div class="ai-card">
+    <div class="ai-card-header"><div class="ai-dot" style="background:#f97316"></div><span>🔍 Tavily (Web Search)</span><small>app.tavily.com</small></div>
+    <input type="password" id="key-tavily" placeholder="tvly-..." autocomplete="off">
+    <div class="hint">→ app.tavily.com · 1000 dotazů/měsíc zdarma · nutné pro plné vyhledávání</div>
+  </div>
   <div id="customAiCards"></div>
   <button class="text-btn" onclick="openModal('add')">+ Přidat vlastní AI (Groq, Mistral, DeepSeek...)</button>
 
@@ -393,22 +398,29 @@ const CLAUDE_MODELS = {
 const MD_SYSTEM = `Před každou odpovědí MUSÍŠ přemýšlet. Použij tento formát:
 
 <think>
-[Zde napiš své myšlenky: co otázka znamená, co víš, co chybí, co je nejlepší odpověď a proč. Pokud je otázka nejednoznačná nebo příliš vágní, poznamenej to zde.]
+[Zde napiš své myšlenky]
 </think>
 
 [Zde napiš odpověď]
 
 Pravidla:
 - Vždy začni blokem <think>...</think>
-- Pokud otázka NENÍ jasná nebo ti chybí klíčové informace pro kvalitní odpověď, ZEPTEJ SE zpět – jednou konkrétní otázkou. Nepřidávej odpověď, jen otázku.
+- MÁTE přístup k internetu – aktuální webová data dostaneš v sekci "Aktuální data z webu" níže pokud jsou k dispozici. Používej je.
+- Pokud otázka NENÍ jasná nebo ti chybí klíčové informace, zeptej se zpět jednou konkrétní otázkou.
 - Neuváděj kdo jsi ani jaká je tvoje role
 - Odpovídej stručně a přesně
 - Používej Markdown jen když pomáhá srozumitelnosti`;
+function getDatePrompt(){
+  const now = new Date();
+  const days = ['neděle','pondělí','úterý','středa','čtvrtek','pátek','sobota'];
+  return `\n\nAktuální datum a čas: ${days[now.getDay()]} ${now.toLocaleDateString('cs-CZ')} ${now.toLocaleTimeString('cs-CZ',{hour:'2-digit',minute:'2-digit'})}`;
+}
 function getSearchPrompt(){ return webSearchContext ? '\n\n---\n' + webSearchContext + '\n---\nVyužij tato data z webu ve své odpovědi.' : ''; }
 
 // ════ INIT ════
 window.addEventListener('DOMContentLoaded', () => {
   document.getElementById('key-claude').value  = localStorage.getItem('key-claude')  || '';
+  document.getElementById('key-tavily').value  = localStorage.getItem('key-tavily')  || '';
   document.getElementById('key-gemini').value  = localStorage.getItem('key-gemini')  || '';
   document.getElementById('key-chatgpt').value = localStorage.getItem('key-chatgpt') || '';
   document.getElementById('memoryText').value  = localStorage.getItem('user-memory') || '';
@@ -502,10 +514,13 @@ function removeCustomAi(id) {
 // ════ START CHAT ════
 function startChat() {
   AI.claude.key  = document.getElementById('key-claude').value.trim();
+  const tavilyKey = document.getElementById('key-tavily').value.trim();
+  if(tavilyKey) localStorage.setItem('key-tavily', tavilyKey);
   AI.gemini.key  = document.getElementById('key-gemini').value.trim();
   AI.chatgpt.key = document.getElementById('key-chatgpt').value.trim();
   userMemory     = document.getElementById('memoryText').value.trim();
   localStorage.setItem('key-claude',  AI.claude.key);
+  localStorage.setItem('key-tavily', document.getElementById('key-tavily').value.trim());
   localStorage.setItem('key-gemini',  AI.gemini.key);
   localStorage.setItem('key-chatgpt', AI.chatgpt.key);
   localStorage.setItem('user-memory', userMemory);
@@ -991,11 +1006,11 @@ async function pickModel(msg){
 async function callClaude(msg,assistantAnswers,prevVerdict,round,fileSnap=null){
   const modelKey=await pickModel(msg);const model=CLAUDE_MODELS[modelKey];
   const hasA=Object.keys(assistantAnswers).length>0;
-  let system=MD_SYSTEM+getMemoryPrompt()+getSearchPrompt()+'\nJsi hlavní AI. Dej nejlepší možnou odpověď.';
+  let system=MD_SYSTEM+getDatePrompt()+getMemoryPrompt()+getSearchPrompt()+'\nJsi hlavní AI. Dej nejlepší možnou odpověď.';
   let userContent=msg;
   if(hasA){
     const summary=Object.entries(assistantAnswers).map(([k,v])=>`${AI[k]?.name||k}: ${v}`).join('\n\n');
-    system=MD_SYSTEM+getMemoryPrompt()+getSearchPrompt()+(round===1?'\nJsi hlavní AI šéf. Zkontroluj odpovědi asistentů, oprav chyby, dej finální odpověď.':'\nJsi hlavní AI šéf. Zohledni výhrady asistentů a dej revidovanou odpověď.');
+    system=MD_SYSTEM+getDatePrompt()+getMemoryPrompt()+getSearchPrompt()+(round===1?'\nJsi hlavní AI šéf. Zkontroluj odpovědi asistentů, oprav chyby, dej finální odpověď.':'\nJsi hlavní AI šéf. Zohledni výhrady asistentů a dej revidovanou odpověď.');
     userContent=round===1?`Otázka: ${msg}\n\nOdpovědi asistentů:\n${summary}\n\nTvoje finální odpověď:`:`Otázka: ${msg}\n\nTvůj předchozí verdikt: ${prevVerdict}\n\nVýhrady:\n${summary}\n\nRevidovaná odpověď:`;
   }
   // Použij plnou historii skupinového chatu
@@ -1016,7 +1031,7 @@ async function callClaude(msg,assistantAnswers,prevVerdict,round,fileSnap=null){
 
 async function callClaudeFinal(msg,verdict,allContext){
   const ctx=Object.entries(allContext).map(([k,v])=>`${AI[k]?.name||k}: ${v}`).join('\n\n');
-  const system=MD_SYSTEM+getMemoryPrompt()+getSearchPrompt()+'\nVydej tu nejdokonalejší možnou odpověď. Integruj to nejlepší z celé diskuze.';
+  const system=MD_SYSTEM+getDatePrompt()+getMemoryPrompt()+getSearchPrompt()+'\nVydej tu nejdokonalejší možnou odpověď. Integruj to nejlepší z celé diskuze.';
   const r=await fetch('https://api.anthropic.com/v1/messages',{method:'POST',headers:{'Content-Type':'application/json','x-api-key':AI.claude.key,'anthropic-version':'2023-06-01','anthropic-dangerous-direct-browser-access':'true'},body:JSON.stringify({model:'claude-opus-4-5-20251101',max_tokens:4096,system,messages:[{role:'user',content:`Otázka: ${msg}\n\nDiskuze:\n${ctx}\n\nPoslední verdikt: ${verdict}\n\nFinální dokonalá odpověď:`}]})});
   if(!r.ok){const e=await r.json();throw new Error(e.error?.message||r.status);}
   const d=await r.json();return d.content[0].text;
@@ -1024,7 +1039,7 @@ async function callClaudeFinal(msg,verdict,allContext){
 
 async function callGemini(msg,context){
   const groupHist = buildGroupHistory(msg, context);
-  const memStr=userMemory?`\n\nInformace o uživateli: ${userMemory}`:'';
+  const memStr=getDatePrompt()+(userMemory?`\n\nInformace o uživateli: ${userMemory}`:'');
   const teamNames = active.map(k=>AI[k].name).join(', ');
   const prompt=`${MD_SYSTEM}${memStr}\n\nJsi součástí AI týmu: ${teamNames}. Čteš skupinový chat a reaguješ jako jeho člen. Vidíš co řekli ostatní.\n\n${groupHist}\nTvoje odpověď:`;
   const r=await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${AI.gemini.key}`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({contents:[{role:'user',parts:[{text:prompt}]}],generationConfig:{maxOutputTokens:2048}})});
@@ -1045,7 +1060,7 @@ async function callChatGPT(msg,context){
   const groupHist = buildGroupHistory(msg, context);
   const teamNames = active.map(k=>AI[k].name).join(', ');
   const userContent=`${groupHist}\nTvoje odpověď:`;
-  const sysPrompt=MD_SYSTEM+(userMemory?`\nInformace o uživateli: ${userMemory}`:'')+getSearchPrompt()+`\nJsi součástí AI týmu: ${teamNames}. Čteš skupinový chat a reaguješ jako jeho člen. Vidíš co řekli ostatní.`;
+  const sysPrompt=MD_SYSTEM+getDatePrompt()+(userMemory?`\nInformace o uživateli: ${userMemory}`:'')+getSearchPrompt()+`\nJsi součástí AI týmu: ${teamNames}. Čteš skupinový chat a reaguješ jako jeho člen. Vidíš co řekli ostatní.`;
   const r=await fetch('https://api.openai.com/v1/chat/completions',{method:'POST',headers:{'Content-Type':'application/json','Authorization':`Bearer ${AI.chatgpt.key}`},body:JSON.stringify({model:'gpt-4o',max_tokens:2048,messages:[{role:'system',content:sysPrompt},{role:'user',content:userContent}]})});
   if(!r.ok){const e=await r.json();throw new Error(e.error?.message||r.status);}
   const d=await r.json();return d.choices[0].message.content;
@@ -1064,7 +1079,7 @@ async function callCustom(key,msg,context){
   const groupHist = buildGroupHistory(msg, context);
   const teamNames = active.map(k=>AI[k].name).join(', ');
   const userContent=`${groupHist}\nTvoje odpověď:`;
-  const sysPrompt=MD_SYSTEM+(userMemory?`\nInformace o uživateli: ${userMemory}`:'')+getSearchPrompt()+`\nJsi součástí AI týmu: ${teamNames}. Čteš skupinový chat a reaguješ jako jeho člen. Vidíš co řekli ostatní.`;
+  const sysPrompt=MD_SYSTEM+getDatePrompt()+(userMemory?`\nInformace o uživateli: ${userMemory}`:'')+getSearchPrompt()+`\nJsi součástí AI týmu: ${teamNames}. Čteš skupinový chat a reaguješ jako jeho člen. Vidíš co řekli ostatní.`;
   const r=await fetch(`${ai.url}/chat/completions`,{method:'POST',headers:{'Content-Type':'application/json','Authorization':`Bearer ${ai.key}`},body:JSON.stringify({model:ai.model,max_tokens:2048,messages:[{role:'system',content:sysPrompt},{role:'user',content:userContent}]})});
   if(!r.ok){const e=await r.json();throw new Error(e.error?.message||r.status);}
   const d=await r.json();return d.choices[0].message.content;
@@ -1251,50 +1266,78 @@ async function autoWebSearch(query){
   status.textContent='🔍 Hledám…';
   lastSources=[];
 
+  const tavilyKey = localStorage.getItem('key-tavily');
+
   try{
-    // Run DuckDuckGo + Wikipedia in parallel
-    const [ddgRes, wikiRes] = await Promise.allSettled([
-      fetch(`https://api.duckduckgo.com/?q=${encodeURIComponent(query)}&format=json&no_redirect=1&no_html=1&skip_disambig=1`).then(r=>r.json()),
-      fetch(`https://cs.wikipedia.org/w/api.php?action=query&list=search&srsearch=${encodeURIComponent(query)}&srlimit=2&srprop=snippet&format=json&origin=*`).then(r=>r.json())
-    ]);
-
-    let sections=[];
-
-    // DuckDuckGo
-    if(ddgRes.status==='fulfilled'){
-      const ddg=ddgRes.value;
-      if(ddg.AbstractText){
-        sections.push({title:ddg.Heading||'DuckDuckGo',text:ddg.AbstractText,url:ddg.AbstractURL||'https://duckduckgo.com'});
+    if(tavilyKey){
+      // ── TAVILY – plné webové vyhledávání ──
+      const res = await fetch('https://api.tavily.com/search', {
+        method:'POST',
+        headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({
+          api_key: tavilyKey,
+          query,
+          search_depth: 'basic',
+          max_results: 5,
+          include_answer: true,
+          include_raw_content: false
+        })
+      });
+      if(!res.ok) throw new Error('Tavily HTTP '+res.status);
+      const data = await res.json();
+      let sections = [];
+      if(data.answer) sections.push({title:'Přímá odpověď',text:data.answer,url:''});
+      for(const r of (data.results||[]).slice(0,4)){
+        sections.push({title:r.title||r.url,text:r.content||'',url:r.url});
       }
-      if(ddg.Answer) sections.push({title:'Přímá odpověď',text:ddg.Answer,url:'https://duckduckgo.com'});
-      if(ddg.Infobox?.content?.length){
-        const info=ddg.Infobox.content.slice(0,6).map(i=>`${i.label}: ${i.value}`).join('\n');
-        sections.push({title:'Infobox',text:info,url:ddg.AbstractURL||'https://duckduckgo.com'});
+      if(sections.length){
+        lastSources = sections.filter(s=>s.url).map(s=>({title:s.title,url:s.url}));
+        let text = sections.map(s=>`[${s.title}]\n${s.text}`).join('\n\n');
+        if(text.length>4000) text=text.slice(0,4000)+'…';
+        webSearchContext=`Aktuální data z webu (${new Date().toLocaleDateString('cs-CZ')}) k dotazu "${query}":\n\n${text}`;
+        status.innerHTML=`✅ Tavily: ${sections.length} výsledků`;
+        status.style.color='#4ade80';
+      } else {
+        status.textContent='ℹ️ Tavily: žádné výsledky';
+        webSearchContext=null;
       }
-    }
-
-    // Wikipedia CS
-    if(wikiRes.status==='fulfilled'){
-      const hits=wikiRes.value?.query?.search||[];
-      for(const h of hits.slice(0,2)){
-        const clean=h.snippet.replace(/<[^>]+>/g,'');
-        sections.push({title:`Wikipedia: ${h.title}`,text:clean,url:`https://cs.wikipedia.org/wiki/${encodeURIComponent(h.title)}`});
-      }
-    }
-
-    if(sections.length){
-      lastSources=sections.map(s=>({title:s.title,url:s.url}));
-      let text=sections.map(s=>`[${s.title}]\n${s.text}`).join('\n\n');
-      if(text.length>3000) text=text.slice(0,3000)+'…';
-      webSearchContext=`Aktuální data z webu (${new Date().toLocaleDateString('cs-CZ')}) k dotazu "${query}":\n\n${text}`;
-      status.innerHTML=`✅ ${sections.length} zdrojů nalezeno`;
-      status.style.color='#4ade80';
     } else {
-      status.textContent='ℹ️ Žádné výsledky';
-      webSearchContext=null;
+      // ── Fallback: DuckDuckGo + Wikipedia ──
+      const [ddgRes, wikiRes] = await Promise.allSettled([
+        fetch(`https://api.duckduckgo.com/?q=${encodeURIComponent(query)}&format=json&no_redirect=1&no_html=1&skip_disambig=1`).then(r=>r.json()),
+        fetch(`https://cs.wikipedia.org/w/api.php?action=query&list=search&srsearch=${encodeURIComponent(query)}&srlimit=2&srprop=snippet&format=json&origin=*`).then(r=>r.json())
+      ]);
+      let sections=[];
+      if(ddgRes.status==='fulfilled'){
+        const ddg=ddgRes.value;
+        if(ddg.AbstractText) sections.push({title:ddg.Heading||'DuckDuckGo',text:ddg.AbstractText,url:ddg.AbstractURL||'https://duckduckgo.com'});
+        if(ddg.Answer) sections.push({title:'Přímá odpověď',text:ddg.Answer,url:'https://duckduckgo.com'});
+        if(ddg.Infobox?.content?.length){
+          const info=ddg.Infobox.content.slice(0,6).map(i=>`${i.label}: ${i.value}`).join('\n');
+          sections.push({title:'Infobox',text:info,url:ddg.AbstractURL||'https://duckduckgo.com'});
+        }
+      }
+      if(wikiRes.status==='fulfilled'){
+        const hits=wikiRes.value?.query?.search||[];
+        for(const h of hits.slice(0,2)){
+          const clean=h.snippet.replace(/<[^>]+>/g,'');
+          sections.push({title:`Wikipedia: ${h.title}`,text:clean,url:`https://cs.wikipedia.org/wiki/${encodeURIComponent(h.title)}`});
+        }
+      }
+      if(sections.length){
+        lastSources=sections.map(s=>({title:s.title,url:s.url}));
+        let text=sections.map(s=>`[${s.title}]\n${s.text}`).join('\n\n');
+        if(text.length>3000) text=text.slice(0,3000)+'…';
+        webSearchContext=`Aktuální data z webu (${new Date().toLocaleDateString('cs-CZ')}) k dotazu "${query}":\n\n${text}`;
+        status.innerHTML=`✅ ${sections.length} zdrojů (DDG+Wiki)`;
+        status.style.color='#4ade80';
+      } else {
+        status.textContent='ℹ️ Žádné výsledky';
+        webSearchContext=null;
+      }
     }
   } catch(e){
-    status.textContent='⚠️ Web nedostupný';
+    status.textContent='⚠️ Chyba: '+e.message;
     webSearchContext=null;
   }
 }
