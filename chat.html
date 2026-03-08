@@ -93,7 +93,7 @@ html,body{height:100%;height:100dvh;background:var(--bg);color:var(--text);font-
 /* CHAT HEADER */
 .chat-header{background:rgba(15,15,26,0.95);backdrop-filter:blur(12px);border-bottom:1px solid var(--border);padding:0;display:flex;flex-direction:column;flex-shrink:0;position:sticky;top:0;z-index:10;}
 .chat-header-row1{padding:8px 12px;display:flex;align-items:center;gap:6px;width:100%;}
-.chat-header-title{font-weight:700;font-size:15px;flex:1;letter-spacing:-.2px;}
+.chat-header-title{font-weight:700;font-size:13px;flex:1;letter-spacing:-.2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:120px;}
 .header-btn{background:var(--card);border:1px solid var(--border);border-radius:10px;color:var(--muted2);font-size:14px;padding:6px 10px;cursor:pointer;font-family:'Outfit',sans-serif;white-space:nowrap;transition:all .2s;}
 .header-btn:hover{border-color:var(--accent);color:var(--text);}
 .header-btn.web-on{border-color:var(--teal);color:var(--teal);}
@@ -3394,18 +3394,53 @@ Hodnoť přísně ale spravedlivě. Vrať pouze JSON řádky, nic jiného.`;
     const d = await r.json();
     const text = d.content?.[0]?.text||'';
     // Parsuj každý JSON řádek
+    const results = [];
     text.split('\n').forEach(line=>{
       line = line.trim();
       if(!line.startsWith('{')) return;
       try{
         const obj = JSON.parse(line);
         if(obj.agent && obj.score !== undefined){
-          // Najdi správný klíč agenta (může být jméno nebo klíč)
           const agentKey = keys.find(k=>k===obj.agent || AI[k]?.name===obj.agent || AI[k]?.name?.includes(obj.agent)) || obj.agent;
-          if(AI[agentKey]) saveClaudeFeedback(agentKey, obj.score, obj.strengths||[], obj.weaknesses||[]);
+          if(AI[agentKey]){
+            saveClaudeFeedback(agentKey, obj.score, obj.strengths||[], obj.weaknesses||[]);
+            results.push({ key: agentKey, ...obj });
+          }
         }
       }catch{}
     });
+
+    // Zobraz výsledky jako collapsible toast v chatu
+    if(results.length){
+      const msgsDiv = document.getElementById('messages');
+      const toast = document.createElement('div');
+      toast.style.cssText = 'margin:6px 12px;border-radius:10px;overflow:hidden;font-size:12px;border:1px solid var(--border);';
+      const scoreColor = s => s>=0.8?'#34d399':s>=0.6?'#fbbf24':'#f87171';
+      const rowsHtml = results.map(r => {
+        const ai = AI[r.key];
+        const col = ai?.rawColor||'#888';
+        const sc = r.score??0.7;
+        const bar = `<span style="background:${scoreColor(sc)};color:#000;border-radius:4px;padding:1px 5px;font-weight:700;margin-right:6px">${sc.toFixed(2)}</span>`;
+        const weak = (r.weaknesses||[]).map(w=>`<span style="background:#f8717120;color:#f87171;border-radius:4px;padding:1px 5px;margin:1px">⚠️ ${w}</span>`).join('');
+        const str  = (r.strengths||[]).map(s=>`<span style="background:#34d39920;color:#34d399;border-radius:4px;padding:1px 5px;margin:1px">✅ ${s}</span>`).join('');
+        return `<div style="padding:6px 10px;border-top:1px solid var(--border);display:flex;align-items:flex-start;gap:8px;flex-wrap:wrap">
+          <span style="color:${col};font-weight:700;min-width:60px">${ai?.name||r.key}</span>
+          ${bar}
+          <span style="display:flex;flex-wrap:wrap;gap:2px">${str}${weak}</span>
+        </div>`;
+      }).join('');
+      const id = 'teach_'+Date.now();
+      toast.innerHTML = `
+        <div id="${id}_hdr" onclick="document.getElementById('${id}_body').style.display=document.getElementById('${id}_body').style.display==='none'?'block':'none';this.querySelector('.chevron').textContent=document.getElementById('${id}_body').style.display==='none'?'▸':'▾'"
+          style="padding:7px 12px;background:var(--bg2);cursor:pointer;display:flex;align-items:center;gap:6px;user-select:none">
+          <span>🎓</span>
+          <span style="flex:1;color:var(--muted)">Claude ohodnotil agenty</span>
+          <span class="chevron" style="color:var(--muted);font-size:10px">▸</span>
+        </div>
+        <div id="${id}_body" style="display:none;background:var(--bg)">${rowsHtml}</div>`;
+      msgsDiv.appendChild(toast);
+      msgsDiv.scrollTop = msgsDiv.scrollHeight;
+    }
     console.log('🎓 Claude ohodnotil agenty, feedback uložen');
   } catch(e){ console.log('claudeTeachAgents error:', e); }
 }
