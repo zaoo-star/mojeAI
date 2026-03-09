@@ -505,7 +505,7 @@ onAuthStateChanged(auth, user => {
   <div class="ai-card">
     <div class="ai-card-header"><div class="ai-dot" style="background:#8b5cf6"></div><span>GitHub Gist Backup</span><small>gist.github.com</small></div>
     <input type="password" id="key-github" placeholder="ghp_..." autocomplete="off" onchange="localStorage.setItem('key-github',this.value.trim());const b=document.getElementById('ghSyncBtn');if(b)b.style.display=this.value.trim()?'':'none'">
-    <div class="hint">→ github.com/settings/tokens → Generate → scope: <b>gist</b> · Zálohuje aktuální chat do Gistu</div>
+    <div class="hint">→ github.com/settings/tokens → Generate (classic) → scope: <b>gist</b> + <b>repo</b> + <b>workflow</b></div>
     <div style="display:flex;gap:6px;align-items:center;margin-top:6px;flex-wrap:wrap;">
       <button onclick="ghSyncPush()" style="background:rgba(139,92,246,0.15);border:1px solid rgba(139,92,246,0.4);border-radius:8px;padding:5px 12px;color:#8b5cf6;cursor:pointer;font-size:12px;font-family:'Outfit',sans-serif;font-weight:600">⬆ Uložit do Gistu</button>
       <button onclick="ghSyncPull()" style="background:var(--card2);border:1px solid var(--border);border-radius:8px;padding:5px 12px;color:var(--muted2);cursor:pointer;font-size:12px;font-family:'Outfit',sans-serif">⬇ Načíst z Gistu</button>
@@ -539,6 +539,36 @@ onAuthStateChanged(auth, user => {
     </div>
     <button onclick="document.getElementById('scheduleForm').style.display='flex'" style="background:none;border:1px dashed var(--border2);border-radius:10px;padding:8px;color:var(--muted);font-family:'Outfit',sans-serif;font-size:13px;cursor:pointer;text-align:center;">+ Přidat naplánovaný prompt</button>
   </div>
+
+  <div class="section-title" style="margin-top:4px">🚀 Pozadí Worker (GitHub Actions)</div>
+  <div class="ai-card" id="bgWorkerCard">
+    <div class="ai-card-header"><div class="ai-dot" style="background:#34d399"></div><span>AI běží i když spíš</span><small>GitHub Actions</small></div>
+    <div id="bgw-status" style="font-size:12px;color:var(--muted);margin-bottom:8px">Potřebuje GitHub token se scope: <b>gist</b> + <b>repo</b> + <b>workflow</b></div>
+    <div id="bgw-setup" style="display:flex;flex-direction:column;gap:8px;">
+      <button onclick="bgwSetup()" id="bgw-setup-btn" style="background:rgba(52,211,153,0.15);border:1px solid rgba(52,211,153,0.4);border-radius:10px;padding:10px 14px;color:#34d399;cursor:pointer;font-size:13px;font-family:'Outfit',sans-serif;font-weight:600">🚀 Nastavit pozadí worker</button>
+    </div>
+    <div id="bgw-tasks" style="display:none;flex-direction:column;gap:8px;margin-top:8px;">
+      <div style="display:flex;gap:6px;">
+        <select id="bgw-type" style="background:var(--card);border:1px solid var(--border2);border-radius:8px;padding:6px 10px;color:var(--text);font-family:'Outfit',sans-serif;font-size:12px;">
+          <option value="query">📝 Jednorázový úkol</option>
+          <option value="monitor">📊 Sledování (opakované)</option>
+        </select>
+        <select id="bgw-interval" style="background:var(--card);border:1px solid var(--border2);border-radius:8px;padding:6px 10px;color:var(--text);font-family:'Outfit',sans-serif;font-size:12px;">
+          <option value="15">Každých 15 min</option>
+          <option value="30">Každých 30 min</option>
+          <option value="60">Každou hodinu</option>
+        </select>
+      </div>
+      <textarea id="bgw-prompt" placeholder="Úkol pro AI… (např. Sleduj cenu BTC a když klesne pod 60000 USD, zapiš alert)" style="background:var(--card);border:1px solid var(--border2);border-radius:8px;padding:8px 10px;color:var(--text);font-family:'Outfit',sans-serif;font-size:13px;resize:none;min-height:60px;width:100%;box-sizing:border-box;line-height:1.5;"></textarea>
+      <div style="display:flex;gap:6px;">
+        <button onclick="bgwSubmitTask()" style="flex:1;background:#34d399;border:none;color:#000;border-radius:8px;padding:8px;font-family:'Outfit',sans-serif;font-size:13px;font-weight:600;cursor:pointer">⬆ Odeslat úkol</button>
+        <button onclick="bgwCheckResults()" style="background:var(--card2);border:1px solid var(--border);color:var(--muted2);border-radius:8px;padding:8px 12px;font-family:'Outfit',sans-serif;font-size:12px;cursor:pointer">⬇ Výsledky</button>
+      </div>
+      <div id="bgw-results" style="display:none;flex-direction:column;gap:6px;max-height:300px;overflow-y:auto;"></div>
+    </div>
+    <div class="hint" style="margin-top:6px">Worker běží přes GitHub Actions (2000 min/měsíc zdarma). Výsledky se zapisují do Gistu.</div>
+  </div>
+
   <button class="start-btn" onclick="startChat()">Spustit chat →</button>
   <button class="start-btn" onclick="downloadHtml()" style="background:var(--card);color:var(--text);border:1px solid var(--border);margin-top:8px;">⬇ Stáhnout chat.html</button>
   <div style="text-align:center;font-size:11px;color:var(--muted)">Vše se uloží v prohlížeči pro příště</div>
@@ -3620,17 +3650,45 @@ function stripHidden(text){
   if(!text) return '';
   // Odstraň <self_review>...</self_review> blok
   text = text.replace(/<self_review>[\s\S]*?<\/self_review>/gi, '');
-  // Odstraň také holý JSON na konci pokud vypadá jako self_review (model zapomněl tagy)
-  text = text.replace(/\s*\{[\s\S]*?"did_well"[\s\S]*?"could_improve"[\s\S]*?\}\s*$/i, '');
-  text = text.replace(/\s*\{[\s\S]*?"applied_feedback"[\s\S]*?\}\s*$/i, '');
+  // Odstraň holý JSON self-review na konci — najdi poslední { a zkontroluj
+  const lastBrace = text.lastIndexOf('{');
+  if(lastBrace > 0){
+    const tail = text.slice(lastBrace);
+    // Zkus parsovat jako JSON a zkontroluj jestli obsahuje review klíče
+    try{
+      const obj = JSON.parse(tail);
+      if(obj && (obj.did_well || obj.could_improve || obj.applied_feedback !== undefined)){
+        text = text.slice(0, lastBrace);
+      }
+    }catch{
+      // Není validní JSON — zkus regex pro neúplný/malformovaný JSON
+      if(/\{[^{}]*"did_well"|"could_improve"|"applied_feedback"/.test(tail)){
+        text = text.slice(0, lastBrace);
+      }
+    }
+  }
   return text.trim();
 }
 function extractAndSaveSelfReview(agentKey, text){
   try{
+    let obj = null;
+    // Varianta 1: <self_review> tagy
     const match = text.match(/<self_review>([\s\S]*?)<\/self_review>/i);
-    if(!match) return;
-    const raw = match[1].replace(/```json|```/g,'').trim();
-    const obj = JSON.parse(raw);
+    if(match){
+      const raw = match[1].replace(/```json|```/g,'').trim();
+      obj = JSON.parse(raw);
+    }
+    // Varianta 2: holý JSON na konci textu (model zapomněl tagy)
+    if(!obj){
+      const lastBrace = text.lastIndexOf('{');
+      if(lastBrace > 0){
+        try{
+          const tail = text.slice(lastBrace);
+          const parsed = JSON.parse(tail);
+          if(parsed && (parsed.did_well || parsed.could_improve)) obj = parsed;
+        }catch{}
+      }
+    }
     if(!obj) return;
     const styles = getAgentStyles();
     if(!styles[agentKey]) styles[agentKey] = { likes:0, dislikes:0, avgLenLiked:0, avgLenDisliked:0, evolved:false, claudeFeedback:[], selfReviews:[] };
@@ -4289,7 +4347,7 @@ async function sendMessage() {
       const _bubLbl = _prevDone>0
         ? `${AI[key].name} · čte ${_prevDone} koleg${_prevDone===1?'u':'y'} → „${_topicSnip}"`
         : `${AI[key].name} · zpracovává: „${_topicSnip}"`;
-      const bubble = addBubble(aisDiv, key, _bubLbl);
+      const bubble = addBubble(aisDiv, key, _bubLbl, false, true);
       try{
         const prevAnswers = assistants.slice(0,i)
           .filter(k => kb[k]?.text)
@@ -4420,7 +4478,7 @@ Buď konkrétní – žádné vágní "souhlasím, vše je správně".`;
       // ── FINÁLNÍ SYNTÉZA ──
       const synth = assistants[0];
       addDivider(aisDiv, `✅ ${AI[synth]?.name||'AI'} syntetizuje finální odpověď...`);
-      const bubble = addBubble(aisDiv, synth, `${AI[synth].name} · syntetizuje...`);
+      const bubble = addBubble(aisDiv, synth, `${AI[synth].name} · syntetizuje...`, false, true);
       try{
         const allK = assistants.filter(k=>kb[k]?.text).map(k=>`### ${AI[k].name} (${kb[k].vote||'souhlas'}):\n${kb[k].text.slice(0,600)}`).join('\n\n');
         const disagreements = assistants.filter(k=>kb[k]?.vote==='nesouhlas').map(k=>`${AI[k].name}: ${kb[k].text.slice(0,300)}`).join('\n');
@@ -4560,7 +4618,7 @@ Tvůj úkol jako syntetizátor:
     const agentFailures = []; // sbíráme chyby pro souhrn
     const runAgent = async (key, i) => {
       updateLiveAgent(key, 'working');
-      const bubble = addBubble(aisDiv, key, `${AI[key].name} · ${workerRoles[key]?.label||'zpracovává'}: „${msgText.slice(0,38)}${msgText.length>38?'…':''}"`);
+      const bubble = addBubble(aisDiv, key, `${AI[key].name} · ${workerRoles[key]?.label||'zpracovává'}: „${msgText.slice(0,38)}${msgText.length>38?'…':''}"`, false, true);
       try {
         const roleHint = agentRoles[key] ? `\n\nTvoje perspektiva v této diskuzi: ${agentRoles[key]}` : '';
         const workerHint = workerRoles[key] ? `\n\n👷 Worker role: ${workerRoles[key].label} — ${workerRoles[key].desc}` : '';
@@ -5012,11 +5070,11 @@ function finishLog(){
 // bubbleLogMap: bubbleId → logLineId
 const bubbleLogMap = {};
 
-function addBubble(container,aiKey,label,isBoss=false){
+function addBubble(container,aiKey,label,isBoss=false,visible=false){
   const id='b'+(++bc);
   const ai=AI[aiKey];const col=ai.rawColor;
   const wrap=document.createElement('div');
-  wrap.className = isBoss ? 'msg-ai' : 'msg-ai collapsed';
+  wrap.className = (isBoss || visible) ? 'msg-ai' : 'msg-ai collapsed';
   // 🎓 Badge pokud má agent Claudovo hodnocení
   const styles = getAgentStyles();
   const agentStyle = styles[aiKey];
@@ -5575,6 +5633,242 @@ function initGhSync(){
   if(gistId && token){
     ghSetStatus(`🔗 gist.github.com/${gistId.slice(0,8)}…`,'var(--muted)');
   }
+  // Background worker UI
+  initBgWorker();
+}
+
+// ════ BACKGROUND WORKER (GitHub Actions) ════
+const BGW_REPO = 'ai-background-worker';
+
+function bgwStatus(text,color){
+  const el=document.getElementById('bgw-status');
+  if(el){el.innerHTML=text;el.style.color=color||'var(--muted)';}
+}
+
+function initBgWorker(){
+  if(localStorage.getItem('bgw-repo-ready')==='1'){
+    document.getElementById('bgw-setup').style.display='none';
+    document.getElementById('bgw-tasks').style.display='flex';
+    bgwStatus('✅ Worker aktivní','#34d399');
+  }
+}
+
+function getBgwWorkflow(){
+  return `name: AI Background Worker
+on:
+  schedule:
+    - cron: '*/15 * * * *'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  work:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Run AI Worker
+        env:
+          GH_TOKEN: \${{ secrets.GH_TOKEN }}
+          GIST_ID: \${{ secrets.GIST_ID }}
+          GEMINI_KEY: \${{ secrets.GEMINI_KEY }}
+        run: |
+          cat << 'ENDSCRIPT' > worker.mjs
+          const GH=process.env.GH_TOKEN, GI=process.env.GIST_ID, GK=process.env.GEMINI_KEY;
+          if(!GH||!GI){console.log('Missing secrets');process.exit(0);}
+          const gFetch=(u,o={})=>fetch(u,{...o,headers:{Authorization:'token '+GH,'Content-Type':'application/json',...(o.headers||{})}});
+          async function gistRead(){const r=await gFetch('https://api.github.com/gists/'+GI);if(!r.ok)throw new Error('Gist:'+r.status);return r.json();}
+          async function gistWrite(f){return gFetch('https://api.github.com/gists/'+GI,{method:'PATCH',body:JSON.stringify({files:f})});}
+          async function gemini(p){
+            if(!GK)return '⚠️ No Gemini key';
+            const r=await fetch('https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key='+GK,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({contents:[{role:'user',parts:[{text:p}]}],generationConfig:{maxOutputTokens:2000}})});
+            if(!r.ok){const e=await r.json().catch(()=>({}));return '⚠️ '+( e.error?.message||r.status);}
+            const d=await r.json();return d.candidates?.[0]?.content?.parts?.[0]?.text||'(empty)';
+          }
+          async function cryptoPrice(sym){
+            const m={BTC:'bitcoin',ETH:'ethereum',SOL:'solana',BNB:'binancecoin',XRP:'ripple',DOGE:'dogecoin',ADA:'cardano'};
+            const id=m[sym.toUpperCase()]||sym.toLowerCase();
+            try{const r=await fetch('https://api.coingecko.com/api/v3/simple/price?ids='+id+'&vs_currencies=usd,czk');if(!r.ok)return null;const d=await r.json();return d[id]||null;}catch{return null;}
+          }
+          try{
+            const g=await gistRead();
+            const tasks=JSON.parse(g.files?.['ai-tasks.json']?.content||'[]');
+            const results=JSON.parse(g.files?.['ai-results.json']?.content||'[]');
+            let changed=false;
+            for(const t of tasks){
+              if(t.status==='done'||t.status==='paused')continue;
+              if(t.lastRun){const e=(Date.now()-new Date(t.lastRun).getTime())/60000;if(e<(t.intervalMinutes||15)-2)continue;}
+              console.log('Run:',t.id,t.type);
+              t.lastRun=new Date().toISOString();changed=true;
+              if(t.type==='query'){
+                const a=await gemini(t.prompt);
+                results.push({taskId:t.id,type:'answer',text:a,timestamp:t.lastRun});
+                t.status='done';
+              } else if(t.type==='monitor'){
+                let ctx='';
+                const cm=t.prompt.match(/\\b(BTC|ETH|SOL|BNB|XRP|DOGE|ADA|bitcoin|ethereum)\\b/i);
+                if(cm){const p=await cryptoPrice(cm[1]);if(p)ctx='Ceny: '+JSON.stringify(p);}
+                const a=await gemini(t.prompt+'\\n\\nData: '+(ctx||'n/a')+'\\nČas: '+t.lastRun+'\\n\\nStručně. Pokud splněna podmínka, začni ALERT.');
+                const alert=a.toUpperCase().startsWith('ALERT');
+                results.push({taskId:t.id,type:alert?'alert':'check',text:a,timestamp:t.lastRun});
+                t.runs=(t.runs||0)+1;if(alert)t.alerts=(t.alerts||0)+1;
+              }
+            }
+            if(changed){
+              await gistWrite({'ai-tasks.json':{content:JSON.stringify(tasks,null,2)},'ai-results.json':{content:JSON.stringify(results.slice(-100),null,2)}});
+              console.log('Done, results:',results.length);
+            }
+          }catch(e){console.error(e);process.exit(1);}
+          ENDSCRIPT
+          node worker.mjs
+`;
+}
+
+// ── Šifrování secretů pro GitHub API ──
+async function loadNacl(){
+  if(window.nacl)return window.nacl;
+  return new Promise((res,rej)=>{const s=document.createElement('script');s.src='https://cdnjs.cloudflare.com/ajax/libs/tweetnacl/1.0.3/nacl-fast.min.js';s.onload=()=>res(window.nacl);s.onerror=rej;document.head.appendChild(s);});
+}
+async function encryptSecret(pubKeyB64, value){
+  const nacl=await loadNacl();
+  const pk=Uint8Array.from(atob(pubKeyB64),c=>c.charCodeAt(0));
+  const msg=new TextEncoder().encode(value);
+  const ek=nacl.box.keyPair();
+  const nonce=nacl.randomBytes(24);
+  const enc=nacl.box(msg,nonce,pk,ek.secretKey);
+  const sealed=new Uint8Array(32+24+enc.length);
+  sealed.set(ek.publicKey);sealed.set(nonce,32);sealed.set(enc,56);
+  return btoa(String.fromCharCode(...sealed));
+}
+async function setSecret(token,owner,repo,name,value){
+  const r1=await fetch(`https://api.github.com/repos/${owner}/${repo}/actions/secrets/public-key`,{headers:{'Authorization':`token ${token}`}});
+  if(!r1.ok)throw new Error('PubKey:'+r1.status);
+  const{key,key_id}=await r1.json();
+  const enc=await encryptSecret(key,value);
+  const r2=await fetch(`https://api.github.com/repos/${owner}/${repo}/actions/secrets/${name}`,{method:'PUT',headers:{'Authorization':`token ${token}`,'Content-Type':'application/json'},body:JSON.stringify({encrypted_value:enc,key_id})});
+  if(!r2.ok)throw new Error('Secret '+name+':'+r2.status);
+}
+
+// ── Setup ──
+async function bgwSetup(){
+  const token=getGhToken();
+  if(!token){bgwStatus('⚠️ Nejdřív zadej GitHub token (scope: gist + repo + workflow)','#f87171');return;}
+  const btn=document.getElementById('bgw-setup-btn');
+  btn.textContent='⏳ Vytvářím…';btn.disabled=true;
+  try{
+    bgwStatus('🔍 Ověřuji účet…','#8b5cf6');
+    const ur=await fetch('https://api.github.com/user',{headers:{'Authorization':`token ${token}`}});
+    if(!ur.ok)throw new Error('Auth: '+ur.status+' — token potřebuje scope repo+workflow+gist');
+    const owner=(await ur.json()).login;
+    localStorage.setItem('bgw-owner',owner);
+
+    bgwStatus('📦 Vytvářím repo…','#8b5cf6');
+    const rr=await fetch('https://api.github.com/user/repos',{method:'POST',headers:{'Authorization':`token ${token}`,'Content-Type':'application/json'},body:JSON.stringify({name:BGW_REPO,private:true,description:'AI Background Worker',auto_init:true})});
+    if(!rr.ok){const e=await rr.json();if(!e.errors?.some(x=>x.message?.includes('already exists')))throw new Error('Repo: '+e.message);}
+
+    bgwStatus('📝 Gist…','#8b5cf6');
+    let gistId=getGhGistId();
+    if(!gistId){
+      const gr=await fetch('https://api.github.com/gists',{method:'POST',headers:{'Authorization':`token ${token}`,'Content-Type':'application/json'},body:JSON.stringify({description:'AI Chat + Background Tasks',public:false,files:{'ai-chat-sync.json':{content:'{}'},'ai-tasks.json':{content:'[]'},'ai-results.json':{content:'[]'}}})});
+      if(!gr.ok)throw new Error('Gist: '+(await gr.json()).message);
+      gistId=(await gr.json()).id;
+      localStorage.setItem('gh-gist-id',gistId);
+    } else {
+      const gist=await(await fetch(`https://api.github.com/gists/${gistId}`,{headers:{'Authorization':`token ${token}`}})).json();
+      const patch={};
+      if(!gist.files?.['ai-tasks.json'])patch['ai-tasks.json']={content:'[]'};
+      if(!gist.files?.['ai-results.json'])patch['ai-results.json']={content:'[]'};
+      if(Object.keys(patch).length)await fetch(`https://api.github.com/gists/${gistId}`,{method:'PATCH',headers:{'Authorization':`token ${token}`,'Content-Type':'application/json'},body:JSON.stringify({files:patch})});
+    }
+
+    bgwStatus('⚙️ Workflow…','#8b5cf6');
+    const wPath='.github/workflows/ai-worker.yml';
+    const wB64=btoa(unescape(encodeURIComponent(getBgwWorkflow())));
+    const fr=await fetch(`https://api.github.com/repos/${owner}/${BGW_REPO}/contents/${wPath}`,{headers:{'Authorization':`token ${token}`}});
+    const fSha=fr.ok?(await fr.json()).sha:null;
+    const wr=await fetch(`https://api.github.com/repos/${owner}/${BGW_REPO}/contents/${wPath}`,{method:'PUT',headers:{'Authorization':`token ${token}`,'Content-Type':'application/json'},body:JSON.stringify({message:'AI worker workflow',content:wB64,...(fSha?{sha:fSha}:{})})});
+    if(!wr.ok)throw new Error('Push workflow: '+(await wr.json()).message);
+
+    bgwStatus('🔐 Secrets…','#8b5cf6');
+    await setSecret(token,owner,BGW_REPO,'GH_TOKEN',token);
+    await setSecret(token,owner,BGW_REPO,'GIST_ID',gistId);
+    const gk=AI.gemini?.key||localStorage.getItem('key-gemini')||'';
+    if(gk)await setSecret(token,owner,BGW_REPO,'GEMINI_KEY',gk);
+
+    localStorage.setItem('bgw-repo-ready','1');
+    bgwStatus(`✅ Hotovo! <a href="https://github.com/${owner}/${BGW_REPO}/actions" target="_blank" style="color:#34d399">Zobrazit Actions ↗</a>`,'#34d399');
+    document.getElementById('bgw-setup').style.display='none';
+    document.getElementById('bgw-tasks').style.display='flex';
+  }catch(e){bgwStatus(`❌ ${e.message}`,'#f87171');console.error('bgwSetup:',e);}
+  btn.textContent='🚀 Nastavit pozadí worker';btn.disabled=false;
+}
+
+// ── Submit task ──
+async function bgwSubmitTask(){
+  const token=getGhToken(),gistId=getGhGistId();
+  if(!token||!gistId){bgwStatus('⚠️ Nejdřív nastav worker','#f87171');return;}
+  const type=document.getElementById('bgw-type').value;
+  const prompt=document.getElementById('bgw-prompt').value.trim();
+  const interval=parseInt(document.getElementById('bgw-interval').value)||15;
+  if(!prompt){bgwStatus('⚠️ Zadej úkol','#f87171');return;}
+  bgwStatus('⬆ Odesílám…','#8b5cf6');
+  try{
+    const r=await fetch(`https://api.github.com/gists/${gistId}`,{headers:{'Authorization':`token ${token}`}});
+    const tasks=JSON.parse((await r.json()).files?.['ai-tasks.json']?.content||'[]');
+    tasks.push({id:'task_'+Date.now(),type,prompt,status:'pending',created:new Date().toISOString(),intervalMinutes:type==='monitor'?interval:null,runs:0,alerts:0,lastRun:null});
+    await fetch(`https://api.github.com/gists/${gistId}`,{method:'PATCH',headers:{'Authorization':`token ${token}`,'Content-Type':'application/json'},body:JSON.stringify({files:{'ai-tasks.json':{content:JSON.stringify(tasks,null,2)}}})});
+    document.getElementById('bgw-prompt').value='';
+    bgwStatus('✅ Úkol odeslán! Zpracování do ~15 min','#34d399');
+    // Trigger workflow hned
+    const owner=localStorage.getItem('bgw-owner');
+    if(owner)fetch(`https://api.github.com/repos/${owner}/${BGW_REPO}/actions/workflows/ai-worker.yml/dispatches`,{method:'POST',headers:{'Authorization':`token ${token}`,'Content-Type':'application/json'},body:JSON.stringify({ref:'main'})}).catch(()=>{});
+  }catch(e){bgwStatus(`❌ ${e.message}`,'#f87171');}
+}
+
+// ── Check results ──
+async function bgwCheckResults(){
+  const token=getGhToken(),gistId=getGhGistId();
+  if(!token||!gistId)return;
+  bgwStatus('⬇ Načítám…','#8b5cf6');
+  try{
+    const gist=await(await fetch(`https://api.github.com/gists/${gistId}`,{headers:{'Authorization':`token ${token}`}})).json();
+    const tasks=JSON.parse(gist.files?.['ai-tasks.json']?.content||'[]');
+    const results=JSON.parse(gist.files?.['ai-results.json']?.content||'[]');
+    const c=document.getElementById('bgw-results');
+    c.style.display='flex';
+    let html='';
+    // Active tasks
+    for(const t of tasks.filter(t=>t.status!=='done')){
+      html+=`<div style="background:rgba(52,211,153,0.06);border:1px solid rgba(52,211,153,0.2);border-radius:8px;padding:8px 10px;font-size:12px;display:flex;align-items:center;gap:6px;">
+        <span>${t.type==='monitor'?'📊':'📝'}</span>
+        <span style="flex:1;color:var(--text)">${escHtml(t.prompt.slice(0,50))}${t.prompt.length>50?'…':''}</span>
+        <span style="color:var(--muted);font-size:10px">${t.status}${t.runs?' · '+t.runs+'×':''}${t.alerts?' · ⚠️'+t.alerts:''}</span>
+        <button onclick="bgwStopTask('${t.id}')" style="background:none;border:none;color:#f87171;cursor:pointer;font-size:11px">⏹</button>
+      </div>`;
+    }
+    // Recent results
+    for(const r of results.slice(-10).reverse()){
+      const task=tasks.find(t=>t.id===r.taskId);
+      const isAlert=r.type==='alert';
+      const time=new Date(r.timestamp).toLocaleString('cs-CZ',{day:'numeric',month:'short',hour:'2-digit',minute:'2-digit'});
+      html+=`<div style="background:${isAlert?'rgba(248,113,113,0.08)':'rgba(255,255,255,0.03)'};border:1px solid ${isAlert?'rgba(248,113,113,0.3)':'var(--border)'};border-radius:8px;padding:8px 10px;font-size:12px;">
+        <div style="display:flex;gap:6px;margin-bottom:4px"><span>${isAlert?'🚨':'📄'}</span><span style="font-weight:600;color:${isAlert?'#f87171':'var(--text)'}">${escHtml((task?.prompt||r.taskId).slice(0,50))}</span><span style="margin-left:auto;font-size:10px;color:var(--muted)">${time}</span></div>
+        <div style="color:var(--muted2);line-height:1.5">${escHtml((r.text||'').slice(0,300))}${(r.text||'').length>300?'…':''}</div>
+      </div>`;
+    }
+    c.innerHTML=html||'<div style="color:var(--muted);text-align:center;font-size:12px;padding:8px">Zatím žádné výsledky</div>';
+    bgwStatus(`📊 ${results.length} výsledků · ${tasks.filter(t=>t.status!=='done').length} aktivních`,'#34d399');
+  }catch(e){bgwStatus(`❌ ${e.message}`,'#f87171');}
+}
+
+async function bgwStopTask(id){
+  const token=getGhToken(),gistId=getGhGistId();
+  if(!token||!gistId)return;
+  try{
+    const gist=await(await fetch(`https://api.github.com/gists/${gistId}`,{headers:{'Authorization':`token ${token}`}})).json();
+    const tasks=JSON.parse(gist.files?.['ai-tasks.json']?.content||'[]');
+    const t=tasks.find(t=>t.id===id);if(t)t.status='done';
+    await fetch(`https://api.github.com/gists/${gistId}`,{method:'PATCH',headers:{'Authorization':`token ${token}`,'Content-Type':'application/json'},body:JSON.stringify({files:{'ai-tasks.json':{content:JSON.stringify(tasks,null,2)}}})});
+    bgwCheckResults();
+  }catch(e){bgwStatus(`❌ ${e.message}`,'#f87171');}
 }
 
 async function shouldSearch(query){
