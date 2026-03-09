@@ -431,6 +431,10 @@ onAuthStateChanged(auth, user => {
     <div class="ai-card-header"><div class="ai-dot" style="background:#38bdf8"></div><span>Gemini (Analytik 📊)</span><small>Google</small></div>
     <input type="password" id="key-gemini" placeholder="AIza..." autocomplete="off">
     <div class="hint">→ aistudio.google.com/app/apikey</div>
+    <div style="display:flex;gap:6px;align-items:center;margin-top:4px">
+      <button onclick="testGeminiKey()" style="background:var(--card2);border:1px solid var(--border);border-radius:6px;padding:3px 10px;font-size:11px;cursor:pointer;color:var(--fg)">🔍 Test modelu</button>
+      <span id="gemini-model-status" style="font-size:11px;color:var(--muted)"></span>
+    </div>
   </div>
   <div class="ai-card">
     <div class="ai-card-header"><div class="ai-dot" style="background:#4ade80"></div><span>ChatGPT (Generalista 🎯)</span><small>OpenAI</small></div>
@@ -1002,7 +1006,7 @@ async function executeTool(name, input, aisDiv){
         const prompt=`Podúkol: ${input.task}\n\nKontext:\n${input.context||'(žádný)'}`;
         let result='';
         if(agentKey==='gemini'){
-          const r=await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${ai.key}`,{method:'POST',signal:getSignal(),headers:{'Content-Type':'application/json'},body:JSON.stringify({systemInstruction:{parts:[{text:sys}]},contents:[{role:'user',parts:[{text:prompt}]}],generationConfig:{maxOutputTokens:2000}})});
+          const r=await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${ai.key}`,{method:'POST',signal:getSignal(),headers:{'Content-Type':'application/json'},body:JSON.stringify({systemInstruction:{parts:[{text:sys}]},contents:[{role:'user',parts:[{text:prompt}]}],generationConfig:{maxOutputTokens:2000}})});
           const d=await r.json();result=d.candidates?.[0]?.content?.parts?.[0]?.text||'Prázdná odpověď';
         } else if(agentKey==='chatgpt'){
           const r=await fetch('https://api.openai.com/v1/chat/completions',{method:'POST',signal:getSignal(),headers:{'Content-Type':'application/json','Authorization':`Bearer ${ai.key}`},body:JSON.stringify({model:'gpt-4o',max_tokens:2000,messages:[{role:'system',content:sys},{role:'user',content:prompt}]})});
@@ -1535,21 +1539,56 @@ async function openAIAgentLoop(key, userMsg, systemPrompt, aisDiv, bubbleId=null
 
 // ── Gemini native function calling loop with stats ──
 async function geminiAgentLoop(userMsg, systemPrompt, aisDiv, fileSnap=null){
+  // Auto-detekce funkčního modelu při prvním použití
+  const model = await getWorkingGeminiModel();
+  return await _geminiAgentLoopWithModel(userMsg, systemPrompt, aisDiv, fileSnap, model);
+}
+
+// Cache funkčního modelu — zjistíme jednou, pak používáme
+let _workingGeminiModel = null;
+async function getWorkingGeminiModel(){
+  if(_workingGeminiModel) return _workingGeminiModel;
+  try {
+    // Zeptej se API na seznam dostupných modelů
+    const r = await fetch(`https://generativelanguage.googleapis.com/v1beta/models?key=${AI.gemini.key}`);
+    if(r.ok){
+      const d = await r.json();
+      const available = (d.models||[])
+        .map(m => m.name?.replace('models/',''))
+        .filter(n => n && n.includes('gemini') && n.includes('flash') && !n.includes('thinking') && !n.includes('8b'));
+      // Preferuj nejnovější flash modely
+      const preferred = ['gemini-2.5-flash','gemini-2.0-flash','gemini-1.5-flash','gemini-2.0-flash-lite'];
+      for(const p of preferred){
+        if(available.find(a => a.startsWith(p.split('-preview')[0]))){
+          _workingGeminiModel = available.find(a => a.startsWith(p.split('-preview')[0]));
+          console.log('✅ Gemini model auto-detected:', _workingGeminiModel);
+          return _workingGeminiModel;
+        }
+      }
+      // Jinak vezmi první dostupný flash model
+      if(available.length){ _workingGeminiModel = available[0]; return _workingGeminiModel; }
+    }
+  } catch(e){ console.warn('Gemini model list failed:', e); }
+  // Fallback pokud API seznam selže
+  _workingGeminiModel = 'gemini-1.5-flash';
+  return _workingGeminiModel;
+}
+
+async function _geminiAgentLoopWithModel(userMsg, systemPrompt, aisDiv, fileSnap, geminiModel){
   const MAX_STEPS=10; const t0=Date.now(); let totalOut=0;
   const signal=currentAbortController?.signal;
   const initParts=fileSnap?.isImage
     ?[{inline_data:{mime_type:fileSnap.type||'image/jpeg',data:fileSnap.content.split(',')[1]}},{text:userMsg}]
     :[{text:userMsg}];
-  // Inject conversation history + current message
   const histPrompt = getConvHistoryPrompt(6);
   const fullSystem = histPrompt ? systemPrompt + histPrompt : systemPrompt;
   let contents=[{role:'user',parts:initParts}];
 
   for(let step=0;step<MAX_STEPS;step++){
     if(signal?.aborted) throw new Error('Zrušeno');
-    const r=await fetchWithRetry(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${AI.gemini.key}`,{
+    const r=await fetchWithRetry(`https://generativelanguage.googleapis.com/v1beta/models/${geminiModel}:generateContent?key=${AI.gemini.key}`,{
       method:'POST',signal,headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({systemInstruction:{parts:[{text:fullSystem}]},contents,tools:getGeminiTools(),toolConfig:{functionCallingConfig:{mode:'AUTO'}},generationConfig:{maxOutputTokens:2048}})
+      body:JSON.stringify({systemInstruction:{parts:[{text:fullSystem}]},contents,tools:getGeminiTools(),toolConfig:{functionCallingConfig:{mode:'AUTO'}},generationConfig:{maxOutputTokens:1500}})
     });
     if(!r.ok){const e=await r.json();throw new Error(e.error?.message||r.status);}
     const data=await r.json();
@@ -1560,7 +1599,7 @@ async function geminiAgentLoop(userMsg, systemPrompt, aisDiv, fileSnap=null){
     contents.push({role:'model',parts:respParts});
     const funcCalls=respParts.filter(p=>p.functionCall);
     if(!funcCalls.length){
-      renderStats(aisDiv,Date.now()-t0,totalOut,'gemini-2.0-flash');
+      renderStats(aisDiv,Date.now()-t0,totalOut,geminiModel);
       return respParts.filter(p=>p.text).map(p=>p.text).join('')||'';
     }
     const funcResults=[];
@@ -1574,7 +1613,7 @@ async function geminiAgentLoop(userMsg, systemPrompt, aisDiv, fileSnap=null){
     }
     contents.push({role:'user',parts:funcResults});
   }
-  renderStats(aisDiv,Date.now()-t0,totalOut,'gemini-2.0-flash');
+  renderStats(aisDiv,Date.now()-t0,totalOut,geminiModel);
   const last=contents.filter(c=>c.role==='model').pop();
   return last?.parts?.filter(p=>p.text).map(p=>p.text).join('')||'(Max kroků)';
 }
@@ -1599,7 +1638,7 @@ const COST_PER_TOKEN = { // USD per output token
   'claude-haiku-4-5-20251001': 1.25/1e6,
   'claude-opus-4-6': 75/1e6,
   'gpt-4o': 10/1e6,
-  'gemini-2.0-flash': 0,
+  'gemini-1.5-flash': 0,
   '_default': 2/1e6
 };
 function getCost(model, tokens){ return (COST_PER_TOKEN[model]||COST_PER_TOKEN._default)*tokens; }
@@ -2409,7 +2448,7 @@ async function selfReflect(key, question, answer, signal){
       if(!r.ok) return null;
       const d=await r.json(); return d.choices?.[0]?.message?.content?.trim()||null;
     } else if(key==='gemini'){
-      const r=await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${AI.gemini.key}`,{method:'POST',signal,headers:{'Content-Type':'application/json'},body:JSON.stringify({contents:[{role:'user',parts:[{text:prompt}]}],generationConfig:{maxOutputTokens:80}})});
+      const r=await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${AI.gemini.key}`,{method:'POST',signal,headers:{'Content-Type':'application/json'},body:JSON.stringify({contents:[{role:'user',parts:[{text:prompt}]}],generationConfig:{maxOutputTokens:80}})});
       if(!r.ok) return null;
       const d=await r.json(); return d.candidates?.[0]?.content?.parts?.[0]?.text?.trim()||null;
     }
@@ -2871,6 +2910,24 @@ function startChat() {
   const tavilyKey = document.getElementById('key-tavily').value.trim();
   if(tavilyKey) localStorage.setItem('key-tavily', tavilyKey);
   AI.gemini.key  = document.getElementById('key-gemini').value.trim();
+  _workingGeminiModel = null; // reset cache při změně klíče
+
+async function testGeminiKey(){
+  const key = document.getElementById('key-gemini').value.trim();
+  const status = document.getElementById('gemini-model-status');
+  if(!key){ status.textContent = '⚠️ Zadej klíč'; return; }
+  status.textContent = '⏳ Hledám dostupné modely…';
+  _workingGeminiModel = null;
+  AI.gemini.key = key;
+  try{
+    const model = await getWorkingGeminiModel();
+    status.textContent = `✅ ${model}`;
+    status.style.color = '#34d399';
+  } catch(e){
+    status.textContent = `❌ ${e.message?.slice(0,50)}`;
+    status.style.color = '#f87171';
+  }
+}
   AI.chatgpt.key = document.getElementById('key-chatgpt').value.trim();
   userMemory     = document.getElementById('memoryText').value.trim();
   localStorage.setItem('key-claude',  AI.claude.key);
@@ -3661,7 +3718,7 @@ async function makePlan(msg, key){
       const r=await fetch('https://api.anthropic.com/v1/messages',{method:'POST',signal:sig,headers:{'Content-Type':'application/json','x-api-key':ai.key,'anthropic-version':'2023-06-01','anthropic-dangerous-direct-browser-access':'true'},body:JSON.stringify({model:'claude-haiku-4-5-20251001',max_tokens:200,messages:[{role:'user',content:prompt}]})});
       const d=await r.json(); text=d.content?.[0]?.text||'';
     } else if(key==='gemini'){
-      const r=await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${ai.key}`,{method:'POST',signal:sig,headers:{'Content-Type':'application/json'},body:JSON.stringify({contents:[{parts:[{text:prompt}]}],generationConfig:{maxOutputTokens:200}})});
+      const r=await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${ai.key}`,{method:'POST',signal:sig,headers:{'Content-Type':'application/json'},body:JSON.stringify({contents:[{parts:[{text:prompt}]}],generationConfig:{maxOutputTokens:200}})});
       const d=await r.json(); text=d.candidates?.[0]?.content?.parts?.[0]?.text||'';
     } else if(ai.url){
       if(ai.url?.includes('openrouter')) await new Promise(r=>setTimeout(r,900));
@@ -3683,7 +3740,7 @@ async function decomposeTask(msg, assistants) {
       const r=await fetch('https://api.openai.com/v1/chat/completions',{method:'POST',signal:sig,headers:{'Content-Type':'application/json','Authorization':`Bearer ${ai.key}`},body:JSON.stringify({model:'gpt-4o',max_tokens:200,messages:[{role:'user',content:prompt}]})});
       const d=await r.json(); text=d.choices?.[0]?.message?.content||'';
     } else if(key==='gemini'){
-      const r=await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${ai.key}`,{method:'POST',signal:sig,headers:{'Content-Type':'application/json'},body:JSON.stringify({contents:[{parts:[{text:prompt}]}]})});
+      const r=await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${ai.key}`,{method:'POST',signal:sig,headers:{'Content-Type':'application/json'},body:JSON.stringify({contents:[{parts:[{text:prompt}]}]})});
       const d=await r.json(); text=d.candidates?.[0]?.content?.parts?.[0]?.text||'';
     } else if(ai.url){
       if(ai.url?.includes('openrouter')) await new Promise(r=>setTimeout(r,900));
@@ -3707,7 +3764,7 @@ async function selfCritique(key, originalMsg, reply) {
       const r=await fetch('https://api.openai.com/v1/chat/completions',{method:'POST',signal:sig,headers:{'Content-Type':'application/json','Authorization':`Bearer ${ai.key}`},body:JSON.stringify({model:'gpt-4o',max_tokens:400,messages:[{role:'system',content:'Odpovídej POUZE jako JSON.'},{role:'user',content:prompt}]})});
       const d=await r.json(); text=d.choices?.[0]?.message?.content||'';
     } else if(key==='gemini'){
-      const r=await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${ai.key}`,{method:'POST',signal:sig,headers:{'Content-Type':'application/json'},body:JSON.stringify({contents:[{parts:[{text:'Odpovídej POUZE jako JSON.\n\n'+prompt}]}]})});
+      const r=await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${ai.key}`,{method:'POST',signal:sig,headers:{'Content-Type':'application/json'},body:JSON.stringify({contents:[{parts:[{text:'Odpovídej POUZE jako JSON.\n\n'+prompt}]}]})});
       const d=await r.json(); text=d.candidates?.[0]?.content?.parts?.[0]?.text||'';
     } else if(key==='claude'){
       const r=await fetch('https://api.anthropic.com/v1/messages',{method:'POST',signal:sig,headers:{'Content-Type':'application/json','x-api-key':ai.key,'anthropic-version':'2023-06-01','anthropic-dangerous-direct-browser-access':'true'},body:JSON.stringify({model:'claude-haiku-4-5-20251001',max_tokens:400,system:'Odpovídej POUZE jako JSON.',messages:[{role:'user',content:prompt}]})});
@@ -3747,7 +3804,7 @@ async function callAgentQuick(key, systemPrompt, userPrompt, maxTokens=500){
       const r=await fetchWithRetry('https://api.anthropic.com/v1/messages',{method:'POST',signal:sig,headers:{'Content-Type':'application/json','x-api-key':ai.key,'anthropic-version':'2023-06-01','anthropic-dangerous-direct-browser-access':'true'},body:JSON.stringify({model:'claude-haiku-4-5-20251001',max_tokens:maxTokens,system:systemPrompt,messages:[{role:'user',content:userPrompt}]})});
       const d=await r.json(); return d.content?.[0]?.text?.trim()||null;
     } else if(key==='gemini'){
-      const r=await fetchWithRetry(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${ai.key}`,{method:'POST',signal:sig,headers:{'Content-Type':'application/json'},body:JSON.stringify({systemInstruction:{parts:[{text:systemPrompt}]},contents:[{role:'user',parts:[{text:userPrompt}]}],generationConfig:{maxOutputTokens:maxTokens}})});
+      const r=await fetchWithRetry(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${ai.key}`,{method:'POST',signal:sig,headers:{'Content-Type':'application/json'},body:JSON.stringify({systemInstruction:{parts:[{text:systemPrompt}]},contents:[{role:'user',parts:[{text:userPrompt}]}],generationConfig:{maxOutputTokens:maxTokens}})});
       const d=await r.json(); return d.candidates?.[0]?.content?.parts?.[0]?.text?.trim()||null;
     } else if(key==='chatgpt' || ai.url){
       const url = ai.url ? `${ai.url}/chat/completions` : 'https://api.openai.com/v1/chat/completions';
@@ -4396,10 +4453,22 @@ Máš přístup k nástrojům: web_search, fetch_url, run_code, save_note, recal
 
   } else {
   // ════ TÝM + CLAUDE JEN POKUD TŘEBA ════
-  // Agenti odpověděli → rychlé peer-review mezi sebou → Claude jen při nízkém skóre
 
-  // 🔍 Peer-review: každý agent ohodnotí odpovědi kolegů
-  let peerScores = {}; // key → {score, comment}
+  // 🔍 Pokud všichni workeři selhali → Claude odpovídá sám
+  if(Object.keys(assistantAnswers).length === 0){
+    addDivider(aisDiv, '⚠️ Workeři selhali — Claude přebírá');
+    finishLog();
+    const claudeBubble = addBubble(aisDiv,'claude','Claude 👑 · odpovídá samostatně…',true);
+    try{
+      const sys = getMdSystem('claude')+getDatePrompt()+getMemoryPrompt()+getSearchPrompt();
+      claudeVerdict = await claudeAgentLoop(fullMsg, sys, aisDiv, fileSnap, claudeBubble);
+      finishBubble(claudeBubble, claudeVerdict, null, true);
+    } catch(e){ finishBubble(claudeBubble, null, e.message); }
+    scrollBottom();
+  } else {
+
+  // Peer-review a syntéza
+  let peerScores = {};
   if(!task.isSimple && routed.length >= 1 && Object.keys(assistantAnswers).length >= 1){
     finishLog();
     startStatusLog(aisDiv);
@@ -4439,7 +4508,7 @@ Odpověz POUZE jako JSON:
   "reason": "proč toto doporučuješ šéfovi"
 }`;
 
-        const r = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${AI.gemini.key}`,{
+        const r = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${AI.gemini.key}`,{
           method:'POST', signal: currentAbortController?.signal,
           headers:{'Content-Type':'application/json'},
           body: JSON.stringify({contents:[{role:'user',parts:[{text:prompt}]}], generationConfig:{maxOutputTokens:600}})
@@ -4544,6 +4613,7 @@ Tvůj úkol: syntetizuj NEJLEPŠÍ části do jedné výborné odpovědi.`;
     finishLog();
   }
 
+  } // end else (workers available)
   } // end else (team mode)
 
   // Show sources if available
@@ -4759,7 +4829,7 @@ Odpověz POUZE jako JSON (bez markdown):
 
 Škála: 1.0=perfektní, 0.75=dobré, 0.5=průměrné, 0.25=špatné, 0.0=chybné
 Pravidlo: score<0.75 POUZE pokud je skutečný problém. V comment vždy uveď CO konkrétně opravit.`;
-  const r=await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${AI.gemini.key}`,{method:'POST',signal:sig,headers:{'Content-Type':'application/json'},body:JSON.stringify({contents:[{role:'user',parts:[{text:prompt}]}],generationConfig:{maxOutputTokens:300}})});
+  const r=await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${AI.gemini.key}`,{method:'POST',signal:sig,headers:{'Content-Type':'application/json'},body:JSON.stringify({contents:[{role:'user',parts:[{text:prompt}]}],generationConfig:{maxOutputTokens:300}})});
   if(!r.ok){const e=await r.json();throw new Error(e.error?.message||r.status);}
   const d=await r.json();
   const raw=(d.candidates?.[0]?.content?.parts?.[0]?.text||'{}').replace(/```json|```/g,'').trim();
