@@ -359,8 +359,11 @@ html,body{height:100%;height:100dvh;background:var(--bg);color:var(--text);font-
 .ai-bubble img{max-width:100%;height:auto;border-radius:8px;display:block;}
 .img-gen-result{margin:8px 0;border-radius:12px;overflow:hidden;border:1px solid var(--border);max-width:100%;}
 .img-gen-result img{width:100%;display:block;}
-.img-gen-footer{font-size:11px;color:var(--muted);padding:5px 10px;background:var(--card2);display:flex;align-items:center;gap:8px;}
+.img-gen-footer{font-size:11px;color:var(--muted);padding:5px 10px;background:var(--card2);display:flex;align-items:center;gap:8px;flex-wrap:wrap;}
 .img-gen-footer a{color:var(--accent);text-decoration:none;}
+.img-prompt-bar{font-size:11px;color:var(--muted);padding:0 10px 6px;background:var(--card2);border-top:1px solid var(--border);display:none;line-height:1.5;}
+.img-prompt-bar.open{display:block;}
+.img-prompt-text{font-family:'JetBrains Mono',monospace;font-size:11px;color:var(--muted2);background:rgba(255,255,255,0.04);border-radius:6px;padding:6px 8px;margin-top:4px;word-break:break-word;user-select:all;}
 
 /* TOKEN BUDGET BAR */
 .token-bar{height:2px;background:var(--border);overflow:hidden;}
@@ -1879,6 +1882,17 @@ function addCustomReaction(bubbleId, emoji){
 }
 
 // ════ IMAGE GENERATION ════
+
+// Helper: vytvoří prompt bar s toggle + copy tlačítkem
+function makeImgPromptBar(prompt){
+  const id = 'imgp_'+Math.random().toString(36).slice(2);
+  return `<div style="display:flex;align-items:center;gap:4px;padding:2px 10px 4px;background:var(--card2);">
+    <button onclick="document.getElementById('${id}').classList.toggle('open');this.textContent=document.getElementById('${id}').classList.contains('open')?'📝 Skrýt prompt':'📝 Prompt'" style="background:none;border:none;color:var(--muted);cursor:pointer;font-size:11px;padding:0">📝 Prompt</button>
+    <button onclick="navigator.clipboard.writeText(${JSON.stringify(prompt)});this.textContent='✓';setTimeout(()=>this.textContent='📋',1500)" style="background:none;border:none;color:var(--muted);cursor:pointer;font-size:11px;padding:0" title="Kopírovat prompt">📋</button>
+  </div>
+  <div class="img-prompt-bar" id="${id}"><div class="img-prompt-text">${escHtml(prompt)}</div></div>`;
+}
+
 async function generateImage(prompt, container){
   const dalleKey = localStorage.getItem('key-chatgpt');
   const pickerId = 'imgPicker_' + Date.now();
@@ -1970,6 +1984,7 @@ async function generateWithPollinations(prompt, container){
         <button onclick="downloadImg('${url}','pollinations-${seed}.jpg')" style="background:none;border:none;color:var(--accent);cursor:pointer;font-size:11px">⬇ Stáhnout</button>
         ${upgradeBtn}`;
       wrap.appendChild(footer);
+      wrap.insertAdjacentHTML('beforeend', makeImgPromptBar(prompt));
       logStep('🆓 Pollinations hotovo ✓', 'done');
       scrollBottom();
       resolve(url);
@@ -2012,6 +2027,7 @@ async function generateWithDalle(prompt, replaceDiv){
       <div class="img-gen-footer">✨ DALL-E 3 · <a href="${url}" target="_blank">↗ Otevřít</a>
         <button onclick="downloadImg('${url}','dalle-${Date.now()}.png')" style="background:none;border:none;color:var(--accent);cursor:pointer;font-size:11px">⬇ Stáhnout</button>
       </div>`;
+    target.insertAdjacentHTML('beforeend', makeImgPromptBar(prompt));
     logStep('✨ DALL-E 3 hotovo ✓', 'done');
     scrollBottom();
     return url;
@@ -3618,8 +3634,28 @@ const COMPRESS_KEEP = 8; // kolik nejnovějších ponechat netknutých
 
 async function autoCompressChat(){
   if(chatLog.length <= COMPRESS_THRESHOLD) return;
-  // Jak mnoho lze komprimovat
-  const compressCount = chatLog.length - COMPRESS_KEEP;
+
+  // Zjisti které zprávy obsahují rich media nebo finální odpovědi
+  const msgs = document.getElementById('messages');
+  const allUserDivs = Array.from(msgs.querySelectorAll('.msg-user'));
+  const protectedIdx = new Set(); // indexy chatLog záznamů chráněných před kompresí
+  allUserDivs.forEach((div, i) => {
+    const next = div.nextElementSibling;
+    if(next?.classList.contains('msg-ais')){
+      const hasRich = next.querySelector('.img-gen-result, iframe, canvas, audio, .chart-wrap');
+      const hasFinal = next.querySelector('.ai-bubble.final');
+      if(hasRich || hasFinal) protectedIdx.add(i);
+    }
+  });
+
+  // Spočítej kolik zpráv od začátku LZE komprimovat (bez chráněných)
+  let compressCount = chatLog.length - COMPRESS_KEEP;
+  // Sniž compressCount aby nepřekročil první chráněnou zprávu
+  for(let i = 0; i < compressCount; i++){
+    if(protectedIdx.has(i)){ compressCount = i; break; }
+  }
+  if(compressCount < 2) return; // nestojí za to
+
   const toCompress = chatLog.slice(0, compressCount);
   // Přeskoč pokud jsou tam jen compressed entries
   if(toCompress.every(h => h._compressedSummary)) return;
@@ -4394,7 +4430,8 @@ Tvůj úkol jako syntetizátor:
     clearSearchContext();
     // BUG FIX: Ulož jako konzistentní formát — hlavní odpověď pod klíčem 'claude' pro getConvHistoryPrompt
     const _synthReply = assistantAnswers['_synth'] || Object.values(assistantAnswers).find(v=>v) || '';
-    chatLog.push({user:msgText, claude:_synthReply, ...assistantAnswers});
+    const _media = extractMediaFromDOM(aisDiv);
+    chatLog.push({user:msgText, claude:_synthReply, ...assistantAnswers, ...(_media.length?{_media}:{})});
     saveCurrent();
     autoGenerateTitle(msgText);
     extractAndSaveMemory(chatLog);
@@ -4785,8 +4822,11 @@ Tvůj úkol: syntetizuj NEJLEPŠÍ části do jedné výborné odpovědi.`;
     const bestAnswer = Object.values(assistantAnswers).find(v=>v) || '';
     const soloKey = Object.keys(assistantAnswers).find(k=>assistantAnswers[k]);
 
-    if(!AI.claude?.key || !bestAnswer){
-      // Claude není k dispozici → workerova odpověď rovnou jako finální
+    // Claude finalizuje JEN u ne-triviálních odpovědí — jednoduché otázky nechá workerovi
+    const needsClaudeReview = AI.claude?.key && bestAnswer && !task.isSimple;
+
+    if(!needsClaudeReview){
+      // Worker odpovídá rovnou jako finální (jednoduchý dotaz nebo Claude není k dispozici)
       claudeVerdict = bestAnswer;
       if(soloKey){
         const bubbles = aisDiv.querySelectorAll('.ai-bubble-wrap');
@@ -4835,7 +4875,8 @@ Pokud je odpověď dobrá, můžeš ji převzít s minimálními úpravami — n
   claudeVerdict = claudeVerdict || ''; // guard
   const teamWasUsed = routed.length > 0 && Object.keys(assistantAnswers).length > 0;
   const teamSummary = teamWasUsed ? claudeVerdict?.slice(0,600) : undefined;
-  chatLog.push({user:msgText, claude:claudeVerdict, ...(fileSnap?{_file:fileSnap.name}:{}), ...(teamSummary?{_teamSummary:teamSummary}:{})});
+  const _media = extractMediaFromDOM(aisDiv);
+  chatLog.push({user:msgText, claude:claudeVerdict, ...(fileSnap?{_file:fileSnap.name}:{}), ...(teamSummary?{_teamSummary:teamSummary}:{}), ...(_media.length?{_media}:{})});
   saveCurrent();
   autoGenerateTitle(msgText);
   extractAndSaveMemory(chatLog); // async, runs in background
@@ -5111,6 +5152,57 @@ async function reviewCustom(key,originalMsg,verdict){
 }
 
 function scrollBottom(){const m=document.getElementById('messages');setTimeout(()=>m.scrollTop=m.scrollHeight,50);}
+
+// ════ MEDIA PERSISTENCE ════
+// Extrahuje image/audio URL z DOM aby přežily reload a kompresi
+function extractMediaFromDOM(container){
+  const media = [];
+  // Obrázky (Pollinations, DALL-E)
+  container.querySelectorAll('.img-gen-result').forEach(result => {
+    const img = result.querySelector('img');
+    if(img?.src && !img.src.startsWith('data:')){
+      const promptEl = result.querySelector('.img-prompt-text');
+      media.push({type:'image', url:img.src, alt:img.alt||'', prompt:promptEl?.textContent||''});
+    }
+  });
+  // Audio (Pollinations Music)
+  container.querySelectorAll('audio[src]').forEach(audio => {
+    media.push({type:'audio', url:audio.src});
+  });
+  // Mapy (OpenStreetMap iframe)
+  container.querySelectorAll('iframe[src*="openstreetmap"]').forEach(iframe => {
+    const linkEl = iframe.parentElement?.querySelector('a[href*="openstreetmap"]');
+    media.push({type:'map', url:iframe.src, link:linkEl?.href||'', label:linkEl?.closest('div')?.querySelector('strong')?.textContent||''});
+  });
+  return media;
+}
+
+// Renderuje uložená média v loadChat
+function renderSavedMedia(container, mediaArr){
+  if(!mediaArr?.length) return;
+  for(const m of mediaArr){
+    const wrap = document.createElement('div');
+    wrap.style.cssText = 'margin:6px 0;';
+    if(m.type==='image'){
+      wrap.className = 'img-gen-result';
+      const promptHtml = m.prompt ? makeImgPromptBar(m.prompt) : '';
+      wrap.innerHTML = `<img src="${escHtml(m.url)}" alt="${escHtml(m.alt)}" style="width:100%;display:block;" loading="lazy">
+        <div class="img-gen-footer">🖼️ Uložený obrázek · <a href="${escHtml(m.url)}" target="_blank">↗ Otevřít</a>
+        <button onclick="downloadImg('${escHtml(m.url)}','image-${Date.now()}.jpg')" style="background:none;border:none;color:var(--accent);cursor:pointer;font-size:11px">⬇ Stáhnout</button>
+        </div>${promptHtml}`;
+    } else if(m.type==='audio'){
+      wrap.innerHTML = `<audio controls style="width:100%;height:36px;" src="${escHtml(m.url)}"></audio>`;
+    } else if(m.type==='map'){
+      wrap.style.cssText = 'border-radius:14px;overflow:hidden;border:1px solid var(--border2);margin:6px 0;';
+      wrap.innerHTML = `<div style="background:var(--card2);padding:8px 12px;font-size:13px;color:var(--muted2);display:flex;align-items:center;gap:6px;">
+        🗺️ <strong>${escHtml(m.label||'Mapa')}</strong>
+        ${m.link?`<a href="${escHtml(m.link)}" target="_blank" style="margin-left:auto;color:var(--accent);font-size:11px;text-decoration:none">↗ Otevřít</a>`:''}
+      </div>
+      <iframe src="${escHtml(m.url)}" width="100%" height="220" style="border:none;display:block;" loading="lazy"></iframe>`;
+    }
+    container.appendChild(wrap);
+  }
+}
 function escHtml(t){return String(t).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}
 function formatText(t){
   const thinkMatch = t.match(/<think>([\s\S]*?)<\/think>/i);
@@ -5198,6 +5290,17 @@ function loadChat(id){
   const msgsEl = document.getElementById('messages');
   msgsEl.innerHTML='';
   for(const h of chatLog){
+    // Zkomprimovaný záznam
+    if(h._compressedSummary){
+      const badge = document.createElement('div');
+      badge.className = 'round-divider';
+      badge.style.cssText = 'background:rgba(245,158,11,0.08);border:1px solid rgba(245,158,11,0.25);border-radius:10px;padding:8px 12px;margin:8px 0;font-size:11px;color:#f59e0b;cursor:pointer;';
+      badge.innerHTML = `<span>🗜️ ${h._compressedCount||'?'} starších zpráv zkomprimováno · <em>${escHtml(h._compressedSummary.slice(0,90))}…</em></span>`;
+      badge.title = 'Klikni pro zobrazení celého shrnutí';
+      badge.onclick = () => alert(h._compressedSummary);
+      msgsEl.appendChild(badge);
+      continue;
+    }
     // User bubble
     const userDiv=document.createElement('div');
     userDiv.className='msg-user';
@@ -5215,6 +5318,8 @@ function loadChat(id){
       wrap.innerHTML=`<div class="ai-avatar" style="background:${color}22;color:${color};border:1px solid ${color}44">${(ai?.name||k)[0].toUpperCase()}</div><div class="ai-bubble-wrap"><div class="ai-name" style="color:${color}">${ai?.name||k}</div><div class="ai-bubble">${formatText(v)}</div></div>`;
       aisDiv.appendChild(wrap);
     }
+    // Obnov uložená média (obrázky, mapy, audio)
+    if(h._media) renderSavedMedia(aisDiv, h._media);
     msgsEl.appendChild(aisDiv);
   }
   document.getElementById('chatTitle').textContent = (chat.title||'Chat').slice(0,25);
