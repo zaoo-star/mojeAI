@@ -267,6 +267,11 @@ html,body{height:100%;height:100dvh;background:var(--bg);color:var(--text);font-
 @keyframes blink{0%,100%{opacity:1}50%{opacity:0}}
 .stream-cursor{display:inline-block;width:2px;height:1em;background:var(--accent);margin-left:2px;vertical-align:text-bottom;animation:blink .8s infinite;}
 
+/* COLLAPSIBLE WORKER RESPONSE */
+.worker-preview{padding:2px 0;transition:opacity .15s;}
+.worker-preview:hover{opacity:.8;}
+.worker-full{display:none;}
+
 /* CODE COPY BUTTON */
 .pre-wrap{position:relative;}
 .copy-btn{position:absolute;top:8px;right:8px;background:rgba(255,255,255,0.08);border:1px solid var(--border2);border-radius:6px;color:var(--muted2);font-size:11px;padding:3px 8px;cursor:pointer;font-family:'Outfit',sans-serif;transition:all .15s;opacity:0;}
@@ -1749,7 +1754,7 @@ function resetAgentStyles(){
 function renderAgentDashboard(){
   const styles = getAgentStyles();
   const container = document.getElementById('agentDashboardContent');
-  const activeAgents = Object.keys(AI).filter(k => AI[k].key || AI[k].url);
+  const activeAgents = Object.keys(AI).filter(k => k!=='claude' && (AI[k].key || AI[k].url));
 
   if(!activeAgents.length){
     container.innerHTML = '<p style="color:var(--muted);text-align:center">Žádní aktivní agenti.</p>';
@@ -1881,7 +1886,7 @@ function toggleReaction(bubbleId, emoji, btn){
       // Najdi klíč agenta z barvy nebo jména v bubbleu
       const aiName = bubbleEl?.closest('.msg-ai')?.querySelector('.ai-name')?.textContent||'';
       const agentKey = Object.keys(AI).find(k => aiName.includes(AI[k].name.split(' ')[0]));
-      if(agentKey){
+      if(agentKey && agentKey !== 'claude'){
         const textLen = (bubbleEl?.textContent||'').length;
         updateAgentStyle(agentKey, emoji==='👍', textLen);
       }
@@ -3497,13 +3502,14 @@ function getRivalryContext(agentKey){
   // Vrátí skóre všech ostatních agentů pro rivalitu
   const styles = getAgentStyles();
   const others = Object.entries(styles)
-    .filter(([k]) => k !== agentKey && AI[k] && (styles[k].claudeAvgScore !== undefined || styles[k].likes > 0))
+    .filter(([k]) => k !== agentKey && k !== 'claude' && AI[k] && (styles[k].claudeAvgScore !== undefined || styles[k].likes > 0))
     .map(([k,s]) => ({ name: AI[k]?.name||k, avg: s.claudeAvgScore ?? (s.likes/(s.likes+s.dislikes+0.01)*0.8+0.4) }))
     .sort((a,b) => b.avg - a.avg);
   return others;
 }
 
 function getAgentStyleHint(agentKey){
+  if(agentKey==='claude') return ''; // Šéf se necoachuje
   const styles = getAgentStyles();
   const s = styles[agentKey];
   const lvl = getAgentLevel(agentKey);
@@ -3575,7 +3581,7 @@ function getAgentStyleHint(agentKey){
 // Požádá Clauda aby ohodnotil každého agenta po syntéze (async, na pozadí)
 async function claudeTeachAgents(question, agentAnswers, peerScores){
   if(!getOrchestratorChain().length || !Object.keys(agentAnswers).length) return;
-  const keys = Object.keys(agentAnswers).filter(k=>!k.startsWith('_') && agentAnswers[k]);
+  const keys = Object.keys(agentAnswers).filter(k=>!k.startsWith('_') && k!=='claude' && agentAnswers[k]);
   if(!keys.length) return;
   try{
     const prompt = `Ohodnoť tyto odpovědi od AI agentů na otázku: "${question.slice(0,300)}"
@@ -3846,6 +3852,58 @@ function tryCalculator(msg) {
     if(isFinite(result)) return `🧮 Kalkulačka: ${expr} = **${result}**`;
   } catch {}
   return null;
+}
+
+// 💰 AUTO-FETCH REÁLNÝCH DAT — spustí se PŘED agenty
+// Vrátí string s aktuálními daty co se injektne do kontextu
+async function autoFetchRealtimeData(msg, aisDiv){
+  const t = msg.toLowerCase();
+  let data = '';
+
+  // ── Kryptoměny ──
+  const cryptoMap = {BTC:'bitcoin',ETH:'ethereum',SOL:'solana',BNB:'binancecoin',XRP:'ripple',DOGE:'dogecoin',ADA:'cardano',DOT:'polkadot',MATIC:'polygon',AVAX:'avalanche-2',LINK:'chainlink',SHIB:'shiba-inu'};
+  const cryptoMatch = t.match(/\b(btc|bitcoin|eth|ethereum|sol|solana|bnb|xrp|doge|dogecoin|ada|cardano|dot|matic|avax|link|shib)\b/i);
+  const askingPrice = /cen[auěy]|kolik|stojí|price|worth|kurz|hodnot|aktuáln/i.test(t);
+
+  if(cryptoMatch && askingPrice){
+    const sym = cryptoMatch[1].toUpperCase();
+    const coinId = cryptoMap[sym] || cryptoMap[Object.keys(cryptoMap).find(k=>k===sym||cryptoMap[k].startsWith(sym.toLowerCase()))] || sym.toLowerCase();
+    try{
+      logStep(`💰 Načítám aktuální cenu ${sym}…`, 'active');
+      const r = await fetch(`https://api.coingecko.com/api/v3/simple/price?ids=${coinId}&vs_currencies=usd,czk,eur&include_24hr_change=true`);
+      if(r.ok){
+        const d = await r.json();
+        const p = d[coinId];
+        if(p){
+          const change = p.usd_24h_change ? ` (${p.usd_24h_change>0?'+':''}${p.usd_24h_change.toFixed(1)}% 24h)` : '';
+          data += `\n💰 AKTUÁLNÍ CENA ${sym} (CoinGecko, ${new Date().toLocaleTimeString('cs-CZ',{hour:'2-digit',minute:'2-digit'})}): ${p.usd?.toLocaleString('en-US')} USD / ${p.czk?.toLocaleString('cs-CZ')} CZK / ${p.eur?.toLocaleString('cs-CZ')} EUR${change}`;
+          // Zobraz v UI
+          const chip = document.createElement('div');
+          chip.className='round-divider';
+          chip.innerHTML=`<span>💰 ${sym}: <strong>${p.usd?.toLocaleString('en-US')} USD</strong> / ${p.czk?.toLocaleString('cs-CZ')} CZK${change}</span>`;
+          aisDiv.appendChild(chip);
+          logStep(`💰 ${sym}: ${p.usd?.toLocaleString('en-US')} USD ✓`, 'done');
+        }
+      }
+    }catch(e){ logStep(`💰 Cena ${sym} selhala`, 'error'); }
+  }
+
+  // ── Fiat měny ──
+  const fiatMatch = t.match(/\b(kurz|převod|kolik je|převeď)\b.*?\b(usd|eur|gbp|chf|pln|jpy|czk|dolar|euro|libra|frank)\b/i);
+  if(fiatMatch && !cryptoMatch){
+    try{
+      logStep('💱 Načítám kurzy…', 'active');
+      const r = await fetch('https://api.frankfurter.app/latest?from=EUR&to=CZK,USD,GBP,PLN,CHF');
+      if(r.ok){
+        const d = await r.json();
+        const rates = d.rates || {};
+        data += `\n💱 AKTUÁLNÍ KURZY (ECB, ${new Date().toLocaleDateString('cs-CZ')}): 1 EUR = ${rates.CZK} CZK / ${rates.USD} USD / ${rates.GBP} GBP / ${rates.PLN} PLN / ${rates.CHF} CHF`;
+        logStep('💱 Kurzy načteny ✓', 'done');
+      }
+    }catch(e){ logStep('💱 Kurzy selhaly', 'error'); }
+  }
+
+  return data;
 }
 
 // 📝 VÝSTUPNÍ FORMÁTY – detekce ideálního formátu
@@ -4298,6 +4356,9 @@ async function sendMessage() {
       }
     }
 
+    // 💰 Auto-fetch reálných dat (crypto, kurzy) PŘED agenty
+    const autoRealtimeData = await autoFetchRealtimeData(msgText, aisDiv);
+
     // 📝 Formát
     if(task.outputFormat!=='auto'){
       const fm={'table':'📊 tabulka','code':'💻 kód','list':'📋 seznam','prose':'📄 text'};
@@ -4356,7 +4417,7 @@ async function sendMessage() {
         const contextNote = prevAnswers
           ? `\n\n📋 Kolegové již odpověděli:\n${prevAnswers}\n\nTy jsi na řadě – přidej svůj pohled, doplň nebo oprav co vidíš jinak.`
           : '';
-        const p = `${baseMsg}${autoCalcResult}${webNote}${contextNote}`;
+        const p = `${baseMsg}${autoCalcResult}${autoRealtimeData?'\n\n⚠️ OVĚŘENÁ AKTUÁLNÍ DATA (použij je, NE svou paměť):'+autoRealtimeData:''}${webNote}${contextNote}`;
         let text = await callTeamAI(key, p, bubble);
         extractAndSaveSelfReview(key, text);
         text = stripHidden(text);
@@ -4529,7 +4590,7 @@ Tvůj úkol jako syntetizátor:
   const task = analyzeMsg(msgText);
   const projPrompt = getProjectPrompt();
   const fmtInstruction = getFormatInstruction(task.outputFormat);
-  const enrichedMsg = fullMsg + fmtInstruction;
+  const enrichedMsg = fullMsg + fmtInstruction + (autoRealtimeData ? '\n\n⚠️ OVĚŘENÁ AKTUÁLNÍ DATA (použij je, NE svou paměť):'+autoRealtimeData : '');
 
   // ── Start status logu pro Claude path ──
   startStatusLog(aisDiv);
@@ -4538,6 +4599,9 @@ Tvůj úkol jako syntetizátor:
     const calcResult = tryCalculator(msgText);
     if(calcResult){const d=document.createElement('div');d.className='round-divider';d.innerHTML=`<span>${calcResult}</span>`;aisDiv.appendChild(d);}
   }
+
+  // 💰 Auto-fetch reálných dat (crypto, kurzy) PŘED agenty
+  const autoRealtimeData = await autoFetchRealtimeData(msgText, aisDiv);
 
   // 📝 Formát
   if(task.outputFormat!=='auto' && !task.isSimple){
@@ -4710,7 +4774,7 @@ Máš přístup k nástrojům: web_search, fetch_url, run_code, save_note, recal
     }
 
     try{
-      claudeVerdict = await claudeAgentLoop(fullMsg + projPrompt, soloSys, aisDiv, fileSnap, soloBubble);
+      claudeVerdict = await claudeAgentLoop(fullMsg + projPrompt + (autoRealtimeData ? '\n\n⚠️ OVĚŘENÁ AKTUÁLNÍ DATA (použij je, NE svou paměť):'+autoRealtimeData : ''), soloSys, aisDiv, fileSnap, soloBubble);
       updateBubbleLabel(soloBubble, 'CLAUDE · ✓');
       finishBubble(soloBubble, claudeVerdict, null, true);
     } catch(e){
@@ -5096,9 +5160,11 @@ function addBubble(container,aiKey,label,isBoss=false,visible=false){
 function finishBubble(id,text,error=null,isFinal=false){
   const el=document.querySelector(`.bubble-${id}`);if(!el)return;
   const wrap=el.closest('.msg-ai');
-  const ai=wrap?Array.from(wrap.querySelectorAll('[style*="color"]')).find(e=>e.classList.contains('ai-name')):null;
   el.classList.remove('loading');
   const lid = bubbleLogMap[id];
+
+  // Vždy odstraň self-review a interní bloky
+  if(text) text = stripHidden(text);
 
   if(error){
     el.innerHTML=`<span style="color:#f87171">⚠️ ${escHtml(error)}</span>`;
@@ -5109,16 +5175,16 @@ function finishBubble(id,text,error=null,isFinal=false){
     el.innerHTML=formatText(text);
     if(wrap) wrap.classList.remove('collapsed');
     finishLog();
-    // Add reactions bar after final bubble
-    const bwrap = el.closest('.ai-bubble-wrap');
-    if(bwrap) addReactionsBar(bwrap, id);
+    // Šéf nedostává reakce — hodnotí se jen workeři
   } else {
-    el.innerHTML=formatText(text);
-    // Odstraň <think> tagy z preview
-    const previewText = (text||'').replace(/<think>[\s\S]*?<\/think>/gi,'').replace(/[#*`\n]/g,' ').replace(/\s+/g,' ').trim();
-    const preview = previewText.slice(0,55);
-    logStep((preview ? '„'+preview+(previewText.length>55?'…"':'"') : 'hotovo ✓'), 'done', null, lid);
-    // Add reactions bar
+    // Worker odpověď — zabalená s preview, klikem rozbalitelná
+    const plainText = (text||'').replace(/<think>[\s\S]*?<\/think>/gi,'').replace(/[#*`\n]/g,' ').replace(/\s+/g,' ').trim();
+    const preview = plainText.slice(0,100) + (plainText.length>100?'…':'');
+    const fullHtml = formatText(text);
+    const cid = 'wc_'+id;
+    el.innerHTML=`<div class="worker-preview" id="${cid}_p" onclick="document.getElementById('${cid}').style.display='block';this.style.display='none';" style="cursor:pointer;font-size:13px;color:var(--muted2);display:flex;align-items:flex-start;gap:6px;"><span style="opacity:.5;flex-shrink:0">▸</span><span>${escHtml(preview)}</span></div><div id="${cid}" class="worker-full">${fullHtml}<div onclick="this.parentElement.style.display='none';document.getElementById('${cid}_p').style.display='flex';" style="cursor:pointer;font-size:11px;color:var(--muted);margin-top:6px;opacity:.6;user-select:none;">▴ Sbalit</div></div>`;
+    if(wrap) wrap.classList.remove('collapsed');
+    logStep((preview ? '„'+preview.slice(0,55)+(plainText.length>55?'…"':'"') : 'hotovo ✓'), 'done', null, lid);
     const bwrap = el.closest('.ai-bubble-wrap');
     if(bwrap && !bwrap.querySelector('.reactions-bar')) addReactionsBar(bwrap, id);
   }
@@ -5400,9 +5466,18 @@ function loadChat(id){
     for(const [k,v] of aiEntries){
       const ai=AI[k];
       const color=ai?.rawColor||'#888';
+      const cleanText = stripHidden(v);
+      const isFinal = k==='claude' || aiEntries.length===1;
       const wrap=document.createElement('div');
       wrap.className='msg-ai';
-      wrap.innerHTML=`<div class="ai-avatar" style="background:${color}22;color:${color};border:1px solid ${color}44">${(ai?.name||k)[0].toUpperCase()}</div><div class="ai-bubble-wrap"><div class="ai-name" style="color:${color}">${ai?.name||k}</div><div class="ai-bubble">${formatText(v)}</div></div>`;
+      if(isFinal){
+        wrap.innerHTML=`<div class="ai-avatar" style="background:${color}22;color:${color};border:2px solid ${color}88">${(ai?.name||k)[0].toUpperCase()}</div><div class="ai-bubble-wrap"><div class="ai-name" style="color:${color}">${ai?.name||k}</div><div class="ai-bubble final">${formatText(cleanText)}</div></div>`;
+      } else {
+        const plain = cleanText.replace(/<think>[\s\S]*?<\/think>/gi,'').replace(/[#*`\n]/g,' ').replace(/\s+/g,' ').trim();
+        const preview = plain.slice(0,100)+(plain.length>100?'…':'');
+        const cid = 'lc_'+Math.random().toString(36).slice(2);
+        wrap.innerHTML=`<div class="ai-avatar" style="background:${color}22;color:${color};border:1px solid ${color}44">${(ai?.name||k)[0].toUpperCase()}</div><div class="ai-bubble-wrap"><div class="ai-name" style="color:${color}">${ai?.name||k}</div><div class="ai-bubble"><div id="${cid}_p" onclick="document.getElementById('${cid}').style.display='block';this.style.display='none';" style="cursor:pointer;font-size:13px;color:var(--muted2);display:flex;align-items:flex-start;gap:6px;"><span style="opacity:.5;flex-shrink:0">▸</span><span>${escHtml(preview)}</span></div><div id="${cid}" class="worker-full">${formatText(cleanText)}<div onclick="this.parentElement.style.display='none';document.getElementById('${cid}_p').style.display='flex';" style="cursor:pointer;font-size:11px;color:var(--muted);margin-top:6px;opacity:.6;">▴ Sbalit</div></div></div></div>`;
+      }
       aisDiv.appendChild(wrap);
     }
     // Obnov uložená média (obrázky, mapy, audio)
@@ -5724,33 +5799,32 @@ jobs:
 
 // ── Šifrování secretů pro GitHub API ──
 async function loadSodium(){
-  if(window._sodium_ready && window.sodium?.crypto_box_seal) return window.sodium;
-  // Zkus několik CDN — různé URL formáty
-  const urls = [
-    'https://cdn.jsdelivr.net/npm/libsodium-wrappers-sumo@0.7.15/dist/modules-sumo/libsodium-wrappers.js',
-    'https://unpkg.com/libsodium-wrappers-sumo@0.7.15/dist/modules-sumo/libsodium-wrappers.js',
-    'https://cdn.jsdelivr.net/npm/libsodium-wrappers@0.7.15/dist/modules/libsodium-wrappers.js',
-  ];
-  for(const url of urls){
+  if(window._sodium_ready && window._sodium?.crypto_box_seal) return window._sodium;
+  try{
+    // jsdelivr /+esm automaticky konvertuje CommonJS → ESM
+    const mod = await import('https://cdn.jsdelivr.net/npm/libsodium-wrappers-sumo@0.7.15/+esm');
+    const sodium = mod.default || mod;
+    await sodium.ready;
+    if(!sodium.crypto_box_seal) throw new Error('crypto_box_seal chybí');
+    window._sodium = sodium;
+    window._sodium_ready = true;
+    console.log('✅ libsodium loaded via ESM import');
+    return sodium;
+  }catch(e1){
+    console.warn('ESM import failed:', e1.message);
+    // Fallback: zkus non-sumo verzi
     try{
-      await new Promise((res,rej)=>{
-        const s=document.createElement('script');
-        s.src=url;
-        s.onload=res;
-        s.onerror=()=>rej(new Error('Load failed: '+url.split('/')[4]));
-        document.head.appendChild(s);
-      });
-      if(window.sodium){
-        await window.sodium.ready;
-        if(window.sodium.crypto_box_seal){
-          window._sodium_ready=true;
-          console.log('✅ libsodium loaded from:', url);
-          return window.sodium;
-        }
+      const mod2 = await import('https://cdn.jsdelivr.net/npm/libsodium-wrappers@0.7.15/+esm');
+      const sodium2 = mod2.default || mod2;
+      await sodium2.ready;
+      if(sodium2.crypto_box_seal){
+        window._sodium = sodium2;
+        window._sodium_ready = true;
+        return sodium2;
       }
-    }catch(e){ console.warn('libsodium CDN failed:', e.message); }
+    }catch(e2){ console.warn('Fallback ESM failed:', e2.message); }
+    throw new Error('libsodium se nepodařilo načíst — zkus to znovu nebo zkontroluj připojení');
   }
-  throw new Error('libsodium se nepodařilo načíst — zkontroluj připojení k internetu');
 }
 async function encryptSecret(pubKeyB64, value){
   const sodium=await loadSodium();
