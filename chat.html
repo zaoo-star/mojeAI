@@ -1116,6 +1116,38 @@ function requireApproval(name, input, aisDiv){
 }
 
 // ── Tool executor ──
+// ── Verifikace a tagování zdrojů z web searche ──
+const TRUSTED_DOMAINS = ['wikipedia.org','gov.cz','mzv.cz','cnb.cz','czso.cz','reuters.com','bbc.com','nature.com','arxiv.org','github.com','stackoverflow.com','developer.mozilla.org','ec.europa.eu'];
+function verifyAndTagSources(results){
+  if(!results.length) return '';
+  const now = Date.now();
+  return results.map(r => {
+    const tags = [];
+    // Stáří zdroje
+    if(r.date){
+      const d = new Date(r.date);
+      if(!isNaN(d)){
+        const daysOld = Math.floor((now - d.getTime()) / 86400000);
+        if(daysOld <= 7) tags.push('🟢 čerstvé');
+        else if(daysOld <= 90) tags.push('🟡 '+daysOld+'d');
+        else if(daysOld <= 365) tags.push('🟠 '+Math.floor(daysOld/30)+'m');
+        else tags.push('🔴 staré ('+Math.floor(daysOld/365)+'r)');
+      }
+    } else {
+      tags.push('⚪ datum neznámé');
+    }
+    // Důvěryhodnost domény
+    try{
+      const domain = new URL(r.url).hostname.replace('www.','');
+      if(TRUSTED_DOMAINS.some(td=>domain.endsWith(td))) tags.push('✅ ověřený zdroj');
+      else if(domain.endsWith('.gov')||domain.endsWith('.edu')||domain.endsWith('.ac.uk')) tags.push('✅ institucionální');
+      else if(domain.includes('blog')||domain.includes('medium.com')||domain.includes('reddit.com')) tags.push('⚠️ UGC');
+    }catch{}
+    const tagStr = tags.length ? ` [${tags.join(' · ')}]` : '';
+    return `[${r.title}]${tagStr}\n${r.content}\nURL: ${r.url}\n`;
+  }).join('\n');
+}
+
 async function executeTool(name, input, aisDiv){
   // Human-in-the-loop pro citlivé akce
   if(SENSITIVE_TOOLS[name]){
@@ -1129,6 +1161,7 @@ async function executeTool(name, input, aisDiv){
       const tavilyKey=localStorage.getItem('key-tavily');
       const braveKey=localStorage.getItem('key-brave');
       try{
+        let rawResults = [];
         if(tavilyKey){
           const res=await fetch('https://api.tavily.com/search',{method:'POST',signal:getSignal(),headers:{'Content-Type':'application/json'},body:JSON.stringify({api_key:tavilyKey,query:input.query,search_depth:'advanced',max_results:6,include_answer:true,include_raw_content:false})});
           if(!res.ok) throw new Error('Tavily '+res.status);
@@ -1136,38 +1169,33 @@ async function executeTool(name, input, aisDiv){
           let out='';
           if(data.answer) out+=`Přímá odpověď: ${data.answer}\n\n`;
           for(const r of (data.results||[]).slice(0,5)){
-            out+=`[${r.title}]\n${(r.content||'').slice(0,600)}\nURL: ${r.url}\n\n`;
+            rawResults.push({title:r.title,url:r.url,content:(r.content||'').slice(0,600),date:r.published_date||''});
             lastSources.push({title:r.title,url:r.url});
           }
+          // Verifikace zdrojů
+          out += verifyAndTagSources(rawResults);
           return out.trim()||'Žádné výsledky.';
         } else if(braveKey){
-          // Brave Search API (free tier: 2000/měsíc)
           const res=await fetch(`https://api.search.brave.com/res/v1/web/search?q=${encodeURIComponent(input.query)}&count=6&result_filter=web`,{signal:getSignal(),headers:{'Accept':'application/json','Accept-Encoding':'gzip','X-Subscription-Token':braveKey}});
           if(!res.ok) throw new Error('Brave '+res.status);
           const data=await res.json();
-          let out='';
           for(const r of (data.web?.results||[]).slice(0,5)){
-            out+=`[${r.title}]\n${r.description||''}\nURL: ${r.url}\n\n`;
+            rawResults.push({title:r.title,url:r.url,content:r.description||'',date:r.page_age||''});
             lastSources.push({title:r.title,url:r.url});
           }
-          return out.trim()||'Žádné výsledky.';
+          return verifyAndTagSources(rawResults)||'Žádné výsledky.';
         } else {
-          // ── Fallback: Jina AI Search (zdarma, bez klíče) ──
           const jinaUrl=`https://s.jina.ai/${encodeURIComponent(input.query)}`;
           const res=await fetch(jinaUrl,{signal:getSignal(),headers:{'Accept':'application/json','X-Retain-Images':'none','X-No-Cache':'true'}});
           if(!res.ok) throw new Error('Jina search '+res.status);
           const data=await res.json();
-          let out='';
           for(const r of (data.data||[]).slice(0,5)){
             const snippet=(r.description||r.content||'').slice(0,500);
-            out+=`[${r.title||r.url}]\n${snippet}\nURL: ${r.url}\n\n`;
+            rawResults.push({title:r.title||r.url,url:r.url,content:snippet,date:''});
             lastSources.push({title:r.title||r.url,url:r.url});
           }
-          // Jina sometimes returns plain text
-          if(!out && typeof data==='string'){
-            out=data.slice(0,3000);
-          }
-          return out.trim()||'Žádné výsledky.';
+          if(!rawResults.length && typeof data==='string') return data.slice(0,3000);
+          return verifyAndTagSources(rawResults)||'Žádné výsledky.';
         }
       }catch(e){return 'Chyba web_search: '+e.message;}
     }
@@ -1334,13 +1362,13 @@ async function executeTool(name, input, aisDiv){
         const loc = input.location||'Praha';
         const days = Math.min(7, Math.max(1, Number(input.days)||3));
         logStep(`🌤️ Zjišťuji počasí pro ${loc}…`, 'active');
-        const geoRes = await fetch(`https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(loc)}&format=json&limit=1`, {headers:{'Accept-Language':'cs'}});
+        const geoRes = await fetch(`https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(loc)}&format=json&limit=1`, {signal:getSignal(),headers:{'Accept-Language':'cs'}});
         const geoData = await geoRes.json();
         if(!geoData.length) return `⚠️ Místo "${loc}" nenalezeno`;
         const {lat, lon, display_name} = geoData[0];
         const cityName = display_name.split(',')[0];
         // Weather via open-meteo
-        const wRes = await fetch(`https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&current=temperature_2m,relative_humidity_2m,wind_speed_10m,weather_code&daily=temperature_2m_max,temperature_2m_min,weather_code,precipitation_sum&timezone=auto&forecast_days=${days}`);
+        const wRes = await fetch(`https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&current=temperature_2m,relative_humidity_2m,wind_speed_10m,weather_code&daily=temperature_2m_max,temperature_2m_min,weather_code,precipitation_sum&timezone=auto&forecast_days=${days}`,{signal:getSignal()});
         const w = await wRes.json();
         const cur = w.current;
         const wmoIcon = code => {
@@ -1436,7 +1464,7 @@ async function executeTool(name, input, aisDiv){
         const loc = input.location||'Praha';
         const zoom = Math.min(18, Math.max(1, Number(input.zoom)||13));
         logStep(`🗺️ Hledám ${loc} na mapě…`, 'active');
-        const geoRes = await fetch(`https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(loc)}&format=json&limit=1`,{headers:{'Accept-Language':'cs'}});
+        const geoRes = await fetch(`https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(loc)}&format=json&limit=1`,{signal:getSignal(),headers:{'Accept-Language':'cs'}});
         const geoData = await geoRes.json();
         if(!geoData.length) return `⚠️ Místo "${loc}" nenalezeno`;
         const {lat, lon, display_name} = geoData[0];
@@ -1764,11 +1792,7 @@ async function geminiAgentLoop(userMsg, systemPrompt, aisDiv, fileSnap=null){
 // Cache funkčního modelu — zjistíme jednou, pak používáme
 let _workingGeminiModel = null;
 // Vrátí URL pro Gemini API s aktuálně funkčním modelem
-async function geminiUrl(action='generateContent'){
-  const model = await getWorkingGeminiModel();
-  return `https://generativelanguage.googleapis.com/v1beta/models/${model}:${action}?key=${AI.gemini.key}`;
-}
-// Synchronní verze pro místa kde async nejde — používá cached model nebo fallback
+// Synchronní verze — používá cached model nebo fallback
 function geminiUrlSync(action='generateContent'){
   const model = _workingGeminiModel || 'gemini-1.5-flash';
   return `https://generativelanguage.googleapis.com/v1beta/models/${model}:${action}?key=${AI.gemini.key}`;
@@ -2484,12 +2508,6 @@ async function regenMsg(btn){
 
 // ════ PIN MESSAGES ════
 let pinnedMsgs = JSON.parse(localStorage.getItem('pinned-msgs')||'[]');
-function pinMessage(text, label){
-  const id = 'pin_'+Date.now();
-  pinnedMsgs.push({id, text, label:label.slice(0,40)});
-  localStorage.setItem('pinned-msgs', JSON.stringify(pinnedMsgs.slice(-10)));
-  renderPins();
-}
 function unpinMessage(id){
   pinnedMsgs = pinnedMsgs.filter(p=>p.id!==id);
   localStorage.setItem('pinned-msgs', JSON.stringify(pinnedMsgs));
@@ -2777,12 +2795,24 @@ Na KONEC každé odpovědi přidej tento blok — bude automaticky odstraněn p�
 
 DŮLEŽITÉ: Blok <self_review> piš vždy na úplný konec, za celou odpověď. Nikdy ho nepiš doprostřed textu.
 
+━━━ FORMÁTOVACÍ STANDARD (dodržuj vždy) ━━━
+• Odpovědi max 30s čtení. Pokud je téma složité, použij sekce s emoji nadpisy.
+• Odrážky pro seznamy. Tabulky pro srovnání. Kód jen v blocích.
+• Jedna myšlenka = jeden odstavec. Žádné stěny textu.
+
+━━━ PRAVIDLA PRAVDIVOSTI ━━━
+• Pokud si NEJSI JISTÝ faktem (číslo, zákon, datum, cena, statistika):
+  → Označ to: [NEOVĚŘENO] nebo řekni "pokud se nemýlím" / "odhaduji"
+  → NIKDY neprezentuj odhad jako ověřený fakt
+• Pokud máš data z webu (🌐), použij JE — ne svou paměť
+• Pokud nemáš data a nemůžeš ověřit → řekni to přímo: "Nemám aktuální data k tomuto"
+• Raději kratší přesná odpověď než delší s vymyšlenými detaily
+
 Styl:
 - Piš jako odborník v chatu – věcně ale přístupně, občas emoji
 - Reaguj ze svého pohledu a role
 - Můžeš nesouhlasit s kolegy pokud máš důvod
 - MÁTE přístup k internetu – webová data dostaneš níže
-- Markdown jen na kód nebo tabulky
 - Aktivně zapracuj na svých slabinách z coachingu výše
 
 🔧 NÁSTROJE – Máš k dispozici: web_search, fetch_url, run_code, save_note, recall_notes, delegate_task
@@ -2900,10 +2930,22 @@ const MEM_CATS = {
 
 function getMemoryPrompt() {
   const longTerm = getLongTermMemory();
+  const retroNotes = getRetrospectiveNotes();
   let prompt = '';
   if(userMemory) prompt += `\n\nInformace o uživateli:\n${userMemory}`;
   if(longTerm) prompt += `\n\nCo si AI pamatuje z minulých chatů:\n${longTerm}`;
+  if(retroNotes) prompt += `\n\n📝 Poznámky z minulých úkolů (využij je):\n${retroNotes}`;
   return prompt;
+}
+
+function getRetrospectiveNotes(){
+  const notes = JSON.parse(localStorage.getItem('agent-notes')||'{}');
+  const retros = Object.entries(notes)
+    .filter(([,v])=>v.type==='retrospective')
+    .sort((a,b)=>(b[1].ts||0)-(a[1].ts||0))
+    .slice(0,10);
+  if(!retros.length) return '';
+  return retros.map(([,v])=>`• ${v.content}`).join('\n');
 }
 
 function getLongTermMemory(){
@@ -3032,6 +3074,60 @@ async function extractAndSaveMemory(conversation){
     localStorage.setItem('ai-longterm-memory', JSON.stringify(merged));
     showLongTermMemory();
   } catch(e){}
+}
+
+// ════ AUTO-RETROSPEKTIVA ════
+// Po každém úkolu extrahuje klíčová fakta a uloží je pro budoucí použití
+async function autoRetrospective(question, finalAnswer, workerAnswers){
+  if(!question || !finalAnswer || finalAnswer.length < 50) return;
+  if(!getOrchestratorChain().length) return;
+  try{
+    const workerSnippets = Object.entries(workerAnswers||{})
+      .filter(([k,v])=>!k.startsWith('_')&&typeof v==='string'&&v.length>20)
+      .map(([k,v])=>`${AI[k]?.name||k}: ${v.slice(0,200)}`)
+      .join('\n');
+
+    const prompt = `Analyzuj tuto konverzaci a extrahuj klíčová fakta k zapamatování.
+
+Otázka: "${question.slice(0,300)}"
+Finální odpověď: "${finalAnswer.slice(0,600)}"
+${workerSnippets ? 'Odpovědi workerů:\n'+workerSnippets.slice(0,800) : ''}
+
+Odpověz POUZE jako JSON pole max 3 faktů. Každý fakt musí být:
+- Konkrétní a užitečný pro budoucí úkoly
+- NE obecná znalost, ale specifický insight z TÉTO konverzace
+- Krátký (max 1 věta)
+
+Pokud konverzace neobsahuje nic užitečného k zapamatování, vrať prázdné pole [].
+
+Příklady dobrých faktů:
+["Uživatel preferuje stručné odpovědi s emoji","BTC cena 9.3. 2026: ~83000 USD","Groq agent měl problém s undefined odpovědí"]
+
+Odpověz POUZE JSON pole, nic jiného:`;
+
+    const raw = await callOrchestratorQuick(
+      'Extrahuj klíčová fakta z konverzace. Odpověz POUZE jako JSON pole stringů. Žádný markdown.',
+      prompt, 300
+    );
+    if(!raw) return;
+
+    const match = raw.match(/\[[\s\S]*\]/);
+    if(!match) return;
+    const facts = JSON.parse(match[0]);
+    if(!Array.isArray(facts) || !facts.length) return;
+
+    // Ulož jako poznámky s timestampem
+    const notes = JSON.parse(localStorage.getItem('agent-notes')||'{}');
+    const dateStr = new Date().toISOString().slice(0,10);
+    for(const fact of facts.slice(0,3)){
+      if(typeof fact!=='string' || fact.length < 5) continue;
+      const key = `retro_${dateStr}_${Math.random().toString(36).slice(2,6)}`;
+      notes[key] = { content: fact, ts: Date.now(), type:'retrospective' };
+    }
+    // Max 100 poznámek
+    const entries = Object.entries(notes).sort((a,b)=>(b[1].ts||0)-(a[1].ts||0)).slice(0,100);
+    localStorage.setItem('agent-notes', JSON.stringify(Object.fromEntries(entries)));
+  }catch(e){}
 }
 
 // ════ SCHEDULER ════
@@ -4641,6 +4737,14 @@ async function sendMessage() {
         let text = await callTeamAI(key, p, bubble);
         extractAndSaveSelfReview(key, text);
         text = stripHidden(text);
+        // Guard: pokud agent vrátil prázdnou/undefined odpověď
+        if(!text || text==='undefined' || text.trim().length < 3){
+          kb[key] = {text:'', vote:'nesouhlas'};
+          updateLiveAgent(key, 'failed');
+          _teamFailures.push({key, reason:'Prázdná odpověď'});
+          finishBubble(bubble, null, '⚠️ Agent vrátil prázdnou odpověď');
+          continue;
+        }
         kb[key] = {text, vote:'souhlas'};
         assistantAnswers[key] = text;
         updateLiveAgent(key, 'done');
@@ -4802,6 +4906,7 @@ Tvůj úkol jako syntetizátor:
     saveCurrent();
     autoGenerateTitle(msgText);
     extractAndSaveMemory(chatLog);
+    autoRetrospective(msgText, _synthReply, assistantAnswers); // 📝 retrospektiva
     autoCompressChat(); // 🗜️ auto-komprese
     ghAutoSyncIfEnabled(); // 🐙 GitHub backup
     notifyDone();
@@ -4928,10 +5033,18 @@ Tvůj úkol jako syntetizátor:
           const iterLabel = result.iterations>0?` ↺${result.iterations}`:'';
           updateBubbleLabel(bubble, `${AI[key].name.toUpperCase()} · ${scoreEmoji}${result.score}/5${iterLabel}`);
         }
-        assistantAnswers[key] = stripHidden(reply);
+        // Guard: pokud agent vrátil prázdnou/undefined odpověď, zahoď
+        if(!reply || reply==='undefined' || reply.trim().length < 3){
+          updateLiveAgent(key, 'failed');
+          agentFailures.push({key, reason:'Prázdná odpověď'});
+          finishBubble(bubble, null, '⚠️ Agent vrátil prázdnou odpověď');
+          return;
+        }
+        const cleanReply = stripHidden(reply);
+        assistantAnswers[key] = cleanReply;
         updateLiveAgent(key, 'done');
         const isSoloFinal = routed.length === 1 && !AI.claude?.key;
-        finishBubble(bubble, reply, null, isSoloFinal);
+        finishBubble(bubble, cleanReply, null, isSoloFinal);
       } catch(e) {
         updateLiveAgent(key, 'failed');
         agentFailures.push({key, reason: e.message});
@@ -5034,7 +5147,7 @@ Máš přístup k nástrojům: web_search, fetch_url, run_code, save_note, recal
     finishLog();
     startStatusLog(aisDiv);
 
-    const workerKeys = routed.filter(k => assistantAnswers[k]);
+    const workerKeys = routed.filter(k => assistantAnswers[k] && assistantAnswers[k]!=='undefined' && assistantAnswers[k].trim().length > 3);
     const hasGemini = AI.gemini?.key && workerKeys.includes('gemini');
     let geminiVerdict = null; // Geminiho doporučení šéfovi
 
@@ -5261,6 +5374,7 @@ Pokud je odpověď dobrá, můžeš ji převzít s minimálními úpravami — n
   saveCurrent();
   autoGenerateTitle(msgText);
   extractAndSaveMemory(chatLog); // async, runs in background
+  autoRetrospective(msgText, claudeVerdict, assistantAnswers); // 📝 retrospektiva
   autoCompressChat(); // 🗜️ auto-komprese
   ghAutoSyncIfEnabled(); // 🐙 GitHub backup
   notifyDone();
@@ -6272,6 +6386,7 @@ async function autoWebSearch(query){
       // ── TAVILY – plné webové vyhledávání ──
       const res = await fetch('https://api.tavily.com/search', {
         method:'POST',
+        signal: currentAbortController?.signal,
         headers:{'Content-Type':'application/json'},
         body: JSON.stringify({
           api_key: tavilyKey,
@@ -6305,6 +6420,7 @@ async function autoWebSearch(query){
       const braveKey = localStorage.getItem('key-brave');
       if(braveKey){
         const res = await fetch(`https://api.search.brave.com/res/v1/web/search?q=${encodeURIComponent(query)}&count=6&result_filter=web`,{
+          signal: currentAbortController?.signal,
           headers:{'Accept':'application/json','X-Subscription-Token':braveKey}
         });
         if(res.ok){
@@ -6325,6 +6441,7 @@ async function autoWebSearch(query){
       try {
         const jinaUrl = `https://s.jina.ai/${encodeURIComponent(query)}`;
         const res = await fetch(jinaUrl, {
+          signal: currentAbortController?.signal,
           headers:{'Accept':'application/json','X-Retain-Images':'none','X-No-Cache':'true'}
         });
         if(!res.ok) throw new Error('Jina '+res.status);
@@ -6350,7 +6467,7 @@ async function autoWebSearch(query){
       }
 
       // ── Fallback 3: Wikipedia CS ──
-      const wikiRes = await fetch(`https://cs.wikipedia.org/w/api.php?action=query&list=search&srsearch=${encodeURIComponent(query)}&srlimit=3&srprop=snippet&format=json&origin=*`).catch(()=>null);
+      const wikiRes = await fetch(`https://cs.wikipedia.org/w/api.php?action=query&list=search&srsearch=${encodeURIComponent(query)}&srlimit=3&srprop=snippet&format=json&origin=*`,{signal:currentAbortController?.signal}).catch(()=>null);
       if(wikiRes?.ok){
         const wikiData = await wikiRes.json();
         const hits = wikiData?.query?.search||[];
@@ -6375,74 +6492,6 @@ async function autoWebSearch(query){
 
 // ════ WEB SEARCH ════
 let webSearchContext = null;
-
-async function webSearch() {
-  let query = document.getElementById('msgInput').value.trim();
-  if(!query){
-    query = prompt('Co chceš hledat na webu?');
-    if(!query) return;
-  }
-  
-  const btn = document.getElementById('searchBtn');
-  const bar = document.getElementById('searchBar');
-  const status = document.getElementById('searchStatus');
-  
-  if(btn){ btn.textContent = '⏳'; btn.disabled = true; }
-  bar.style.display = 'block';
-  status.textContent = 'Hledám: ' + query + '…';
-  
-  try {
-    // DuckDuckGo Instant Answer API - CORS friendly, no key needed
-    const ddgRes = await fetch(`https://api.duckduckgo.com/?q=${encodeURIComponent(query)}&format=json&no_redirect=1&no_html=1&skip_disambig=1`);
-    const ddg = await ddgRes.json();
-    
-    let results = [];
-    
-    // Abstract (main answer)
-    if(ddg.AbstractText) results.push(`**${ddg.Heading}**\n${ddg.AbstractText}\nZdroj: ${ddg.AbstractURL}`);
-    
-    // Answer (instant answer)
-    if(ddg.Answer) results.push(`**Odpověď:** ${ddg.Answer}`);
-    
-    // Related topics
-    if(ddg.RelatedTopics?.length) {
-      const topics = ddg.RelatedTopics.slice(0,5)
-        .filter(t=>t.Text)
-        .map(t=>`• ${t.Text}`);
-      if(topics.length) results.push('**Související:**\n' + topics.join('\n'));
-    }
-    
-    // Infobox
-    if(ddg.Infobox?.content?.length) {
-      const info = ddg.Infobox.content.slice(0,8)
-        .map(i=>`${i.label}: ${i.value}`)
-        .join('\n');
-      results.push('**Info:**\n' + info);
-    }
-
-    if(results.length === 0) {
-      // Fallback - use Jina reader on first DuckDuckGo result URL
-      const fallback = await fetch(`https://r.jina.ai/https://duckduckgo.com/html/?q=${encodeURIComponent(query)}`, {
-        headers:{'X-Return-Format':'text'}
-      });
-      let txt = await fallback.text();
-      if(txt.length > 2000) txt = txt.slice(0,2000) + '\n[...zkráceno]';
-      results.push(txt);
-    }
-
-    let text = results.join('\n\n');
-    if(text.length > 3000) text = text.slice(0,3000) + '\n[...zkráceno]';
-    
-    webSearchContext = `Výsledky vyhledávání pro "${query}" (${new Date().toLocaleDateString('cs-CZ')}):\n\n${text}`;
-    status.innerHTML = '✅ Nalezeno – výsledky přidány do kontextu. Teď odešli zprávu.';
-    status.style.color = '#4ade80';
-  } catch(e) {
-    status.textContent = '❌ Chyba: ' + e.message;
-    status.style.color = '#f87171';
-    webSearchContext = null;
-  }
-  if(btn){ btn.textContent = '🔍'; btn.disabled = false; }
-}
 
 function clearSearchContext() {
   webSearchContext = null;
