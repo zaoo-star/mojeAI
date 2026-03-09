@@ -5723,20 +5723,26 @@ jobs:
 }
 
 // ── Šifrování secretů pro GitHub API ──
-async function loadNacl(){
-  if(window.nacl)return window.nacl;
-  return new Promise((res,rej)=>{const s=document.createElement('script');s.src='https://cdnjs.cloudflare.com/ajax/libs/tweetnacl/1.0.3/nacl-fast.min.js';s.onload=()=>res(window.nacl);s.onerror=rej;document.head.appendChild(s);});
+async function loadSodium(){
+  if(window._sodium_ready) return window.sodium;
+  return new Promise((res,rej)=>{
+    const s=document.createElement('script');
+    s.src='https://cdnjs.cloudflare.com/ajax/libs/libsodium-wrappers-sumo/0.7.13/sodium.js';
+    s.onload=async()=>{
+      await window.sodium.ready;
+      window._sodium_ready=true;
+      res(window.sodium);
+    };
+    s.onerror=rej;
+    document.head.appendChild(s);
+  });
 }
 async function encryptSecret(pubKeyB64, value){
-  const nacl=await loadNacl();
-  const pk=Uint8Array.from(atob(pubKeyB64),c=>c.charCodeAt(0));
-  const msg=new TextEncoder().encode(value);
-  const ek=nacl.box.keyPair();
-  const nonce=nacl.randomBytes(24);
-  const enc=nacl.box(msg,nonce,pk,ek.secretKey);
-  const sealed=new Uint8Array(32+24+enc.length);
-  sealed.set(ek.publicKey);sealed.set(nonce,32);sealed.set(enc,56);
-  return btoa(String.fromCharCode(...sealed));
+  const sodium=await loadSodium();
+  const pk=sodium.from_base64(pubKeyB64, sodium.base64_variants.ORIGINAL);
+  const msg=sodium.from_string(value);
+  const sealed=sodium.crypto_box_seal(msg, pk);
+  return sodium.to_base64(sealed, sodium.base64_variants.ORIGINAL);
 }
 async function setSecret(token,owner,repo,name,value){
   const r1=await fetch(`https://api.github.com/repos/${owner}/${repo}/actions/secrets/public-key`,{headers:{'Authorization':`token ${token}`}});
