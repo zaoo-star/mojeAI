@@ -500,6 +500,24 @@ onAuthStateChanged(auth, user => {
   </div>
 
   <div class="section-title" style="margin-top:4px">⏰ Naplánované prompty</div>
+
+  <div class="section-title" style="margin-top:4px">🐙 GitHub Sync</div>
+  <div class="ai-card">
+    <div class="ai-card-header"><div class="ai-dot" style="background:#8b5cf6"></div><span>GitHub Gist Backup</span><small>gist.github.com</small></div>
+    <input type="password" id="key-github" placeholder="ghp_..." autocomplete="off">
+    <div class="hint">→ github.com/settings/tokens → Generate → scope: <b>gist</b> · Zálohuje aktuální chat do Gistu</div>
+    <div style="display:flex;gap:6px;align-items:center;margin-top:6px;flex-wrap:wrap;">
+      <button onclick="ghSyncPush()" style="background:rgba(139,92,246,0.15);border:1px solid rgba(139,92,246,0.4);border-radius:8px;padding:5px 12px;color:#8b5cf6;cursor:pointer;font-size:12px;font-family:'Outfit',sans-serif;font-weight:600">⬆ Uložit do Gistu</button>
+      <button onclick="ghSyncPull()" style="background:var(--card2);border:1px solid var(--border);border-radius:8px;padding:5px 12px;color:var(--muted2);cursor:pointer;font-size:12px;font-family:'Outfit',sans-serif">⬇ Načíst z Gistu</button>
+      <span id="gh-sync-status" style="font-size:11px;color:var(--muted)"></span>
+    </div>
+    <div style="margin-top:4px;display:flex;align-items:center;gap:6px;">
+      <label style="font-size:11px;color:var(--muted);display:flex;align-items:center;gap:4px;cursor:pointer">
+        <input type="checkbox" id="gh-auto-sync" onchange="localStorage.setItem('gh-auto-sync',this.checked?'1':'0')" style="accent-color:#8b5cf6"> Auto-sync po každé zprávě
+      </label>
+    </div>
+  </div>
+
   <div id="scheduledPromptsCard" style="background:var(--card);border:1px solid var(--border);border-radius:16px;padding:14px 16px;display:flex;flex-direction:column;gap:10px;">
     <div id="scheduleList" style="display:flex;flex-direction:column;gap:6px;"></div>
     <div id="scheduleForm" style="display:none;background:var(--surface);border:1px solid var(--border2);border-radius:12px;padding:12px;flex-direction:column;gap:8px;">
@@ -539,6 +557,7 @@ onAuthStateChanged(auth, user => {
       <button class="header-btn" onclick="toggleStats();" id="statsBtn" title="Token statistiky" style="font-size:13px;padding:4px 8px">📊</button>
       <button class="header-btn" onclick="openAgentDashboard();" title="Pokrok agentů" style="font-size:13px;padding:4px 8px">🎓</button>
       <button class="header-btn" onclick="openHistory()" title="Historie" style="font-size:13px;padding:4px 8px">📋</button>
+      <button class="header-btn" id="ghSyncBtn" onclick="ghSyncPush()" title="GitHub Sync" style="font-size:13px;padding:4px 8px;display:none">🐙</button>
       <button class="header-btn" onclick="newChat()" title="Nový chat" style="font-size:13px;padding:4px 8px">✏️</button>
     </div>
     <div class="token-bar" id="tokenBar"><div class="token-bar-fill" id="tokenBarFill" style="width:0%;background:var(--accent)"></div></div>
@@ -2673,6 +2692,7 @@ window.addEventListener('DOMContentLoaded', () => {
   setModel(selectedModel);
   initDragDrop();
   initScheduler();
+  initGhSync();
   if(!statsEnabled) document.querySelectorAll('.msg-stats').forEach(el=>el.style.display='none');
   if(statsEnabled) document.getElementById('statsBtn').style.borderColor='var(--accent)';
   // Auto-start pokud máme klíče
@@ -3009,6 +3029,11 @@ function startChat() {
   const customs=JSON.parse(localStorage.getItem('custom-ais')||'[]');
   for(const c of customs){const inp=document.getElementById('key-'+c.id);if(inp){c.key=inp.value.trim();AI[c.id].key=c.key;}}
   localStorage.setItem('custom-ais',JSON.stringify(customs));
+  // GitHub token
+  const ghToken = document.getElementById('key-github')?.value.trim()||'';
+  if(ghToken) localStorage.setItem('key-github', ghToken);
+  const ghBtn = document.getElementById('ghSyncBtn');
+  if(ghBtn) ghBtn.style.display = ghToken ? '' : 'none';
   if(!currentChatId) currentChatId=genId();
   const savedChatId = localStorage.getItem('current-chat-id');
   if(savedChatId){
@@ -4122,6 +4147,7 @@ function analyzeMsg(txt) {
     isSimple: words <= 2 || /^(ahoj|čau|hey|hi|hello|dobrý den|díky|ok|jo|super|👍|🙏|haha)/.test(t),
     needsDebate,
     isImageRequest,
+    teamHurts,
     needsSubtasks: words > 7 && /a (také|navíc|zároveň)|za (prvé|druhé)|jednak|několik|více věcí|krok za krokem|kompletní|celý plán|zahrnuj|includu|plus|kromě|obsahuj/.test(t),
     needsPlan: words > 25 && /jak|napiš|vytvoř|navrhni|pomoz mi|co bych měl|jak bych/.test(t),
     hasMath: /[\d]+[\s]*[\+\-\*\/][\s]*[\d]+/.test(txt),
@@ -4436,6 +4462,7 @@ Tvůj úkol jako syntetizátor:
     autoGenerateTitle(msgText);
     extractAndSaveMemory(chatLog);
     autoCompressChat(); // 🗜️ auto-komprese
+    ghAutoSyncIfEnabled(); // 🐙 GitHub backup
     notifyDone();
     setBusy(false);return;
   }
@@ -4474,20 +4501,21 @@ Tvůj úkol jako syntetizátor:
 
   // 🎯 Specializace asistentů
   let routed = routeMessage(msgText, actualWorkers);
-  if(routed.length > 0 && !task.teamBenefits && !task.needsSubtasks){
+  if(routed.length > 0 && task.teamHurts){
+    // Kód, matematika, překlad → Claude sám, tým by jen brzdil
     const reason = task.hasMath ? '🔢 matematika' :
       /```|def |class |import |const |function |SELECT /.test(msgText) ? '💻 kód' :
-      /přelož|translate/.test(msgText.toLowerCase()) ? '🌐 překlad' : '⚡ rychlý dotaz';
+      /přelož|translate/.test(msgText.toLowerCase()) ? '🌐 překlad' : '⚡ specializovaný úkol';
     addDivider(aisDiv, `⚡ Claude sám (${reason} → tým by nepomohl)`);
     routed = [];
-  } else if(routed.length < actualWorkers.length){
+  } else if(routed.length < actualWorkers.length && routed.length > 0){
     const skipped = actualWorkers.filter(k=>!routed.includes(k)).map(k=>AI[k].name).join(', ');
     addDivider(aisDiv,`🎯 Specializace → ${routed.map(k=>AI[k].name).join(', ')} (${skipped} přeskočen)`);
   }
 
-  // 🎭 PM ROUTING (Lana) — přidělí worker typy před diskuzí
+  // 🎭 PM ROUTING (Lana) — přidělí worker typy před diskuzí (jen debatní otázky)
   let workerRoles = {};
-  if(!task.isSimple && routed.length >= 2){
+  if(task.needsDebate && routed.length >= 2){
     addDivider(aisDiv, '👩‍💼 Lana přiděluje worker typy…');
     workerRoles = await pmRoute(msgText, routed);
     if(Object.keys(workerRoles).length >= 2){
@@ -4498,9 +4526,9 @@ Tvůj úkol jako syntetizátor:
     }
   }
 
-  // 🎭 PŘIDĚLENÍ ROLÍ (jen pro komplexní dotazy s 2+ agenty)
+  // 🎭 PŘIDĚLENÍ ROLÍ (jen pro debatní otázky s 2+ agenty)
   let agentRoles = {};
-  if(!task.isSimple && routed.length >= 2){
+  if(task.needsDebate && routed.length >= 2){
     addDivider(aisDiv, '🎭 Přiděluji role...');
     agentRoles = await assignRoles(msgText, routed);
     if(Object.keys(agentRoles).length >= 2){
@@ -4542,7 +4570,7 @@ Tvůj úkol jako syntetizátor:
         if(key==='gemini') reply = await geminiAgentLoop(assignedTask, sys, aisDiv, fileSnap);
         else if(key==='chatgpt' || AI[key].url) reply = await openAIAgentLoop(key, assignedTask, sys, aisDiv, bubble);
         else reply = await geminiAgentLoop(assignedTask, sys, aisDiv, fileSnap);
-        if(!task.isSimple){
+        if(task.needsDebate){
           updateBubbleLabel(bubble,`${AI[key].name.toUpperCase()} · hodnotí...`);
           const result = await iterateIfNeeded(key, msgText, reply);
           reply = result.reply;
@@ -4578,8 +4606,8 @@ Tvůj úkol jako syntetizátor:
       setLiveBannerText('Claude syntetizuje výsledky…');
     }
 
-    // 💬 DISCUSSION ROUND — agenti reagují na sebe navzájem
-    if(!task.isSimple && routed.length >= 2 && Object.keys(assistantAnswers).length >= 2){
+    // 💬 DISCUSSION ROUND — agenti reagují na sebe navzájem (jen debatní otázky)
+    if(task.needsDebate && routed.length >= 2 && Object.keys(assistantAnswers).length >= 2){
       finishLog();
       startStatusLog(aisDiv);
       addDivider(aisDiv, '💬 DISKUZE · agenti čtou a reagují na kolegy');
@@ -4881,6 +4909,7 @@ Pokud je odpověď dobrá, můžeš ji převzít s minimálními úpravami — n
   autoGenerateTitle(msgText);
   extractAndSaveMemory(chatLog); // async, runs in background
   autoCompressChat(); // 🗜️ auto-komprese
+  ghAutoSyncIfEnabled(); // 🐙 GitHub backup
   notifyDone();
   setBusy(false);
 }
@@ -5398,6 +5427,144 @@ function downloadHtml(){
   a.href=location.href;
   a.download='chat.html';
   a.click();
+}
+
+// ════ GITHUB GIST SYNC ════
+// Ukládá/načítá aktuální konverzaci do GitHub Gist
+// Potřebuje Personal Access Token se scope "gist"
+
+function getGhToken(){ return localStorage.getItem('key-github')||''; }
+function getGhGistId(){ return localStorage.getItem('gh-gist-id')||''; }
+function isGhAutoSync(){ return localStorage.getItem('gh-auto-sync')==='1' && !!getGhToken(); }
+
+function ghSetStatus(text, color){
+  const el = document.getElementById('gh-sync-status');
+  if(el){ el.textContent = text; el.style.color = color||'var(--muted)'; }
+}
+
+async function ghSyncPush(){
+  const token = getGhToken();
+  if(!token){ ghSetStatus('⚠️ Zadej GitHub token','#f87171'); return; }
+  if(!chatLog.length){ ghSetStatus('⚠️ Prázdný chat','#f87171'); return; }
+
+  // Aktualizuj header button
+  const btn = document.getElementById('ghSyncBtn');
+  if(btn){ btn.textContent='⏳'; btn.style.borderColor='#8b5cf6'; }
+  ghSetStatus('⬆ Ukládám…','#8b5cf6');
+
+  const payload = {
+    chatId: currentChatId,
+    title: document.getElementById('chatTitle')?.textContent || 'AI Chat',
+    messages: chatLog,
+    savedAt: new Date().toISOString(),
+    memory: localStorage.getItem('user-memory')||'',
+    longTermMemory: JSON.parse(localStorage.getItem('ai-longterm-memory')||'[]'),
+  };
+  const filename = 'ai-chat-sync.json';
+  const gistId = getGhGistId();
+
+  try{
+    let r;
+    if(gistId){
+      // Update existing gist
+      r = await fetch(`https://api.github.com/gists/${gistId}`,{
+        method:'PATCH',
+        headers:{'Authorization':`token ${token}`,'Content-Type':'application/json'},
+        body:JSON.stringify({files:{[filename]:{content:JSON.stringify(payload,null,2)}}})
+      });
+      if(r.status===404){
+        // Gist smazán — vytvoř nový
+        localStorage.removeItem('gh-gist-id');
+        return await ghSyncPush();
+      }
+    } else {
+      // Create new gist
+      r = await fetch('https://api.github.com/gists',{
+        method:'POST',
+        headers:{'Authorization':`token ${token}`,'Content-Type':'application/json'},
+        body:JSON.stringify({
+          description:'AI Chat Sync – auto-záloha konverzace',
+          public:false,
+          files:{[filename]:{content:JSON.stringify(payload,null,2)}}
+        })
+      });
+    }
+    if(!r.ok){
+      const e = await r.json().catch(()=>({}));
+      throw new Error(e.message||r.status);
+    }
+    const d = await r.json();
+    if(d.id && !gistId) localStorage.setItem('gh-gist-id', d.id);
+    const t = new Date().toLocaleTimeString('cs-CZ',{hour:'2-digit',minute:'2-digit'});
+    ghSetStatus(`✅ Uloženo ${t}`,'#34d399');
+    if(btn){ btn.textContent='🐙'; btn.title=`GitHub Sync · uloženo ${t}`; }
+    console.log('🐙 Gist sync:', d.html_url);
+  } catch(e){
+    ghSetStatus(`❌ ${e.message.slice(0,40)}`,'#f87171');
+    if(btn) btn.textContent='🐙';
+    console.error('ghSyncPush:', e);
+  }
+}
+
+async function ghSyncPull(){
+  const token = getGhToken();
+  if(!token){ ghSetStatus('⚠️ Zadej GitHub token','#f87171'); return; }
+  const gistId = getGhGistId();
+  if(!gistId){ ghSetStatus('⚠️ Žádný uložený Gist — nejdřív ulož','#f87171'); return; }
+
+  ghSetStatus('⬇ Načítám…','#8b5cf6');
+  try{
+    const r = await fetch(`https://api.github.com/gists/${gistId}`,{
+      headers:{'Authorization':`token ${token}`}
+    });
+    if(!r.ok) throw new Error((await r.json().catch(()=>({}))).message||r.status);
+    const d = await r.json();
+    const content = d.files?.['ai-chat-sync.json']?.content;
+    if(!content) throw new Error('Soubor ai-chat-sync.json nenalezen v Gistu');
+    const payload = JSON.parse(content);
+
+    // Načti konverzaci
+    if(payload.messages?.length){
+      currentChatId = payload.chatId || genId();
+      chatLog = payload.messages;
+      localStorage.setItem('current-chat-id', currentChatId);
+      saveCurrent();
+      // Obnov DOM
+      loadChat(currentChatId);
+      if(payload.title) document.getElementById('chatTitle').textContent = payload.title;
+    }
+    // Načti paměť pokud je novější
+    if(payload.memory) localStorage.setItem('user-memory', payload.memory);
+    if(payload.longTermMemory?.length){
+      localStorage.setItem('ai-longterm-memory', JSON.stringify(payload.longTermMemory));
+    }
+    const t = payload.savedAt ? new Date(payload.savedAt).toLocaleString('cs-CZ') : '?';
+    ghSetStatus(`✅ Načteno z ${t}`,'#34d399');
+    console.log('🐙 Gist loaded:', d.html_url);
+  } catch(e){
+    ghSetStatus(`❌ ${e.message.slice(0,40)}`,'#f87171');
+    console.error('ghSyncPull:', e);
+  }
+}
+
+// Auto-sync po zprávě (volá se z sendMessage)
+async function ghAutoSyncIfEnabled(){
+  if(!isGhAutoSync()) return;
+  try{ await ghSyncPush(); }catch(e){ console.warn('ghAutoSync:', e); }
+}
+
+function initGhSync(){
+  const token = localStorage.getItem('key-github')||'';
+  document.getElementById('key-github').value = token;
+  document.getElementById('gh-auto-sync').checked = localStorage.getItem('gh-auto-sync')==='1';
+  // Zobraz/skryj sync button v headeru
+  const btn = document.getElementById('ghSyncBtn');
+  if(btn) btn.style.display = token ? '' : 'none';
+  // Zobraz Gist link pokud existuje
+  const gistId = getGhGistId();
+  if(gistId && token){
+    ghSetStatus(`🔗 gist.github.com/${gistId.slice(0,8)}…`,'var(--muted)');
+  }
 }
 
 async function shouldSearch(query){
