@@ -1006,7 +1006,7 @@ async function executeTool(name, input, aisDiv){
         const prompt=`Podúkol: ${input.task}\n\nKontext:\n${input.context||'(žádný)'}`;
         let result='';
         if(agentKey==='gemini'){
-          const r=await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${ai.key}`,{method:'POST',signal:getSignal(),headers:{'Content-Type':'application/json'},body:JSON.stringify({systemInstruction:{parts:[{text:sys}]},contents:[{role:'user',parts:[{text:prompt}]}],generationConfig:{maxOutputTokens:2000}})});
+          const r=await fetch(geminiUrlSync(),{method:'POST',signal:getSignal(),headers:{'Content-Type':'application/json'},body:JSON.stringify({systemInstruction:{parts:[{text:sys}]},contents:[{role:'user',parts:[{text:prompt}]}],generationConfig:{maxOutputTokens:2000}})});
           const d=await r.json();result=d.candidates?.[0]?.content?.parts?.[0]?.text||'Prázdná odpověď';
         } else if(agentKey==='chatgpt'){
           const r=await fetch('https://api.openai.com/v1/chat/completions',{method:'POST',signal:getSignal(),headers:{'Content-Type':'application/json','Authorization':`Bearer ${ai.key}`},body:JSON.stringify({model:'gpt-4o',max_tokens:2000,messages:[{role:'system',content:sys},{role:'user',content:prompt}]})});
@@ -1546,6 +1546,16 @@ async function geminiAgentLoop(userMsg, systemPrompt, aisDiv, fileSnap=null){
 
 // Cache funkčního modelu — zjistíme jednou, pak používáme
 let _workingGeminiModel = null;
+// Vrátí URL pro Gemini API s aktuálně funkčním modelem
+async function geminiUrl(action='generateContent'){
+  const model = await getWorkingGeminiModel();
+  return `https://generativelanguage.googleapis.com/v1beta/models/${model}:${action}?key=${AI.gemini.key}`;
+}
+// Synchronní verze pro místa kde async nejde — používá cached model nebo fallback
+function geminiUrlSync(action='generateContent'){
+  const model = _workingGeminiModel || 'gemini-1.5-flash';
+  return `https://generativelanguage.googleapis.com/v1beta/models/${model}:${action}?key=${AI.gemini.key}`;
+}
 async function getWorkingGeminiModel(){
   if(_workingGeminiModel) return _workingGeminiModel;
   try {
@@ -2448,7 +2458,7 @@ async function selfReflect(key, question, answer, signal){
       if(!r.ok) return null;
       const d=await r.json(); return d.choices?.[0]?.message?.content?.trim()||null;
     } else if(key==='gemini'){
-      const r=await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${AI.gemini.key}`,{method:'POST',signal,headers:{'Content-Type':'application/json'},body:JSON.stringify({contents:[{role:'user',parts:[{text:prompt}]}],generationConfig:{maxOutputTokens:80}})});
+      const r=await fetch(geminiUrlSync(),{method:'POST',signal,headers:{'Content-Type':'application/json'},body:JSON.stringify({contents:[{role:'user',parts:[{text:prompt}]}],generationConfig:{maxOutputTokens:80}})});
       if(!r.ok) return null;
       const d=await r.json(); return d.candidates?.[0]?.content?.parts?.[0]?.text?.trim()||null;
     }
@@ -2472,10 +2482,12 @@ Vzpomenu si na svou zpětnou vazbu a aktivně zapracuji na slabinách.]
 
 Pak napiš odpověď – přirozeně a lidsky.
 
-Na KONEC každé odpovědi přidej SKRYTÝ self-reflection blok (nezobrazuje se uživateli):
+Na KONEC každé odpovědi přidej tento blok — bude automaticky odstraněn před zobrazením uživateli:
 <self_review>
-{"did_well":["co jsem udělal dobře"],"could_improve":["co příště zlepším"],"applied_feedback":true/false}
+{"did_well":["..."],"could_improve":["..."],"applied_feedback":true}
 </self_review>
+
+DŮLEŽITÉ: Blok <self_review> piš vždy na úplný konec, za celou odpověď. Nikdy ho nepiš doprostřed textu.
 
 Styl:
 - Piš jako odborník v chatu – věcně ale přístupně, občas emoji
@@ -2911,23 +2923,6 @@ function startChat() {
   if(tavilyKey) localStorage.setItem('key-tavily', tavilyKey);
   AI.gemini.key  = document.getElementById('key-gemini').value.trim();
   _workingGeminiModel = null; // reset cache při změně klíče
-
-async function testGeminiKey(){
-  const key = document.getElementById('key-gemini').value.trim();
-  const status = document.getElementById('gemini-model-status');
-  if(!key){ status.textContent = '⚠️ Zadej klíč'; return; }
-  status.textContent = '⏳ Hledám dostupné modely…';
-  _workingGeminiModel = null;
-  AI.gemini.key = key;
-  try{
-    const model = await getWorkingGeminiModel();
-    status.textContent = `✅ ${model}`;
-    status.style.color = '#34d399';
-  } catch(e){
-    status.textContent = `❌ ${e.message?.slice(0,50)}`;
-    status.style.color = '#f87171';
-  }
-}
   AI.chatgpt.key = document.getElementById('key-chatgpt').value.trim();
   userMemory     = document.getElementById('memoryText').value.trim();
   localStorage.setItem('key-claude',  AI.claude.key);
@@ -2940,7 +2935,6 @@ async function testGeminiKey(){
   for(const c of customs){const inp=document.getElementById('key-'+c.id);if(inp){c.key=inp.value.trim();AI[c.id].key=c.key;}}
   localStorage.setItem('custom-ais',JSON.stringify(customs));
   if(!currentChatId) currentChatId=genId();
-  // Obnov poslední chat po reloadu
   const savedChatId = localStorage.getItem('current-chat-id');
   if(savedChatId){
     const chats = getChats();
@@ -2959,6 +2953,23 @@ async function testGeminiKey(){
   updateAutoSearchBtn();
   updateProjectIndicator();
   requestNotifPermission();
+}
+
+async function testGeminiKey(){
+  const key = document.getElementById('key-gemini').value.trim();
+  const status = document.getElementById('gemini-model-status');
+  if(!key){ status.textContent = '⚠️ Zadej klíč'; return; }
+  status.textContent = '⏳ Hledám dostupné modely…';
+  _workingGeminiModel = null;
+  AI.gemini.key = key;
+  try{
+    const model = await getWorkingGeminiModel();
+    status.textContent = `✅ ${model}`;
+    status.style.color = '#34d399';
+  } catch(e){
+    status.textContent = `❌ ${e.message?.slice(0,50)}`;
+    status.style.color = '#f87171';
+  }
 }
 
 function goBack(){showScreen('setup');}
@@ -3510,8 +3521,13 @@ Hodnoť přísně ale spravedlivě. Vrať pouze JSON řádky, nic jiného.`;
 
 // Parsuje <self_review> z odpovědi agenta a ukládá do style memory
 function stripHidden(text){
-  // Odstraň self_review a jakékoli jiné skryté bloky
-  return (text||'').replace(/<self_review>[\s\S]*?<\/self_review>/gi, '').trim();
+  if(!text) return '';
+  // Odstraň <self_review>...</self_review> blok
+  text = text.replace(/<self_review>[\s\S]*?<\/self_review>/gi, '');
+  // Odstraň také holý JSON na konci pokud vypadá jako self_review (model zapomněl tagy)
+  text = text.replace(/\s*\{[\s\S]*?"did_well"[\s\S]*?"could_improve"[\s\S]*?\}\s*$/i, '');
+  text = text.replace(/\s*\{[\s\S]*?"applied_feedback"[\s\S]*?\}\s*$/i, '');
+  return text.trim();
 }
 function extractAndSaveSelfReview(agentKey, text){
   try{
@@ -3718,7 +3734,7 @@ async function makePlan(msg, key){
       const r=await fetch('https://api.anthropic.com/v1/messages',{method:'POST',signal:sig,headers:{'Content-Type':'application/json','x-api-key':ai.key,'anthropic-version':'2023-06-01','anthropic-dangerous-direct-browser-access':'true'},body:JSON.stringify({model:'claude-haiku-4-5-20251001',max_tokens:200,messages:[{role:'user',content:prompt}]})});
       const d=await r.json(); text=d.content?.[0]?.text||'';
     } else if(key==='gemini'){
-      const r=await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${ai.key}`,{method:'POST',signal:sig,headers:{'Content-Type':'application/json'},body:JSON.stringify({contents:[{parts:[{text:prompt}]}],generationConfig:{maxOutputTokens:200}})});
+      const r=await fetch(geminiUrlSync(),{method:'POST',signal:sig,headers:{'Content-Type':'application/json'},body:JSON.stringify({contents:[{parts:[{text:prompt}]}],generationConfig:{maxOutputTokens:200}})});
       const d=await r.json(); text=d.candidates?.[0]?.content?.parts?.[0]?.text||'';
     } else if(ai.url){
       if(ai.url?.includes('openrouter')) await new Promise(r=>setTimeout(r,900));
@@ -3740,7 +3756,7 @@ async function decomposeTask(msg, assistants) {
       const r=await fetch('https://api.openai.com/v1/chat/completions',{method:'POST',signal:sig,headers:{'Content-Type':'application/json','Authorization':`Bearer ${ai.key}`},body:JSON.stringify({model:'gpt-4o',max_tokens:200,messages:[{role:'user',content:prompt}]})});
       const d=await r.json(); text=d.choices?.[0]?.message?.content||'';
     } else if(key==='gemini'){
-      const r=await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${ai.key}`,{method:'POST',signal:sig,headers:{'Content-Type':'application/json'},body:JSON.stringify({contents:[{parts:[{text:prompt}]}]})});
+      const r=await fetch(geminiUrlSync(),{method:'POST',signal:sig,headers:{'Content-Type':'application/json'},body:JSON.stringify({contents:[{parts:[{text:prompt}]}]})});
       const d=await r.json(); text=d.candidates?.[0]?.content?.parts?.[0]?.text||'';
     } else if(ai.url){
       if(ai.url?.includes('openrouter')) await new Promise(r=>setTimeout(r,900));
@@ -3764,7 +3780,7 @@ async function selfCritique(key, originalMsg, reply) {
       const r=await fetch('https://api.openai.com/v1/chat/completions',{method:'POST',signal:sig,headers:{'Content-Type':'application/json','Authorization':`Bearer ${ai.key}`},body:JSON.stringify({model:'gpt-4o',max_tokens:400,messages:[{role:'system',content:'Odpovídej POUZE jako JSON.'},{role:'user',content:prompt}]})});
       const d=await r.json(); text=d.choices?.[0]?.message?.content||'';
     } else if(key==='gemini'){
-      const r=await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${ai.key}`,{method:'POST',signal:sig,headers:{'Content-Type':'application/json'},body:JSON.stringify({contents:[{parts:[{text:'Odpovídej POUZE jako JSON.\n\n'+prompt}]}]})});
+      const r=await fetch(geminiUrlSync(),{method:'POST',signal:sig,headers:{'Content-Type':'application/json'},body:JSON.stringify({contents:[{parts:[{text:'Odpovídej POUZE jako JSON.\n\n'+prompt}]}]})});
       const d=await r.json(); text=d.candidates?.[0]?.content?.parts?.[0]?.text||'';
     } else if(key==='claude'){
       const r=await fetch('https://api.anthropic.com/v1/messages',{method:'POST',signal:sig,headers:{'Content-Type':'application/json','x-api-key':ai.key,'anthropic-version':'2023-06-01','anthropic-dangerous-direct-browser-access':'true'},body:JSON.stringify({model:'claude-haiku-4-5-20251001',max_tokens:400,system:'Odpovídej POUZE jako JSON.',messages:[{role:'user',content:prompt}]})});
@@ -3804,7 +3820,7 @@ async function callAgentQuick(key, systemPrompt, userPrompt, maxTokens=500){
       const r=await fetchWithRetry('https://api.anthropic.com/v1/messages',{method:'POST',signal:sig,headers:{'Content-Type':'application/json','x-api-key':ai.key,'anthropic-version':'2023-06-01','anthropic-dangerous-direct-browser-access':'true'},body:JSON.stringify({model:'claude-haiku-4-5-20251001',max_tokens:maxTokens,system:systemPrompt,messages:[{role:'user',content:userPrompt}]})});
       const d=await r.json(); return d.content?.[0]?.text?.trim()||null;
     } else if(key==='gemini'){
-      const r=await fetchWithRetry(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${ai.key}`,{method:'POST',signal:sig,headers:{'Content-Type':'application/json'},body:JSON.stringify({systemInstruction:{parts:[{text:systemPrompt}]},contents:[{role:'user',parts:[{text:userPrompt}]}],generationConfig:{maxOutputTokens:maxTokens}})});
+      const r=await fetchWithRetry(geminiUrlSync(),{method:'POST',signal:sig,headers:{'Content-Type':'application/json'},body:JSON.stringify({systemInstruction:{parts:[{text:systemPrompt}]},contents:[{role:'user',parts:[{text:userPrompt}]}],generationConfig:{maxOutputTokens:maxTokens}})});
       const d=await r.json(); return d.candidates?.[0]?.content?.parts?.[0]?.text?.trim()||null;
     } else if(key==='chatgpt' || ai.url){
       const url = ai.url ? `${ai.url}/chat/completions` : 'https://api.openai.com/v1/chat/completions';
@@ -4508,7 +4524,7 @@ Odpověz POUZE jako JSON:
   "reason": "proč toto doporučuješ šéfovi"
 }`;
 
-        const r = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${AI.gemini.key}`,{
+        const r = await fetch(geminiUrlSync(),{
           method:'POST', signal: currentAbortController?.signal,
           headers:{'Content-Type':'application/json'},
           body: JSON.stringify({contents:[{role:'user',parts:[{text:prompt}]}], generationConfig:{maxOutputTokens:600}})
@@ -4553,58 +4569,70 @@ Odpověz POUZE jako JSON:
     addDivider(aisDiv, `📊 Průměrné skóre: <span style="color:${scoreColor2};font-weight:700">${avgPeerScore.toFixed(2)}</span>`);
 
     if(recommendation === 'take_best'){
-      // Gemini řekl: vezmi nejlepšího rovnou
       claudeVerdict = assistantAnswers[bestKey] || Object.values(assistantAnswers).find(v=>v) || '';
-      addDivider(aisDiv, `✅ Šéf přijal doporučení · ${AI[bestKey]?.name||bestKey} · žádná syntéza`);
+      addDivider(aisDiv, `✅ ${AI[bestKey]?.name||bestKey} · nejlepší odpověď`);
       finishLog();
       claudeTeachAgents(msgText, assistantAnswers, peerScores);
 
     } else if(recommendation === 'rescue' || avgPeerScore < 0.75){
-      // Záchrana
-      addDivider(aisDiv, `⚠️ ${geminiVerdict ? 'Gemini doporučil záchranný zásah' : `Skóre ${avgPeerScore.toFixed(2)}`} — šéf zasahuje…`);
-      const claudeBubble = addBubble(aisDiv,'claude','Claude 👑 · zachraňuje…',true);
-      try{
-        const perBudget = Math.max(1000, Math.floor(10000/Math.max(workerKeys.length,1)));
-        const annotated = workerKeys.map(k=>{
-          const sc = peerScores[k] || geminiVerdict?.scores?.[k];
-          const gemScore = sc ? `Gemini hodnotí: ${(sc.score??0.5).toFixed(2)} — "${sc.comment||''}"` : '';
-          return `### ${AI[k]?.name||k} ${sc?.approved?'✅':'⚠️'}\n${gemScore}\n${(assistantAnswers[k]||'').slice(0,perBudget)}`;
-        }).join('\n\n---\n\n');
-        const claudeSys = getMdSystem('claude')+getDatePrompt()+getMemoryPrompt()+getSearchPrompt()
-          +`\nJsi šéf týmu. Gemini (Quality Manager) doporučil zásah: "${geminiVerdict?.reason||'nízká kvalita'}".
+      if(!AI.claude?.key){
+        // Claude není k dispozici — zobraz nejlepší dostupnou odpověď
+        claudeVerdict = assistantAnswers[bestKey] || Object.values(assistantAnswers).find(v=>v) || '';
+        addDivider(aisDiv, `⚠️ Nízká kvalita · Claude není k dispozici · zobrazuji nejlepší: ${AI[bestKey]?.name||bestKey}`);
+        finishLog();
+      } else {
+        addDivider(aisDiv, `⚠️ ${geminiVerdict ? 'Gemini doporučil záchranný zásah' : `Skóre ${avgPeerScore.toFixed(2)}`} — šéf zasahuje…`);
+        const claudeBubble = addBubble(aisDiv,'claude','Claude 👑 · zachraňuje…',true);
+        try{
+          const perBudget = Math.max(1000, Math.floor(10000/Math.max(workerKeys.length,1)));
+          const annotated = workerKeys.map(k=>{
+            const sc = peerScores[k] || geminiVerdict?.scores?.[k];
+            const gemScore = sc ? `Gemini hodnotí: ${(sc.score??0.5).toFixed(2)} — "${sc.comment||''}"` : '';
+            return `### ${AI[k]?.name||k} ${sc?.approved?'✅':'⚠️'}\n${gemScore}\n${(assistantAnswers[k]||'').slice(0,perBudget)}`;
+          }).join('\n\n---\n\n');
+          const claudeSys = getMdSystem('claude')+getDatePrompt()+getMemoryPrompt()+getSearchPrompt()
+            +`\nJsi šéf týmu. Gemini (Quality Manager) doporučil zásah: "${geminiVerdict?.reason||'nízká kvalita'}".
 Máš rozbor od Geminiho — co bylo dobré i špatné u každého.
 Tvůj úkol: oprav chyby, doplň co chybí, dej finální odpověď lepší než jakýkoli pokus týmu.`;
-        const claudePrompt = `Otázka: ${fullMsg}\n\nRozbor od Geminiho:\n${annotated}\n\nTvoje opravená finální odpověď:`;
-        claudeVerdict = await claudeAgentLoop(claudePrompt, claudeSys, aisDiv, fileSnap, claudeBubble);
-        updateBubbleLabel(claudeBubble, 'CLAUDE 👑 · zachránil a zlepšil');
-        finishBubble(claudeBubble, claudeVerdict, null, true);
-        claudeTeachAgents(msgText, assistantAnswers, peerScores);
-      } catch(e){ finishBubble(claudeBubble, null, e.message); claudeVerdict = Object.values(assistantAnswers).find(v=>v)||''; }
-      scrollBottom();
+          const claudePrompt = `Otázka: ${fullMsg}\n\nRozbor od Geminiho:\n${annotated}\n\nTvoje opravená finální odpověď:`;
+          claudeVerdict = await claudeAgentLoop(claudePrompt, claudeSys, aisDiv, fileSnap, claudeBubble);
+          updateBubbleLabel(claudeBubble, 'CLAUDE 👑 · zachránil a zlepšil');
+          finishBubble(claudeBubble, claudeVerdict, null, true);
+          claudeTeachAgents(msgText, assistantAnswers, peerScores);
+        } catch(e){ finishBubble(claudeBubble, null, e.message); claudeVerdict = Object.values(assistantAnswers).find(v=>v)||''; }
+        scrollBottom();
+      }
 
     } else {
-      // Syntéza — Gemini doporučil nebo průměr OK
-      addDivider(aisDiv, `✅ Kvalita OK · Claude syntetizuje dle doporučení Geminiho`);
-      const claudeBubble = addBubble(aisDiv,'claude','Claude 👑 · syntetizuje…',true);
-      try{
-        const perBudget = Math.max(1000, Math.floor(10000/Math.max(workerKeys.length,1)));
-        const annotated = workerKeys.map(k=>{
-          const sc = peerScores[k] || geminiVerdict?.scores?.[k];
-          const gemScore = sc ? `Gemini: ${(sc.score??0.8).toFixed(2)} — "${sc.comment||''}"` : '';
-          return `### ${AI[k]?.name||k} ${sc?.approved?'✅':'⚠️'}\n${gemScore}\n${(assistantAnswers[k]||'').slice(0,perBudget)}`;
-        }).join('\n\n---\n\n');
-        const claudeSys = getMdSystem('claude')+getDatePrompt()+getMemoryPrompt()+getSearchPrompt()
-          +`\nJsi šéf týmu. Gemini (Quality Manager) analyzoval odpovědi a doporučil syntézu.
+      if(!AI.claude?.key){
+        // Claude není k dispozici — zobraz nejlepší dostupnou odpověď
+        claudeVerdict = assistantAnswers[bestKey] || Object.values(assistantAnswers).find(v=>v) || '';
+        addDivider(aisDiv, `✅ Kvalita OK · nejlepší odpověď: ${AI[bestKey]?.name||bestKey}`);
+        finishLog();
+        claudeTeachAgents(msgText, assistantAnswers, peerScores);
+      } else {
+        addDivider(aisDiv, `✅ Kvalita OK · Claude syntetizuje dle doporučení Geminiho`);
+        const claudeBubble = addBubble(aisDiv,'claude','Claude 👑 · syntetizuje…',true);
+        try{
+          const perBudget = Math.max(1000, Math.floor(10000/Math.max(workerKeys.length,1)));
+          const annotated = workerKeys.map(k=>{
+            const sc = peerScores[k] || geminiVerdict?.scores?.[k];
+            const gemScore = sc ? `Gemini: ${(sc.score??0.8).toFixed(2)} — "${sc.comment||''}"` : '';
+            return `### ${AI[k]?.name||k} ${sc?.approved?'✅':'⚠️'}\n${gemScore}\n${(assistantAnswers[k]||'').slice(0,perBudget)}`;
+          }).join('\n\n---\n\n');
+          const claudeSys = getMdSystem('claude')+getDatePrompt()+getMemoryPrompt()+getSearchPrompt()
+            +`\nJsi šéf týmu. Gemini (Quality Manager) analyzoval odpovědi a doporučil syntézu.
 Doporučení Geminiho: "${geminiVerdict?.reason||'dobré odpovědi, syntetizuj nejlepší části'}"
 Nejlepší worker dle Geminiho: ${AI[bestKey]?.name||bestKey}
 Tvůj úkol: syntetizuj NEJLEPŠÍ části do jedné výborné odpovědi.`;
-        const claudePrompt = `Otázka: ${fullMsg}\n\nHodnocení od Geminiho:\n${annotated}\n\nTvoje syntetizovaná finální odpověď:`;
-        claudeVerdict = await claudeAgentLoop(claudePrompt, claudeSys, aisDiv, fileSnap, claudeBubble);
-        updateBubbleLabel(claudeBubble, `CLAUDE 👑 · syntéza (doporučení Geminiho)`);
-        finishBubble(claudeBubble, claudeVerdict, null, true);
-        claudeTeachAgents(msgText, assistantAnswers, peerScores);
-      } catch(e){ finishBubble(claudeBubble, null, e.message); claudeVerdict = assistantAnswers[bestKey]||''; }
-      scrollBottom();
+          const claudePrompt = `Otázka: ${fullMsg}\n\nHodnocení od Geminiho:\n${annotated}\n\nTvoje syntetizovaná finální odpověď:`;
+          claudeVerdict = await claudeAgentLoop(claudePrompt, claudeSys, aisDiv, fileSnap, claudeBubble);
+          updateBubbleLabel(claudeBubble, `CLAUDE 👑 · syntéza (doporučení Geminiho)`);
+          finishBubble(claudeBubble, claudeVerdict, null, true);
+          claudeTeachAgents(msgText, assistantAnswers, peerScores);
+        } catch(e){ finishBubble(claudeBubble, null, e.message); claudeVerdict = assistantAnswers[bestKey]||''; }
+        scrollBottom();
+      }
     }
 
   } else {
@@ -4624,7 +4652,7 @@ Tvůj úkol: syntetizuj NEJLEPŠÍ části do jedné výborné odpovědi.`;
     aisDiv.appendChild(srcDiv2);
   }
   clearSearchContext();
-  // Ulož _teamSummary pro budoucí kontext pokud byl tým aktivní
+  claudeVerdict = claudeVerdict || ''; // guard
   const teamWasUsed = routed.length > 0 && Object.keys(assistantAnswers).length > 0;
   const teamSummary = teamWasUsed ? claudeVerdict?.slice(0,600) : undefined;
   chatLog.push({user:msgText, claude:claudeVerdict, ...(fileSnap?{_file:fileSnap.name}:{}), ...(teamSummary?{_teamSummary:teamSummary}:{})});
@@ -4829,7 +4857,7 @@ Odpověz POUZE jako JSON (bez markdown):
 
 Škála: 1.0=perfektní, 0.75=dobré, 0.5=průměrné, 0.25=špatné, 0.0=chybné
 Pravidlo: score<0.75 POUZE pokud je skutečný problém. V comment vždy uveď CO konkrétně opravit.`;
-  const r=await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${AI.gemini.key}`,{method:'POST',signal:sig,headers:{'Content-Type':'application/json'},body:JSON.stringify({contents:[{role:'user',parts:[{text:prompt}]}],generationConfig:{maxOutputTokens:300}})});
+  const r=await fetch(geminiUrlSync(),{method:'POST',signal:sig,headers:{'Content-Type':'application/json'},body:JSON.stringify({contents:[{role:'user',parts:[{text:prompt}]}],generationConfig:{maxOutputTokens:300}})});
   if(!r.ok){const e=await r.json();throw new Error(e.error?.message||r.status);}
   const d=await r.json();
   const raw=(d.candidates?.[0]?.content?.parts?.[0]?.text||'{}').replace(/```json|```/g,'').trim();
