@@ -196,15 +196,21 @@ html,body{height:100%;height:100dvh;background:var(--bg);color:var(--text);font-
 .send-btn svg{width:18px;height:18px;}
 
 /* LIVE STATUS BANNER */
-#liveStatusBanner{display:none;align-items:center;gap:8px;padding:7px 14px;background:rgba(45,212,191,0.06);border-bottom:1px solid rgba(45,212,191,0.12);font-size:12px;color:var(--teal);flex-shrink:0;animation:fadeIn .2s ease;}
+#liveStatusBanner{display:none;flex-direction:column;gap:0;border-bottom:1px solid rgba(45,212,191,0.12);font-size:12px;color:var(--teal);flex-shrink:0;animation:fadeIn .2s ease;overflow:hidden;}
 #liveStatusBanner.visible{display:flex;}
-#liveStatusBanner .lsb-dot{width:7px;height:7px;border-radius:50%;background:var(--teal);flex-shrink:0;animation:pulse 1s infinite;}
-#liveStatusBanner .lsb-text{flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
-#liveStatusBanner .lsb-agents{display:flex;gap:4px;flex-shrink:0;}
-#liveStatusBanner .lsb-agent{padding:2px 7px;border-radius:20px;font-size:10px;font-weight:600;letter-spacing:.4px;}
-#liveStatusBanner .lsb-agent.working{background:rgba(45,212,191,0.15);color:var(--teal);}
-#liveStatusBanner .lsb-agent.done{background:rgba(74,222,128,0.1);color:#4ade80;}
-#liveStatusBanner .lsb-agent.failed{background:rgba(248,113,113,0.1);color:#f87171;}
+.lsb-main{display:flex;align-items:center;gap:8px;padding:7px 14px;}
+.lsb-dot{width:7px;height:7px;border-radius:50%;background:var(--teal);flex-shrink:0;animation:pulse 1s infinite;}
+.lsb-text{flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.lsb-agents{display:flex;gap:4px;flex-shrink:0;}
+.lsb-agent{padding:2px 7px;border-radius:20px;font-size:10px;font-weight:600;letter-spacing:.4px;}
+.lsb-agent.working{background:rgba(45,212,191,0.15);color:var(--teal);}
+.lsb-agent.done{background:rgba(74,222,128,0.1);color:#4ade80;}
+.lsb-agent.failed{background:rgba(248,113,113,0.1);color:#f87171;}
+.lsb-pipeline{display:flex;padding:0 14px 7px;gap:2px;align-items:center;}
+.lsb-stage{font-size:10px;padding:2px 8px;border-radius:10px;background:rgba(255,255,255,0.04);color:var(--muted);white-space:nowrap;transition:all .2s;}
+.lsb-stage.active{background:rgba(45,212,191,0.15);color:var(--teal);font-weight:600;}
+.lsb-stage.done{background:rgba(74,222,128,0.08);color:#4ade80;}
+.lsb-arrow{color:var(--border);font-size:8px;}
 
 /* AGENT FAILURE SUMMARY */
 .agent-fail-summary{margin:6px 0 4px 42px;padding:8px 12px;background:rgba(248,113,113,0.05);border:1px solid rgba(248,113,113,0.15);border-radius:10px;font-size:11px;color:var(--muted);}
@@ -275,6 +281,9 @@ html,body{height:100%;height:100dvh;background:var(--bg);color:var(--text);font-
 .worker-preview{padding:2px 0;transition:opacity .15s;}
 .worker-preview:hover{opacity:.8;}
 .worker-full{display:none;}
+.msg-ai.worker-collapsed .ai-bubble{padding:6px 10px;background:transparent;border:1px solid var(--border);opacity:.7;}
+.msg-ai.worker-collapsed .ai-avatar{width:22px;height:22px;font-size:10px;}
+.msg-ai.worker-collapsed .ai-name{font-size:10px;}
 
 /* CODE COPY BUTTON */
 .pre-wrap{position:relative;}
@@ -608,6 +617,7 @@ onAuthStateChanged(auth, user => {
       <button class="header-btn" onclick="openAgentDashboard();closeHeaderMenu()" title="Pokrok agentů" style="font-size:12px;padding:5px 10px">🎓 Agenti</button>
       <button class="header-btn" onclick="openExportModal();closeHeaderMenu()" title="Export chatu" style="font-size:12px;padding:5px 10px">⬇ Export</button>
       <button class="header-btn" id="ghSyncBtn" onclick="ghSyncPush();closeHeaderMenu()" title="GitHub Sync" style="font-size:12px;padding:5px 10px;display:none">🐙 Sync</button>
+      <button class="header-btn" id="bgwChatBtn" onclick="openBgwPanel();closeHeaderMenu()" title="Pozadí worker" style="font-size:12px;padding:5px 10px;display:none">🚀 Pozadí</button>
     </div>
     <div class="token-bar" id="tokenBar"><div class="token-bar-fill" id="tokenBarFill" style="width:0%;background:var(--accent)"></div></div>
     <div class="ai-selector collapsed" id="aiSelector"></div>
@@ -630,9 +640,12 @@ onAuthStateChanged(auth, user => {
   </div>
   <div id="searchBar" style="display:none;padding:8px 16px;background:var(--card);border-bottom:1px solid var(--border);font-size:12px;color:var(--muted);flex-shrink:0;">🔍 <span id="searchStatus"></span></div>
   <div id="liveStatusBanner">
-    <div class="lsb-dot"></div>
-    <span class="lsb-text" id="liveStatusText">Přemýšlím…</span>
-    <div class="lsb-agents" id="liveStatusAgents"></div>
+    <div class="lsb-main">
+      <div class="lsb-dot"></div>
+      <span class="lsb-text" id="liveStatusText">Přemýšlím…</span>
+      <div class="lsb-agents" id="liveStatusAgents"></div>
+    </div>
+    <div class="lsb-pipeline" id="liveStatusPipeline"></div>
   </div>
   <div class="pinned-bar" id="pinnedBar"><span class="pinned-label">📌</span></div>
   <div class="messages" id="messages" role="log" aria-live="polite" aria-label="Konverzace"></div>
@@ -2553,7 +2566,9 @@ function setBusy(on){
 
 // ── Live Status Banner ──
 const _liveAgentState = {}; // key → 'working'|'done'|'failed'
-function showLiveBanner(text, agents=[]){
+let _liveStages = [];
+let _liveCurrentStage = -1;
+function showLiveBanner(text, agents=[], stages=[]){
   const b = document.getElementById('liveStatusBanner');
   const t = document.getElementById('liveStatusText');
   const a = document.getElementById('liveStatusAgents');
@@ -2565,23 +2580,40 @@ function showLiveBanner(text, agents=[]){
       return `<span class="lsb-agent ${state}">${name}</span>`;
     }).join('');
   }
+  // Pipeline stages
+  if(stages.length){
+    _liveStages = stages;
+    _liveCurrentStage = 0;
+    renderPipeline();
+  }
   if(b) b.classList.add('visible');
+}
+function renderPipeline(){
+  const p = document.getElementById('liveStatusPipeline');
+  if(!p || !_liveStages.length){ if(p) p.innerHTML=''; return; }
+  p.innerHTML = _liveStages.map((s,i) => {
+    const cls = i < _liveCurrentStage ? 'done' : i === _liveCurrentStage ? 'active' : '';
+    return (i>0?'<span class="lsb-arrow">›</span>':'')+`<span class="lsb-stage ${cls}">${s}</span>`;
+  }).join('');
+}
+function advancePipeline(stageIdx, text){
+  _liveCurrentStage = stageIdx;
+  renderPipeline();
+  if(text) setLiveBannerText(text);
 }
 function updateLiveAgent(key, state){ // state: 'working'|'done'|'failed'
   _liveAgentState[key] = state;
   const el = document.getElementById('liveStatusAgents');
   if(!el) return;
-  // Aktualizuj jen konkrétní span
   const spans = el.querySelectorAll('.lsb-agent');
   const name = (AI[key]?.name||key).split(' ')[0];
   spans.forEach(s => {
-    if(s.textContent === name){
-      s.className = `lsb-agent ${state}`;
-    }
+    if(s.textContent === name) s.className = `lsb-agent ${state}`;
   });
 }
 function hideLiveBanner(){
   Object.keys(_liveAgentState).forEach(k => delete _liveAgentState[k]);
+  _liveStages = []; _liveCurrentStage = -1;
   const b = document.getElementById('liveStatusBanner');
   if(b) b.classList.remove('visible');
 }
@@ -3194,6 +3226,8 @@ function startChat() {
   if(ghToken) localStorage.setItem('key-github', ghToken);
   const ghBtn = document.getElementById('ghSyncBtn');
   if(ghBtn) ghBtn.style.display = ghToken ? '' : 'none';
+  const bgwBtn = document.getElementById('bgwChatBtn');
+  if(bgwBtn) bgwBtn.style.display = (ghToken && localStorage.getItem('bgw-repo-ready')==='1') ? '' : 'none';
   if(!currentChatId) currentChatId=genId();
   const savedChatId = localStorage.getItem('current-chat-id');
   if(savedChatId){
@@ -4583,7 +4617,8 @@ async function sendMessage() {
     addDivider(aisDiv, assistants.length>1 ? `💬 Tým ${assistants.length} AI odpovídá...` : `💬 ${AI[assistants[0]]?.name||'AI'} přemýšlí...`);
 
     // Live banner
-    showLiveBanner(`Zpracovává ${assistants.length} AI…`, assistants);
+    showLiveBanner(`Zpracovává ${assistants.length} AI…`, assistants, ['💬 Odpovědi','🔀 Konsenzus','✅ Syntéza']);
+    advancePipeline(0, `${assistants.length} agentů odpovídá…`);
     const _teamFailures = [];
 
     for(let i=0; i<assistants.length; i++){
@@ -4635,6 +4670,7 @@ async function sendMessage() {
 
     // ── KONSENSUÁLNÍ SMYČKA ──
     if(assistants.length > 1 && !task.isSimple){
+      advancePipeline(1, 'Agenti hledají shodu…');
       let consensusRound = 0;
       let consensusReached = false;
 
@@ -4722,6 +4758,7 @@ Buď konkrétní – žádné vágní "souhlasím, vše je správně".`;
       }
 
       // ── FINÁLNÍ SYNTÉZA ──
+      advancePipeline(2, 'Syntetizuji výsledky…');
       const synth = assistants[0];
       addDivider(aisDiv, `✅ ${AI[synth]?.name||'AI'} syntetizuje finální odpověď...`);
       const bubble = addBubble(aisDiv, synth, `${AI[synth].name} · syntetizuje...`, false, true);
@@ -4863,8 +4900,12 @@ Tvůj úkol jako syntetizátor:
     const parallelKeys = routed.filter(k => !AI[k].url?.includes('openrouter'));
     const sequentialKeys = routed.filter(k => AI[k].url?.includes('openrouter'));
 
-    // Zobraz live banner se jmény agentů
-    showLiveBanner(`Zpracovává ${routed.length} AI…`, routed);
+    // Zobraz live banner se jmény agentů a pipeline
+    const _stages = ['💬 Workeři'];
+    if(task.needsDebate) _stages.push('💬 Diskuze','😈 Oponent');
+    _stages.push('📊 QM','👑 Šéf');
+    showLiveBanner(`Zpracovává ${routed.length} AI…`, routed, _stages);
+    advancePipeline(0, `${routed.length} agentů pracuje…`);
 
     const agentFailures = []; // sbíráme chyby pro souhrn
     const runAgent = async (key, i) => {
@@ -4916,27 +4957,28 @@ Tvůj úkol jako syntetizátor:
     }
 
     // 💬 DISCUSSION ROUND — agenti reagují na sebe navzájem (jen debatní otázky)
+    let _stageIdx = 1;
     if(task.needsDebate && routed.length >= 2 && Object.keys(assistantAnswers).length >= 2){
+      advancePipeline(_stageIdx, 'Agenti diskutují…');
       finishLog();
       startStatusLog(aisDiv);
       addDivider(aisDiv, '💬 DISKUZE · agenti čtou a reagují na kolegy');
       const reactions = await discussionRound(msgText, routed, assistantAnswers, aisDiv);
-      // Merge reakcí do assistantAnswers jako doplněk
       for(const [k, reaction] of Object.entries(reactions)){
         if(reaction) assistantAnswers[k] = assistantAnswers[k] + '\n\n**Reakce na kolegy:**\n' + reaction;
       }
+      _stageIdx++;
     }
 
     // 😈 ĎÁBLŮV ADVOKÁT — jeden agent oponuje konsenzu
     if(!task.isSimple && task.needsDebate && routed.length >= 2 && Object.keys(assistantAnswers).length >= 2){
+      advancePipeline(_stageIdx, 'Ďáblův advokát hledá slabiny…');
       finishLog();
       startStatusLog(aisDiv);
       addDivider(aisDiv, '😈 ĎÁBLŮV ADVOKÁT · hledám slabiny');
       const devilCritique = await devilsAdvocate(msgText, routed, assistantAnswers, aisDiv);
-      if(devilCritique){
-        // Přidej kritiku jako extra kontext pro Clauda
-        assistantAnswers['_devil'] = devilCritique;
-      }
+      if(devilCritique) assistantAnswers['_devil'] = devilCritique;
+      _stageIdx++;
     }
   }
 
@@ -4988,6 +5030,7 @@ Máš přístup k nástrojům: web_search, fetch_url, run_code, save_note, recal
   // Peer-review a syntéza
   let peerScores = {};
   if(!task.isSimple && routed.length >= 1 && Object.keys(assistantAnswers).length >= 1){
+    advancePipeline(_liveStages.indexOf('📊 QM'), 'Quality Manager hodnotí…');
     finishLog();
     startStatusLog(aisDiv);
 
@@ -5069,6 +5112,7 @@ Odpověz POUZE jako JSON:
 
     const scoreColor2 = avgPeerScore>=0.75?'#34d399':avgPeerScore>=0.5?'#fbbf24':'#f87171';
     addDivider(aisDiv, `📊 Průměrné skóre: <span style="color:${scoreColor2};font-weight:700">${avgPeerScore.toFixed(2)}</span>`);
+    advancePipeline(_liveStages.indexOf('👑 Šéf'), 'Claude rozhoduje…');
 
     if(recommendation === 'take_best'){
       if(!AI.claude?.key){
@@ -5229,6 +5273,7 @@ Pokud je odpověď dobrá, můžeš ji převzít s minimálními úpravami — n
     errDiv.innerHTML=`⚠️ Chyba: ${escHtml(e?.message||String(e)).slice(0,200)}`;
     document.querySelector('.msg-ais:last-child')?.appendChild(errDiv);
   }finally{
+    hideLiveBanner();
     clearSearchContext();
     setBusy(false);
   }
@@ -5380,7 +5425,8 @@ function finishBubble(id,text,error=null,isFinal=false){
     const preview = plainText.slice(0,100) + (plainText.length>100?'…':'');
     const fullHtml = formatText(text);
     const cid = 'wc_'+id;
-    el.innerHTML=`<div class="worker-preview" id="${cid}_p" onclick="document.getElementById('${cid}').style.display='block';this.style.display='none';" style="cursor:pointer;font-size:13px;color:var(--muted2);display:flex;align-items:flex-start;gap:6px;"><span style="opacity:.5;flex-shrink:0">▸</span><span>${escHtml(preview)}</span></div><div id="${cid}" class="worker-full">${fullHtml}<div onclick="this.parentElement.style.display='none';document.getElementById('${cid}_p').style.display='flex';" style="cursor:pointer;font-size:11px;color:var(--muted);margin-top:6px;opacity:.6;user-select:none;">▴ Sbalit</div></div>`;
+    if(wrap) wrap.classList.add('worker-collapsed');
+    el.innerHTML=`<div class="worker-preview" id="${cid}_p" onclick="document.getElementById('${cid}').style.display='block';this.style.display='none';this.closest('.msg-ai')?.classList.remove('worker-collapsed');" style="cursor:pointer;font-size:13px;color:var(--muted2);display:flex;align-items:flex-start;gap:6px;"><span style="opacity:.5;flex-shrink:0">▸</span><span>${escHtml(preview)}</span></div><div id="${cid}" class="worker-full">${fullHtml}<div onclick="this.parentElement.style.display='none';document.getElementById('${cid}_p').style.display='flex';this.closest('.msg-ai')?.classList.add('worker-collapsed');" style="cursor:pointer;font-size:11px;color:var(--muted);margin-top:6px;opacity:.6;user-select:none;">▴ Sbalit</div></div>`;
     if(wrap) wrap.classList.remove('collapsed');
     logStep((preview ? '„'+preview.slice(0,55)+(plainText.length>55?'…"':'"') : 'hotovo ✓'), 'done', null, lid);
     const bwrap = el.closest('.ai-bubble-wrap');
@@ -5397,7 +5443,12 @@ function updateBubbleLabel(id,label){
 }
 
 function addDivider(container,label){
-  // Divider → sekce v logu
+  // Visual divider v DOM
+  const d = document.createElement('div');
+  d.className = 'round-divider';
+  d.innerHTML = `<span>${label}</span>`;
+  container.appendChild(d);
+  // Log entry
   logStep('— '+label+' —', 'active');
 }
 
@@ -5591,7 +5642,8 @@ function loadChat(id){
         const plain = cleanText.replace(/<think>[\s\S]*?<\/think>/gi,'').replace(/[#*`\n]/g,' ').replace(/\s+/g,' ').trim();
         const preview = plain.slice(0,100)+(plain.length>100?'…':'');
         const cid = 'lc_'+Math.random().toString(36).slice(2);
-        wrap.innerHTML=`<div class="ai-avatar" style="background:${color}22;color:${color};border:1px solid ${color}44">${(ai?.name||k)[0].toUpperCase()}</div><div class="ai-bubble-wrap"><div class="ai-name" style="color:${color}">${ai?.name||k}</div><div class="ai-bubble"><div id="${cid}_p" onclick="document.getElementById('${cid}').style.display='block';this.style.display='none';" style="cursor:pointer;font-size:13px;color:var(--muted2);display:flex;align-items:flex-start;gap:6px;"><span style="opacity:.5;flex-shrink:0">▸</span><span>${escHtml(preview)}</span></div><div id="${cid}" class="worker-full">${formatText(cleanText)}<div onclick="this.parentElement.style.display='none';document.getElementById('${cid}_p').style.display='flex';" style="cursor:pointer;font-size:11px;color:var(--muted);margin-top:6px;opacity:.6;">▴ Sbalit</div></div></div></div>`;
+        wrap.className='msg-ai worker-collapsed';
+        wrap.innerHTML=`<div class="ai-avatar" style="background:${color}22;color:${color};border:1px solid ${color}44">${(ai?.name||k)[0].toUpperCase()}</div><div class="ai-bubble-wrap"><div class="ai-name" style="color:${color}">${ai?.name||k}</div><div class="ai-bubble"><div id="${cid}_p" onclick="document.getElementById('${cid}').style.display='block';this.style.display='none';this.closest('.msg-ai')?.classList.remove('worker-collapsed');" style="cursor:pointer;font-size:13px;color:var(--muted2);display:flex;align-items:flex-start;gap:6px;"><span style="opacity:.5;flex-shrink:0">▸</span><span>${escHtml(preview)}</span></div><div id="${cid}" class="worker-full">${formatText(cleanText)}<div onclick="this.parentElement.style.display='none';document.getElementById('${cid}_p').style.display='flex';this.closest('.msg-ai')?.classList.add('worker-collapsed');" style="cursor:pointer;font-size:11px;color:var(--muted);margin-top:6px;opacity:.6;">▴ Sbalit</div></div></div></div>`;
       }
       aisDiv.appendChild(wrap);
     }
@@ -5836,11 +5888,66 @@ function bgwStatus(text,color){
 }
 
 function initBgWorker(){
-  if(localStorage.getItem('bgw-repo-ready')==='1'){
-    document.getElementById('bgw-setup').style.display='none';
-    document.getElementById('bgw-tasks').style.display='flex';
+  const ready = localStorage.getItem('bgw-repo-ready')==='1';
+  const hasToken = !!getGhToken();
+  // Settings page elements
+  const setupEl = document.getElementById('bgw-setup');
+  const tasksEl = document.getElementById('bgw-tasks');
+  if(ready){
+    if(setupEl) setupEl.style.display='none';
+    if(tasksEl) tasksEl.style.display='flex';
     bgwStatus('✅ Worker aktivní','#34d399');
   }
+  // Chat button visibility
+  const chatBtn = document.getElementById('bgwChatBtn');
+  if(chatBtn) chatBtn.style.display = hasToken ? '' : 'none';
+}
+
+// ── Panel v chatu ──
+function openBgwPanel(){
+  const panel = document.getElementById('bgwPanel');
+  if(!panel) return;
+  panel.style.display='flex';
+  const ready = localStorage.getItem('bgw-repo-ready')==='1';
+  const setupEl = document.getElementById('bgwPanelSetup');
+  const tasksEl = document.getElementById('bgwPanelTasks');
+  const statusEl = document.getElementById('bgwPanelStatus');
+  if(ready){
+    if(setupEl) setupEl.style.display='none';
+    if(tasksEl) tasksEl.style.display='flex';
+    if(statusEl) statusEl.innerHTML='✅ Worker aktivní · <a href="https://github.com/'+(localStorage.getItem('bgw-owner')||'')+'/ai-background-worker/actions" target="_blank" style="color:#34d399">Actions ↗</a>';
+  } else {
+    if(setupEl) setupEl.style.display='block';
+    if(tasksEl) tasksEl.style.display='none';
+    if(statusEl) statusEl.textContent='Worker ještě není nastaven';
+  }
+}
+function closeBgwPanel(){ document.getElementById('bgwPanel').style.display='none'; }
+
+async function bgwSubmitFromPanel(){
+  const type = document.getElementById('bgwp-type').value;
+  const prompt = document.getElementById('bgwp-prompt').value.trim();
+  const interval = parseInt(document.getElementById('bgwp-interval').value)||15;
+  if(!prompt){ document.getElementById('bgwPanelStatus').textContent='⚠️ Zadej úkol'; return; }
+  // Reuse existing function with panel inputs
+  document.getElementById('bgw-type').value = type;
+  document.getElementById('bgw-interval').value = interval;
+  document.getElementById('bgw-prompt').value = prompt;
+  await bgwSubmitTask();
+  document.getElementById('bgwp-prompt').value='';
+  document.getElementById('bgwPanelStatus').innerHTML = document.getElementById('bgw-status').innerHTML;
+}
+
+async function bgwCheckFromPanel(){
+  await bgwCheckResults();
+  // Copy results to panel
+  const src = document.getElementById('bgw-results');
+  const dst = document.getElementById('bgwPanelResults');
+  if(src && dst){
+    dst.style.display='flex';
+    dst.innerHTML = src.innerHTML;
+  }
+  document.getElementById('bgwPanelStatus').innerHTML = document.getElementById('bgw-status').innerHTML;
 }
 
 function getBgwWorkflow(){
@@ -6018,6 +6125,13 @@ async function bgwSetup(){
     bgwStatus(`✅ Hotovo! <a href="https://github.com/${owner}/${BGW_REPO}/actions" target="_blank" style="color:#34d399">Zobrazit Actions ↗</a>`,'#34d399');
     document.getElementById('bgw-setup').style.display='none';
     document.getElementById('bgw-tasks').style.display='flex';
+    // Aktualizuj panel v chatu a tlačítko
+    initBgWorker();
+    const pSetup = document.getElementById('bgwPanelSetup');
+    const pTasks = document.getElementById('bgwPanelTasks');
+    if(pSetup) pSetup.style.display='none';
+    if(pTasks) pTasks.style.display='flex';
+    document.getElementById('bgwPanelStatus').innerHTML=`✅ Hotovo! <a href="https://github.com/${owner}/${BGW_REPO}/actions" target="_blank" style="color:#34d399">Actions ↗</a>`;
   }catch(e){
     const msg=e?.message||String(e)||'Neznámá chyba';
     bgwStatus(`❌ ${msg}`,'#f87171');
@@ -6474,6 +6588,40 @@ async function fbLoad(){
     </div>
   </div>
 </div>
+<!-- MODAL: Background Worker Panel -->
+<div id="bgwPanel" onclick="if(event.target===this)closeBgwPanel()" style="position:fixed;inset:0;background:rgba(0,0,0,0.8);display:none;align-items:flex-end;z-index:300;padding:0;">
+  <div style="background:var(--surface);border-radius:20px 20px 0 0;width:100%;max-height:70vh;overflow-y:auto;padding:20px 16px 24px;box-shadow:0 -10px 40px rgba(0,0,0,0.4)">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px">
+      <h3 style="margin:0;font-size:16px">🚀 Pozadí Worker</h3>
+      <button onclick="closeBgwPanel()" style="background:none;border:none;color:var(--muted);font-size:20px;cursor:pointer">✕</button>
+    </div>
+    <div id="bgwPanelStatus" style="font-size:12px;color:var(--muted);margin-bottom:10px"></div>
+    <div id="bgwPanelSetup" style="display:none;margin-bottom:10px;">
+      <button onclick="bgwSetup()" style="width:100%;background:rgba(52,211,153,0.15);border:1px solid rgba(52,211,153,0.4);border-radius:10px;padding:12px;color:#34d399;cursor:pointer;font-size:14px;font-family:'Outfit',sans-serif;font-weight:600">🚀 Nastavit pozadí worker</button>
+      <div style="font-size:11px;color:var(--muted);margin-top:6px;text-align:center">Potřebuje GitHub token (gist + repo + workflow) · 2000 min/měsíc zdarma</div>
+    </div>
+    <div id="bgwPanelTasks" style="display:none;flex-direction:column;gap:10px;">
+      <div style="display:flex;gap:6px;">
+        <select id="bgwp-type" style="flex:1;background:var(--card);border:1px solid var(--border2);border-radius:8px;padding:8px 10px;color:var(--text);font-family:'Outfit',sans-serif;font-size:13px;">
+          <option value="query">📝 Jednorázový úkol</option>
+          <option value="monitor">📊 Sledování</option>
+        </select>
+        <select id="bgwp-interval" style="background:var(--card);border:1px solid var(--border2);border-radius:8px;padding:8px 10px;color:var(--text);font-family:'Outfit',sans-serif;font-size:13px;">
+          <option value="15">15 min</option>
+          <option value="30">30 min</option>
+          <option value="60">1 hod</option>
+        </select>
+      </div>
+      <textarea id="bgwp-prompt" placeholder="Úkol pro AI… (např. Sleduj cenu BTC a když klesne pod 60000 USD, zapiš alert)" style="background:var(--card);border:1px solid var(--border2);border-radius:10px;padding:10px;color:var(--text);font-family:'Outfit',sans-serif;font-size:13px;resize:none;min-height:60px;width:100%;box-sizing:border-box;line-height:1.5;"></textarea>
+      <div style="display:flex;gap:6px;">
+        <button onclick="bgwSubmitFromPanel()" style="flex:1;background:#34d399;border:none;color:#000;border-radius:10px;padding:10px;font-family:'Outfit',sans-serif;font-size:14px;font-weight:600;cursor:pointer">⬆ Odeslat</button>
+        <button onclick="bgwCheckFromPanel()" style="background:var(--card2);border:1px solid var(--border);color:var(--muted2);border-radius:10px;padding:10px 16px;font-family:'Outfit',sans-serif;font-size:13px;cursor:pointer">⬇ Výsledky</button>
+      </div>
+      <div id="bgwPanelResults" style="display:none;flex-direction:column;gap:6px;max-height:200px;overflow-y:auto;"></div>
+    </div>
+  </div>
+</div>
+
 <!-- MODAL: Agent Progress Dashboard -->
 <div id="agentDashboard" onclick="if(event.target===this)closeAgentDashboard()" style="position:fixed;inset:0;background:rgba(0,0,0,0.85);display:none;align-items:center;justify-content:center;z-index:400;padding:16px;overflow-y:auto;">
   <div style="background:var(--surface);border-radius:20px;width:100%;max-width:680px;max-height:90vh;overflow-y:auto;padding:24px;box-shadow:0 20px 60px rgba(0,0,0,0.5)">
