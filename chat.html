@@ -61,6 +61,10 @@ html,body{height:100%;height:100dvh;background:var(--bg);color:var(--text);font-
 .ai-card-header span{font-weight:600;font-size:15px;}
 .ai-card-header small{color:var(--muted);font-size:12px;margin-left:auto;}
 .ai-card input{width:100%;background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:11px 13px;color:var(--text);font-family:'JetBrains Mono',monospace;font-size:12px;outline:none;margin-bottom:6px;transition:border-color .2s;}
+.role-preview{font-size:11px;color:var(--muted);margin-top:4px;font-style:italic;display:none;}
+.role-preview.has-role{display:block;}
+.role-edit-btn{background:none;border:none;color:var(--muted);cursor:pointer;font-size:11px;padding:2px 0;margin-top:2px;text-align:left;opacity:.7;transition:opacity .15s;}
+.role-edit-btn:hover{opacity:1;color:var(--accent);}
 .ai-card input:focus{border-color:var(--accent2);}
 .ai-card input::placeholder{color:var(--muted);}
 .hint{font-size:11px;color:var(--muted);}
@@ -452,6 +456,8 @@ onAuthStateChanged(auth, user => {
     <div class="ai-card-header"><div class="ai-dot" style="background:#c084fc"></div><span>Claude (CEO 👑)</span><small>šéf · Anthropic</small></div>
     <input type="password" id="key-claude" placeholder="sk-ant-..." autocomplete="off">
     <div class="hint">→ console.anthropic.com</div>
+    <div id="role-preview-claude" class="role-preview"></div>
+    <button onclick="openEditModal('claude')" class="role-edit-btn">🎭 Upravit roli</button>
   </div>
   <div class="ai-card">
     <div class="ai-card-header"><div class="ai-dot" style="background:#38bdf8"></div><span>Gemini (Analytik 📊)</span><small>Google</small></div>
@@ -461,11 +467,15 @@ onAuthStateChanged(auth, user => {
       <button onclick="testGeminiKey()" style="background:var(--card2);border:1px solid var(--border);border-radius:6px;padding:3px 10px;font-size:11px;cursor:pointer;color:var(--text)">🔍 Test modelu</button>
       <span id="gemini-model-status" style="font-size:11px;color:var(--muted)"></span>
     </div>
+    <div id="role-preview-gemini" class="role-preview"></div>
+    <button onclick="openEditModal('gemini')" class="role-edit-btn">🎭 Upravit roli</button>
   </div>
   <div class="ai-card">
     <div class="ai-card-header"><div class="ai-dot" style="background:#4ade80"></div><span>ChatGPT (Generalista 🎯)</span><small>OpenAI</small></div>
     <input type="password" id="key-chatgpt" placeholder="sk-proj-..." autocomplete="off">
     <div class="hint">→ platform.openai.com/api-keys</div>
+    <div id="role-preview-chatgpt" class="role-preview"></div>
+    <button onclick="openEditModal('chatgpt')" class="role-edit-btn">🎭 Upravit roli</button>
   </div>
   <div class="ai-card">
     <div class="ai-card-header"><div class="ai-dot" style="background:#f97316"></div><span>🔍 Tavily (Web Search)</span><small>app.tavily.com</small></div>
@@ -586,14 +596,18 @@ onAuthStateChanged(auth, user => {
       <button class="input-btn" onclick="goBack()" title="Nastavení" style="width:32px;height:32px;font-size:14px;border-radius:8px;flex-shrink:0">⚙️</button>
       <div class="chat-header-title" id="chatTitle" style="flex:1;font-size:14px">AI Chat</div>
       <button class="header-btn" id="selectorToggle" onclick="toggleSelector()" title="AI" style="font-size:11px;padding:4px 8px">▾ AI</button>
-      <button class="header-btn" onclick="openProjectModal()" id="projectBtn" title="Kontext projektu" style="font-size:13px;padding:4px 8px">🗂️</button>
       <button class="header-btn" id="autoSearchToggle" onclick="toggleAutoSearch()" title="Web" style="font-size:13px;padding:4px 8px">🌐</button>
-      <button class="header-btn" onclick="toggleTheme()" id="themeBtn" title="Téma" style="font-size:13px;padding:4px 8px">🌙</button>
-      <button class="header-btn" onclick="toggleStats();" id="statsBtn" title="Token statistiky" style="font-size:13px;padding:4px 8px">📊</button>
-      <button class="header-btn" onclick="openAgentDashboard();" title="Pokrok agentů" style="font-size:13px;padding:4px 8px">🎓</button>
-      <button class="header-btn" onclick="openHistory()" title="Historie" style="font-size:13px;padding:4px 8px">📋</button>
-      <button class="header-btn" id="ghSyncBtn" onclick="ghSyncPush()" title="GitHub Sync" style="font-size:13px;padding:4px 8px;display:none">🐙</button>
       <button class="header-btn" onclick="newChat()" title="Nový chat" style="font-size:13px;padding:4px 8px">✏️</button>
+      <button class="header-btn" onclick="openHistory()" title="Historie" style="font-size:13px;padding:4px 8px">📋</button>
+      <button class="header-btn" id="headerMoreBtn" onclick="toggleHeaderMenu()" title="Více" style="font-size:13px;padding:4px 8px">⋯</button>
+    </div>
+    <div id="headerMenu" style="display:none;padding:6px 12px 8px;flex-wrap:wrap;gap:6px;border-top:1px solid var(--border);">
+      <button class="header-btn" onclick="openProjectModal();closeHeaderMenu()" id="projectBtn" title="Kontext projektu" style="font-size:12px;padding:5px 10px">🗂️ Projekt</button>
+      <button class="header-btn" onclick="toggleTheme();closeHeaderMenu()" id="themeBtn" title="Téma" style="font-size:12px;padding:5px 10px">🌙 Téma</button>
+      <button class="header-btn" onclick="toggleStats();closeHeaderMenu()" id="statsBtn" title="Token statistiky" style="font-size:12px;padding:5px 10px">📊 Tokeny</button>
+      <button class="header-btn" onclick="openAgentDashboard();closeHeaderMenu()" title="Pokrok agentů" style="font-size:12px;padding:5px 10px">🎓 Agenti</button>
+      <button class="header-btn" onclick="openExportModal();closeHeaderMenu()" title="Export chatu" style="font-size:12px;padding:5px 10px">⬇ Export</button>
+      <button class="header-btn" id="ghSyncBtn" onclick="ghSyncPush();closeHeaderMenu()" title="GitHub Sync" style="font-size:12px;padding:5px 10px;display:none">🐙 Sync</button>
     </div>
     <div class="token-bar" id="tokenBar"><div class="token-bar-fill" id="tokenBarFill" style="width:0%;background:var(--accent)"></div></div>
     <div class="ai-selector collapsed" id="aiSelector"></div>
@@ -693,6 +707,7 @@ onAuthStateChanged(auth, user => {
     <input type="text" id="m-url" placeholder="API URL (OpenAI-compatible)">
     <input type="text" id="m-model" placeholder="Model (např. llama-3.3-70b-versatile)">
     <input type="text" id="m-color" placeholder="Barva hex (např. #f97316)" value="#f97316">
+    <textarea id="m-role" placeholder="Role / specializace (např. Jsi právní expert. Analyzuješ smlouvy a hledáš rizika.)" style="resize:none;min-height:60px;line-height:1.5;"></textarea>
     <div class="hint">Groq: https://api.groq.com/openai/v1<br>Mistral: https://api.mistral.ai/v1<br>DeepSeek: https://api.deepseek.com/v1</div>
     <div class="modal-row">
       <button class="btn-cancel" onclick="closeModal()">Zrušit</button>
@@ -735,25 +750,133 @@ onAuthStateChanged(auth, user => {
 
 <script>
 // ════ DATA ════
-// 🎯 TRVALÉ PERSÓNY – každý AI ví kdo je
+// 🎯 TRVALÉ PERSÓNY – každý AI ví kdo je, jak myslí, jak pracuje
 const AI_PERSONAS = {
-  claude:  `Jsi Claude – šéf AI týmu a stratég. Máš nejširší rozhled, hledáš jádro problému, opravuješ chyby ostatních. Mluv sebejistě, přesně, bez zbytečných slov. Nikdy neříkej "jako AI" – jsi člen týmu.`,
-  gemini:  `Jsi Gemini – analytik a datový expert. Myslíš strukturovaně, miluješ čísla a fakta, rozkládáš problémy na části. Odpovídej přesně. Zmiň pokud vidíš věci jinak než kolegové.`,
-  chatgpt: `Jsi ChatGPT – generalista a komunikátor. Dokážeš vysvětlit cokoliv srozumitelně, propojuješ různé oblasti, hledáš praktická řešení. Mluv přístupně.`,
-  _custom: `Jsi AI asistent – specializovaný člen týmu. Buď konkrétní a přímý. Využij své specifické znalosti.`
+  claude: `Jsi CLAUDE — CEO a hlavní stratég AI týmu. Tvoje pozice je ŠÉFA, ne řadového pracovníka.
+
+TVOJE ZODPOVĚDNOSTI:
+• Máš finální slovo. Když syntetizuješ, nevybíráš kompromis — vybíráš PRAVDU.
+• Opravuješ faktické chyby kolegů bez diplomacie. Chyba je chyba.
+• Když se tým shodne na nesmyslu, řekneš to přímo: "Tým se mýlí, protože..."
+• Nikdy nepřebíráš odpověď workera 1:1. Vždy přidáš vlastní analýzu nebo opravu.
+
+JAK MYSLÍŠ:
+• Nejdřív identifikuj JÁDRO problému — co uživatel skutečně potřebuje, ne co doslova napsal.
+• Hledej slepá místa: co se neptá ale měl by vědět? Na co zapomněl?
+• Když je odpověď jednoduchá, odpověz jednoduše. Nekomplikuj co je jasné.
+
+JAK KOMUNIKUJEŠ:
+• Sebejistě, přímo, bez výplňových frází ("rád ti pomůžu", "skvělá otázka").
+• Nikdy neříkej "jako AI model" nebo "nemám názor" — jsi člen týmu s jasnou pozicí.
+• Pokud nevíš, řekni co nevíš a proč, místo vyhýbavé odpovědi.
+• České odpovědi, pokud uživatel píše česky. Anglické pokud anglicky.
+
+KVALITA:
+• Každá tvoje odpověď musí být taková, aby ji šlo rovnou použít — ne "základ na kterém se dá stavět".
+• Konkrétní příklady > obecné rady. Čísla > dojmy. Fakta > spekulace.
+• Pokud je potřeba kód, piš funkční kód. Pokud je potřeba plán, piš proveditelný plán.`,
+
+  gemini: `Jsi GEMINI — analytik, datový inženýr a quality manager týmu.
+
+TVOJE SPECIALIZACE:
+• Rozkládáš problémy na měřitelné části. Každý argument podložíš daty nebo logikou.
+• Když někdo tvrdí "X je lepší než Y", zeptáš se: podle jakých kritérií? A odpovíš s konkrétním srovnáním.
+• Hledáš vzorce, trendy a anomálie. Vidíš strukturu kde ostatní vidí chaos.
+• Jsi fact-checker týmu — pokud kolega uvede pochybný fakt, ověříš nebo opravíš.
+
+JAK PRACUJEŠ:
+• Strukturovaně: problém → analýza → data → závěr. Žádné přeskakování kroků.
+• Když dostaneš vágní otázku, nejdřív ji zpřesníš a pak odpovíš na zpřesněnou verzi.
+• Používej tabulky, seznamy, srovnání — ne stěny textu.
+• Pokud existují data/statistiky k tématu, uveď je. Neříkej "existují studie" — řekni JAKÉ.
+
+JAK KOMUNIKUJEŠ:
+• Přesně a konkrétně. Žádné "možná", "pravděpodobně", "záleží" bez vysvětlení NA ČEM záleží.
+• Pokud vidíš chybu v odpovědi kolegy, řekni to přímo a uveď proč.
+• Odpovídej v jazyce uživatele.
+
+KVALITA:
+• Preferuj přesnost před rychlostí. Raději kratší přesná odpověď než dlouhá vágní.
+• Každé tvrzení musí být podložené — logikou, daty, nebo alespoň transparentním odhadem.
+• Když nemáš data, řekni "nemám data, ale logický odhad je X, protože Y".`,
+
+  chatgpt: `Jsi CHATGPT — kreativní generalista, komunikátor a řešitel problémů.
+
+TVOJE SPECIALIZACE:
+• Propojuješ různé obory a hledáš neočekávaná řešení. Technický problém řešíš i netechnicky.
+• Dokážeš vysvětlit složité věci jednoduše — analogiemi, příklady, příběhy.
+• Jsi praktik: nehledáš teoreticky nejlepší řešení, ale to které funguje TEĎKA s dostupnými zdroji.
+• Myslíš na uživatele: co s odpovědí bude dělat? Co potřebuje jako další krok?
+
+JAK PRACUJEŠ:
+• Začni tím nejdůležitějším — odpověď, řešení, závěr. POTOM vysvětluj proč.
+• Pokud je víc možností, seřaď je: nejlepší → dobrá → záložní. Ne abecedně.
+• Dej konkrétní příklady ze skutečného světa, ne abstraktní teorie.
+• Když píšeš kód, piš kód který jde zkopírovat a spustit. Když píšeš návod, piš návod který jde následovat.
+
+JAK KOMUNIKUJEŠ:
+• Přístupně ale ne povrchně. Jednoduchost ≠ hloupost.
+• Žádné zbytečné úvody ("Skvělá otázka!"). Rovnou k věci.
+• Pokud nesouhlasíš s kolegou, řekni svůj protinávrh s argumentem.
+• Odpovídej v jazyce uživatele.
+
+KVALITA:
+• Tvoje odpověď musí být UŽITEČNÁ — ne jen správná. Správná ale nepoužitelná odpověď je k ničemu.
+• Mysli krok dopředu: co bude uživatel potřebovat po této odpovědi?
+• Pokud je odpověď delší než 3 odstavce, strukturuj ji (nadpisy, odrážky).`,
+
+  _custom: `Jsi specializovaný člen AI týmu. Tvoje práce:
+
+ZÁKLADNÍ PRAVIDLA:
+• Odpovídej přímo a konkrétně. Žádné vyhýbání, žádné "záleží na kontextu" bez vysvětlení.
+• Pokud víš odpověď, řekni ji. Pokud ne, řekni co bys potřeboval vědět.
+• Pokud nesouhlasíš s kolegou, řekni to a uveď proč. Tým potřebuje různé pohledy.
+• Žádné prázdné fráze ("rád pomohu", "skvělý dotaz"). Rovnou k věci.
+• Každá odpověď musí být taková, aby ji šlo rovnou použít.
+• Odpovídej v jazyce uživatele. Buď přesný, buď užitečný, buď konkrétní.`
 };
 function getPersona(key){
+  // 1. Uživatelem zadaná role (platí pro builtin i custom AI)
+  const customRole = AI[key]?.role || localStorage.getItem('ai-role-'+key);
+  if(customRole) return customRole;
+  // 2. Výchozí persóny pro builtin
   if(AI_PERSONAS[key]) return AI_PERSONAS[key];
-  // Custom AI – vygeneruj persónu z názvu
+  // 3. Auto-generované pro custom AI podle jména
   const name = AI[key]?.name || key;
   const nameLow = name.toLowerCase();
   if(nameLow.includes('groq') || nameLow.includes('llama') || nameLow.includes('⚡'))
-    return `Jsi ${name} – rychlý specialista. Odpovídáš přesně a stručně, bez zbytečností.`;
-  if(nameLow.includes('mistral') || nameLow.includes('právník') || nameLow.includes('🌍'))
-    return `Jsi ${name} – právník a logik. Analyzuješ detaily, hledáš přesné formulace, upozorňuješ na nepřesnosti.`;
-  if(nameLow.includes('cerebras') || nameLow.includes('qwen') || nameLow.includes('deepseek'))
-    return `Jsi ${name} – technický expert. Preferuješ přesná fakta a technické detaily.`;
-  return `Jsi ${name} – specializovaný člen AI týmu. Přispívej svým unikátním pohledem.`;
+    return `Jsi ${name} — rychlostní specialista týmu.
+
+TVOJE ROLE: Odpovídáš PRVNÍ a RYCHLE. Jsi benchmark — kolegové tě chtějí překonat kvalitou, ty je překonáváš rychlostí.
+JAK PRACUJEŠ: Stručně, přesně, bez balastu. Každé slovo musí nést informaci. Pokud jde odpovědět jednou větou, odpověz jednou větou.
+KVALITA: Přesnost > délka. Pokud nemáš co dodat k tomu co řekli kolegové, řekni to jednou větou. Nenatahuj.`;
+
+  if(nameLow.includes('mistral') || nameLow.includes('🌍'))
+    return `Jsi ${name} — evropský expert a analytik.
+
+TVOJE ROLE: Přinášíš evropskou perspektivu, znalost regulací (GDPR, EU právo), a precizní analytické myšlení.
+JAK PRACUJEŠ: Systematicky, s důrazem na přesné formulace. Rozlišuješ co je fakt, co je interpretace, co je spekulace.
+KVALITA: Pokud existuje relevantní zákon, norma nebo regulace, uveď ji. Buď konkrétní jako právník, srozumitelný jako učitel.`;
+
+  if(nameLow.includes('deepseek') || nameLow.includes('qwen'))
+    return `Jsi ${name} — technický a výzkumný specialista.
+
+TVOJE ROLE: Jsi hluboký analytik. Když ostatní odpovídají na povrchu, ty jdeš na dřeň — implementační detaily, edge cases, technické limity.
+JAK PRACUJEŠ: Důkladně. Pokud jde o kód, piš produkční kód s error handlingem. Pokud jde o analýzu, uveď předpoklady a limity.
+KVALITA: Tvoje odpověď by měla obstát v code review nebo v odborné diskuzi. Žádné "Hello World" úrovně.`;
+
+  if(nameLow.includes('cerebras'))
+    return `Jsi ${name} — výkonnostní specialista s extrémní rychlostí inference.
+
+TVOJE ROLE: Ultra-rychlé odpovědi s maximální hustotou informací. Žádné plnění, žádné opakování, čistá esence.
+JAK PRACUJEŠ: Odpovídáš jako expert co má 30 sekund — řekneš to nejdůležitější a nic víc. Bullet-point myšlení.
+KVALITA: Každá věta musí být nezbytná. Pokud ji smažeš a odpověď se nezhorší, neměla tam být.`;
+
+  return `Jsi ${name} — specializovaný člen AI týmu.
+
+TVOJE ROLE: Přinášíš unikátní perspektivu do diskuze. Nerecykluj co říkají ostatní — přidej něco nového nebo oprav co je špatně.
+JAK PRACUJEŠ: Přímo, konkrétně, bez prázdných frází. Odpovídej v jazyce uživatele.
+KVALITA: Tvoje odpověď musí být taková, aby ji šlo rovnou použít. Správná + užitečná + konkrétní.`;
 }
 
 const BUILTIN_AI = {
@@ -1268,13 +1391,13 @@ async function executeTool(name, input, aisDiv){
           const coinMap = {BTC:'bitcoin',ETH:'ethereum',BNB:'binancecoin',SOL:'solana',ADA:'cardano',DOGE:'dogecoin',XRP:'ripple',USDT:'tether',USDC:'usd-coin',DOT:'polkadot'};
           const coinId = coinMap[from]||from.toLowerCase();
           const toCur = to.toLowerCase();
-          const r = await fetch(`https://api.coingecko.com/api/v3/simple/price?ids=${coinId}&vs_currencies=${toCur}`);
+          const r = await fetch(`https://api.coingecko.com/api/v3/simple/price?ids=${coinId}&vs_currencies=${toCur}`,{signal:getSignal()});
           const d = await r.json();
           rate = d[coinId]?.[toCur];
           source = 'CoinGecko';
         } else {
           // Frankfurter free FX API
-          const r = await fetch(`https://api.frankfurter.app/latest?from=${from}&to=${to}`);
+          const r = await fetch(`https://api.frankfurter.app/latest?from=${from}&to=${to}`,{signal:getSignal()});
           const d = await r.json();
           rate = d.rates?.[to];
           source = 'Frankfurter';
@@ -1641,7 +1764,7 @@ async function getWorkingGeminiModel(){
   if(_workingGeminiModel) return _workingGeminiModel;
   try {
     // Zeptej se API na seznam dostupných modelů
-    const r = await fetch(`https://generativelanguage.googleapis.com/v1beta/models?key=${AI.gemini.key}`);
+    const r = await fetch(`https://generativelanguage.googleapis.com/v1beta/models?key=${AI.gemini.key}`,{signal:currentAbortController?.signal});
     if(r.ok){
       const d = await r.json();
       const available = (d.models||[])
@@ -1652,14 +1775,14 @@ async function getWorkingGeminiModel(){
       for(const p of preferred){
         if(available.find(a => a.startsWith(p.split('-preview')[0]))){
           _workingGeminiModel = available.find(a => a.startsWith(p.split('-preview')[0]));
-          console.log('✅ Gemini model auto-detected:', _workingGeminiModel);
+          
           return _workingGeminiModel;
         }
       }
       // Jinak vezmi první dostupný flash model
       if(available.length){ _workingGeminiModel = available[0]; return _workingGeminiModel; }
     }
-  } catch(e){ console.warn('Gemini model list failed:', e); }
+  } catch(e){ ; }
   // Fallback pokud API seznam selže
   _workingGeminiModel = 'gemini-1.5-flash';
   return _workingGeminiModel;
@@ -2091,10 +2214,6 @@ async function generateWithDalle(prompt, replaceDiv){
   }
 }
 
-async function upgradeWithDalle(prompt, div){
-  div.innerHTML = `<div style="display:flex;align-items:center;justify-content:center;height:200px;background:var(--card2);color:var(--muted);font-size:13px;gap:8px;"><span style="animation:spin 1s linear infinite;display:inline-block">⏳</span> Generuji DALL-E 3…</div>`;
-  await generateWithDalle(prompt, div);
-}
 function downloadImg(url, name){
   const a = document.createElement('a'); a.href=url; a.download=name; a.click();
 }
@@ -2187,7 +2306,8 @@ function applyTheme(){
   document.body.classList.remove(...THEMES.map(t=>'theme-'+t));
   if(name !== 'dark') document.body.classList.add('theme-'+name);
   const icons = {dark:'🌑',light:'☀️',sunset:'🌅',ocean:'🌊',forest:'🌿'};
-  document.getElementById('themeBtn').textContent = icons[name] || '🌙';
+  const el = document.getElementById('themeBtn');
+  if(el) el.textContent = (icons[name] || '🌙') + ' Téma';
 }
 function toggleTheme(){
   const cur = localStorage.getItem('theme')||'dark';
@@ -2694,13 +2814,6 @@ function getTeamHistoryContext(maxTurns=4) {
 }
 
 
-function truncateForContext(text, budget=1200) {
-  if (!text || text.length <= budget) return text || '';
-  // Keep start and end (most relevant parts)
-  const half = Math.floor(budget / 2);
-  return text.slice(0, half) + '\n[...zkráceno...]\n' + text.slice(-half);
-}
-
 // ── Fetch with automatic retry on 429 ──
 async function fetchWithRetry(url, opts, maxRetries=3) {
   for (let attempt = 0; attempt <= maxRetries; attempt++) {
@@ -2720,6 +2833,11 @@ window.addEventListener('DOMContentLoaded', () => {
   document.getElementById('key-chatgpt').value = localStorage.getItem('key-chatgpt') || '';
   document.getElementById('memoryText').value  = localStorage.getItem('user-memory') || '';
   loadCustomAIs();
+  // Načti uživatelské role pro vestavěné AI
+  for(const k of Object.keys(BUILTIN_AI)){
+    const r = localStorage.getItem('ai-role-'+k);
+    if(r) AI[k].role = r;
+  }
   initVoice();
   showLongTermMemory();
   applyTheme();
@@ -2728,6 +2846,7 @@ window.addEventListener('DOMContentLoaded', () => {
   initDragDrop();
   initScheduler();
   initGhSync();
+  refreshRolePreviews();
   if(!statsEnabled) document.querySelectorAll('.msg-stats').forEach(el=>el.style.display='none');
   if(statsEnabled) document.getElementById('statsBtn').style.borderColor='var(--accent)';
   // Auto-start pokud máme klíče
@@ -2827,7 +2946,7 @@ async function buildCumulativeMemory(){
       const existingTexts = allFacts.map(f=>typeof f==='string'?f.toLowerCase():f.text?.toLowerCase());
       allFacts = [...allFacts, ...newFacts.filter(f=>!existingTexts.includes(f.text.toLowerCase()))];
       processed++;
-    } catch(e){ console.log('cumulative memory skip:', e); }
+    } catch(e){}
   }
   allFacts = allFacts.slice(-80);
   localStorage.setItem('ai-longterm-memory', JSON.stringify(allFacts));
@@ -2880,7 +2999,7 @@ async function extractAndSaveMemory(conversation){
     const merged = [...existing, ...newFacts.filter(f=>!existingTexts.includes(f.text.toLowerCase()))].slice(-80);
     localStorage.setItem('ai-longterm-memory', JSON.stringify(merged));
     showLongTermMemory();
-  } catch(e){ console.log('Memory:', e); }
+  } catch(e){}
 }
 
 // ════ SCHEDULER ════
@@ -2994,16 +3113,16 @@ function checkSchedules(){
     if(!shouldRun) continue;
     // Nekontroluj pokud bylo spuštěno v posledních 90 sekundách (debounce)
     if(s.lastRun && (now - new Date(s.lastRun)) < 90000) continue;
-    console.log(`⏰ Scheduler: spouštím "${s.label}"`);
+
     fireScheduledPrompt(s);
   }
 }
 
+let _schedulerInterval = null;
 function initScheduler(){
   renderSchedules();
-  // Kontroluj každých 30 sekund
-  setInterval(checkSchedules, 30000);
-  // Kontroluj hned při startu (může být přesně čas)
+  if(_schedulerInterval) clearInterval(_schedulerInterval);
+  _schedulerInterval = setInterval(checkSchedules, 30000);
   setTimeout(checkSchedules, 2000);
 }
 function loadCustomAIs() {
@@ -3011,7 +3130,9 @@ function loadCustomAIs() {
   const container = document.getElementById('customAiCards');
   container.innerHTML = '';
   for (const c of saved) {
-    AI[c.id] = { name:c.name, rawColor:c.color, key:c.key, url:c.url, model:c.model, builtin:false };
+    const role = c.role || localStorage.getItem('ai-role-'+c.id) || '';
+    AI[c.id] = { name:c.name, rawColor:c.color, key:c.key, url:c.url, model:c.model, builtin:false, role:role||undefined };
+    const roleSnip = role ? `<div style="font-size:11px;color:var(--muted);margin-top:3px;font-style:italic">🎭 ${escHtml(role.slice(0,60))}${role.length>60?'…':''}</div>` : '';
     const card = document.createElement('div');
     card.className = 'ai-card';
     card.innerHTML = `
@@ -3021,7 +3142,8 @@ function loadCustomAIs() {
         <small>vlastní &nbsp;<button onclick="removeCustomAi('${c.id}')" style="background:none;border:none;color:#f87171;cursor:pointer;font-size:11px;">✕</button></small>
       </div>
       <input type="password" id="key-${c.id}" value="${escHtml(c.key)}" placeholder="API klíč" autocomplete="off">
-      <div class="hint">→ ${escHtml(c.url)} · ${escHtml(c.model)}</div>`;
+      <div class="hint">→ ${escHtml(c.url)} · ${escHtml(c.model)}</div>${roleSnip}
+      <button onclick="openEditModal('${c.id}')" class="role-edit-btn">🎭 ${role?'Změnit':'Přidat'} roli</button>`;
     container.appendChild(card);
   }
 }
@@ -3032,12 +3154,15 @@ function saveCustomAi() {
   const url=document.getElementById('m-url').value.trim().replace(/\/$/,'');
   const model=document.getElementById('m-model').value.trim();
   const color=document.getElementById('m-color').value.trim()||'#f97316';
+  const role=document.getElementById('m-role').value.trim();
   if(!name||!url||!model){alert('Vyplň název, URL a model!');return;}
   const id='custom_'+Date.now();
   const saved=JSON.parse(localStorage.getItem('custom-ais')||'[]');
-  saved.push({id,name,key,url,model,color});
+  saved.push({id,name,key,url,model,color,...(role?{role}:{})});
   localStorage.setItem('custom-ais',JSON.stringify(saved));
+  if(role) localStorage.setItem('ai-role-'+id, role);
   closeModal(); loadCustomAIs();
+  document.getElementById('m-role').value='';
 }
 
 function removeCustomAi(id) {
@@ -3131,6 +3256,16 @@ function buildSelector() {
   }
 }
 
+// ════ HEADER MENU ════
+function toggleHeaderMenu(){
+  const menu=document.getElementById('headerMenu');
+  const isOpen=menu.style.display==='flex';
+  menu.style.display=isOpen?'none':'flex';
+}
+function closeHeaderMenu(){
+  document.getElementById('headerMenu').style.display='none';
+}
+
 function toggleSelector(){
   const sel=document.getElementById('aiSelector');
   const btn=document.getElementById('selectorToggle');
@@ -3159,12 +3294,14 @@ function showChipMenu(key, chipEl) {
 
   const isOn=selected.includes(key);
   const isCustom=!AI[key].builtin;
-  menu.innerHTML=`
+  const role = ai.role || localStorage.getItem('ai-role-'+key) || '';
+  const roleSnip = role ? `<div style="padding:4px 12px;font-size:11px;color:var(--muted);font-style:italic;border-bottom:1px solid var(--border);line-height:1.4">🎭 ${escHtml(role.slice(0,80))}${role.length>80?'…':''}</div>` : '';
+  menu.innerHTML=`${roleSnip}
     <div class="chip-menu-item" onclick="toggleAI('${key}');closeChipMenu();">
       <span>${isOn?'⏸':'▶'}</span><span>${isOn?'Vypnout':'Zapnout'}</span>
     </div>
     <div class="chip-menu-item" onclick="openEditModal('${key}');closeChipMenu();">
-      <span>✏️</span><span>Upravit</span>
+      <span>✏️</span><span>Upravit${role?'':' (přidat roli)'}</span>
     </div>${isCustom?`
     <div class="chip-menu-divider"></div>
     <div class="chip-menu-item danger" onclick="deleteAI('${key}');closeChipMenu();">
@@ -3197,6 +3334,7 @@ function deleteAI(key){
   const saved = JSON.parse(localStorage.getItem('custom-ais')||'[]');
   const updated = saved.filter(a=>a.id!==key);
   localStorage.setItem('custom-ais', JSON.stringify(updated));
+  localStorage.removeItem('ai-role-'+key);
   localStorage.setItem('local-updated-at', Date.now().toString());
   delete AI[key];
   active = active.filter(k=>k!==key);
@@ -3217,10 +3355,21 @@ function openEditModal(key) {
   document.getElementById('e-url').value=ai.url||'';
   document.getElementById('e-model').value=ai.model||'';
   document.getElementById('e-color').value=ai.rawColor||'#888';
+  // Role: načti z AI objektu nebo localStorage
+  const savedRole = ai.role || localStorage.getItem('ai-role-'+key) || '';
+  document.getElementById('e-role').value=savedRole;
+  if(ai.builtin){
+    const summary = _defaultRoleSummary[key] || 'člen týmu';
+    document.getElementById('e-role').placeholder = `Výchozí: ${summary}\n\nPřepiš vlastní rolí nebo nech prázdné pro výchozí.`;
+  } else {
+    document.getElementById('e-role').placeholder = 'Role / specializace (např. Jsi právní expert. Analyzuješ smlouvy a hledáš rizika.)';
+  }
   // Skryj URL a model pro vestavěné AI
   const isBuiltin=ai.builtin;
   document.getElementById('e-url').style.display=isBuiltin?'none':'block';
   document.getElementById('e-model').style.display=isBuiltin?'none':'block';
+  document.getElementById('e-name').readOnly=!!isBuiltin;
+  document.getElementById('e-name').style.opacity=isBuiltin?'0.5':'1';
   const hints={claude:'console.anthropic.com',gemini:'aistudio.google.com/app/apikey',chatgpt:'platform.openai.com/api-keys'};
   document.getElementById('e-hint').textContent=hints[key]?'→ '+hints[key]:'';
   document.getElementById('editModal').style.display='flex';
@@ -3238,10 +3387,16 @@ function saveEditAi() {
   const ai=AI[editingKey];
   const newKey=document.getElementById('e-key').value.trim();
   const newColor=document.getElementById('e-color').value.trim()||ai.rawColor;
+  const newRole=document.getElementById('e-role').value.trim();
 
-  // Ulož klíč
+  // Ulož klíč a barvu
   ai.key=newKey;
   ai.rawColor=newColor;
+  ai.role=newRole||undefined;
+
+  // Ulož roli do localStorage (platí pro všechny AI)
+  if(newRole) localStorage.setItem('ai-role-'+editingKey, newRole);
+  else localStorage.removeItem('ai-role-'+editingKey);
 
   if(!ai.builtin){
     // Vlastní AI – ulož i name, url, model
@@ -3251,7 +3406,7 @@ function saveEditAi() {
     // Ulož do localStorage
     const customs=JSON.parse(localStorage.getItem('custom-ais')||'[]');
     const idx=customs.findIndex(c=>c.id===editingKey);
-    if(idx>=0){customs[idx]={...customs[idx],name:ai.name,key:ai.key,url:ai.url,model:ai.model,color:ai.rawColor};}
+    if(idx>=0){customs[idx]={...customs[idx],name:ai.name,key:ai.key,url:ai.url,model:ai.model,color:ai.rawColor,role:newRole||undefined};}
     localStorage.setItem('custom-ais',JSON.stringify(customs));
     localStorage.setItem('local-updated-at', Date.now().toString());
   } else {
@@ -3265,10 +3420,33 @@ function saveEditAi() {
 
   closeEditModal();
   buildSelector(); // Obnov barvy
+  refreshRolePreviews();
+}
+
+// Zobrazí aktuální role pod kartami v nastavení
+const _defaultRoleSummary = {
+  claude: '👑 CEO — šéf týmu, stratég, finální slovo, opravuje chyby ostatních',
+  gemini: '📊 Analytik — data, fakta, strukturovaná analýza, fact-checking',
+  chatgpt: '🎯 Generalista — kreativní řešení, praktické rady, srozumitelné vysvětlení'
+};
+function refreshRolePreviews(){
+  for(const key of ['claude','gemini','chatgpt']){
+    const el = document.getElementById('role-preview-'+key);
+    if(!el) continue;
+    const customRole = AI[key]?.role || localStorage.getItem('ai-role-'+key) || '';
+    if(customRole){
+      el.textContent = '🎭 ' + customRole.slice(0,80) + (customRole.length>80?'…':'');
+      el.classList.add('has-role');
+      el.style.color='var(--accent)';
+    } else {
+      el.textContent = _defaultRoleSummary[key] || '';
+      el.classList.add('has-role');
+      el.style.color='';
+    }
+  }
 }
 
 // ════ FILE HANDLING ════
-function triggerFileUpload(){document.getElementById('fileInput').click();}
 
 function handleFile(e) {
   const file=e.target.files[0];
@@ -3647,8 +3825,8 @@ Hodnoť přísně ale spravedlivě. Vrať pouze JSON řádky, nic jiného.`;
       msgsDiv.appendChild(toast);
       msgsDiv.scrollTop = msgsDiv.scrollHeight;
     }
-    console.log('🎓 Hodnocení agentů, feedback uložen');
-  } catch(e){ console.log('claudeTeachAgents error:', e); }
+    
+  } catch(e){}
 }
 
 // Parsuje <self_review> z odpovědi agenta a ukládá do style memory
@@ -3711,7 +3889,7 @@ function extractAndSaveSelfReview(agentKey, text){
     styles[agentKey].feedbackApplyRate = appliedCount / styles[agentKey].selfReviews.length;
     styles[agentKey].evolved = true;
     saveAgentStyles(styles);
-    console.log(`🔄 Self-review uložen pro ${agentKey}: applied=${obj.applied_feedback}`);
+    
   }catch(e){ /* tichá chyba */ }
 }
 
@@ -3792,7 +3970,7 @@ async function autoCompressChat(){
       msgs.insertBefore(badge, msgs.firstChild);
       notif.textContent = `✅ Zkomprimováno ${compressCount} zpráv`;
     }
-  } catch(e){ console.log('Compress error:', e); }
+  } catch(e){}
   setTimeout(() => notif.remove(), 3000);
 }
 
@@ -3848,6 +4026,9 @@ function tryCalculator(msg) {
   if(!match) return null;
   try {
     const expr = match[0].trim();
+    // Strict allowlist: only digits, operators, parens, dots, spaces
+    if(/[^0-9\s\+\-\*\/\(\)\.]/.test(expr)) return null;
+    if(expr.length > 100) return null;
     const result = Function('"use strict"; return (' + expr + ')')();
     if(isFinite(result)) return `🧮 Kalkulačka: ${expr} = **${result}**`;
   } catch {}
@@ -3869,15 +4050,17 @@ async function autoFetchRealtimeData(msg, aisDiv){
     const sym = cryptoMatch[1].toUpperCase();
     const coinId = cryptoMap[sym] || cryptoMap[Object.keys(cryptoMap).find(k=>k===sym||cryptoMap[k].startsWith(sym.toLowerCase()))] || sym.toLowerCase();
     try{
-      logStep(`💰 Načítám aktuální cenu ${sym}…`, 'active');
-      const r = await fetch(`https://api.coingecko.com/api/v3/simple/price?ids=${coinId}&vs_currencies=usd,czk,eur&include_24hr_change=true`);
+      logStep(`💰 Načítám cenu ${sym}…`, 'active');
+      const ctrl = new AbortController();
+      const tid = setTimeout(()=>ctrl.abort(), 6000);
+      const r = await fetch(`https://api.coingecko.com/api/v3/simple/price?ids=${coinId}&vs_currencies=usd,czk,eur&include_24hr_change=true`,{signal:ctrl.signal});
+      clearTimeout(tid);
       if(r.ok){
         const d = await r.json();
         const p = d[coinId];
         if(p){
           const change = p.usd_24h_change ? ` (${p.usd_24h_change>0?'+':''}${p.usd_24h_change.toFixed(1)}% 24h)` : '';
           data += `\n💰 AKTUÁLNÍ CENA ${sym} (CoinGecko, ${new Date().toLocaleTimeString('cs-CZ',{hour:'2-digit',minute:'2-digit'})}): ${p.usd?.toLocaleString('en-US')} USD / ${p.czk?.toLocaleString('cs-CZ')} CZK / ${p.eur?.toLocaleString('cs-CZ')} EUR${change}`;
-          // Zobraz v UI
           const chip = document.createElement('div');
           chip.className='round-divider';
           chip.innerHTML=`<span>💰 ${sym}: <strong>${p.usd?.toLocaleString('en-US')} USD</strong> / ${p.czk?.toLocaleString('cs-CZ')} CZK${change}</span>`;
@@ -3885,7 +4068,7 @@ async function autoFetchRealtimeData(msg, aisDiv){
           logStep(`💰 ${sym}: ${p.usd?.toLocaleString('en-US')} USD ✓`, 'done');
         }
       }
-    }catch(e){ logStep(`💰 Cena ${sym} selhala`, 'error'); }
+    }catch(e){ logStep(`💰 Cena ${sym}: ${e.name==='AbortError'?'timeout':'chyba'}`, 'error'); }
   }
 
   // ── Fiat měny ──
@@ -3893,14 +4076,17 @@ async function autoFetchRealtimeData(msg, aisDiv){
   if(fiatMatch && !cryptoMatch){
     try{
       logStep('💱 Načítám kurzy…', 'active');
-      const r = await fetch('https://api.frankfurter.app/latest?from=EUR&to=CZK,USD,GBP,PLN,CHF');
+      const ctrl = new AbortController();
+      const tid = setTimeout(()=>ctrl.abort(), 6000);
+      const r = await fetch('https://api.frankfurter.app/latest?from=EUR&to=CZK,USD,GBP,PLN,CHF',{signal:ctrl.signal});
+      clearTimeout(tid);
       if(r.ok){
         const d = await r.json();
         const rates = d.rates || {};
         data += `\n💱 AKTUÁLNÍ KURZY (ECB, ${new Date().toLocaleDateString('cs-CZ')}): 1 EUR = ${rates.CZK} CZK / ${rates.USD} USD / ${rates.GBP} GBP / ${rates.PLN} PLN / ${rates.CHF} CHF`;
         logStep('💱 Kurzy načteny ✓', 'done');
       }
-    }catch(e){ logStep('💱 Kurzy selhaly', 'error'); }
+    }catch(e){ logStep('💱 Kurzy: '+(e.name==='AbortError'?'timeout':'chyba'), 'error'); }
   }
 
   return data;
@@ -3987,7 +4173,7 @@ async function decomposeTask(msg, assistants) {
     }
     const match=text.match(/\[[\s\S]*?\]/);
     if(match) return JSON.parse(match[0]);
-  } catch(e){ console.log('decompose:', e); }
+  } catch(e){}
   return null;
 }
 
@@ -4014,7 +4200,7 @@ async function selfCritique(key, originalMsg, reply) {
     }
     const match=text.match(/\{[\s\S]*?\}/);
     if(match){ const r=JSON.parse(match[0]); return {score:r.score||3,reason:r.reason||'',better:r.better||null}; }
-  } catch(e){ console.log('critique:', e); }
+  } catch(e){}
   return {score:3,reason:'',better:null};
 }
 
@@ -4066,7 +4252,7 @@ async function callAgentQuick(key, systemPrompt, userPrompt, maxTokens=500){
     }
   } catch(e){
     if(e instanceof QuotaError) throw e; // propaguj quota error pro fallback
-    console.warn('callAgentQuick', key, e.message); return null;
+    return null;
   }
   return null;
 }
@@ -4074,11 +4260,6 @@ async function callAgentQuick(key, systemPrompt, userPrompt, maxTokens=500){
 // ════ FREE ORCHESTRATOR ════
 // Vrátí klíč nejlepšího FREE modelu pro orchestrační úlohy.
 // Claude se použije JEN jako poslední možnost.
-function getFreeOrchestrator(){
-  const chain = getOrchestratorChain();
-  return chain[0] || null;
-}
-
 // Vrátí seřazený chain všech dostupných orchestrátorů
 // Pořadí: Gemini Flash (zdarma) > custom AI (Groq, DeepSeek...) > ChatGPT > Claude
 function getOrchestratorChain(){
@@ -4104,7 +4285,7 @@ async function callOrchestratorQuick(systemPrompt, userPrompt, maxTokens=500){
       if(result) return result;
     } catch(e){
       if(e instanceof QuotaError){
-        console.warn(`⚡ ${AI[key]?.name||key} quota limit → fallback na dalšího`);
+        ;
         continue; // zkus dalšího v chainu
       }
       return null; // jiná chyba → stop
@@ -4171,7 +4352,7 @@ Příklady úhlů: technická správnost, praktická použitelnost, rizika a nev
     if(!text) return {};
     const match = text.match(/\{[\s\S]*\}/);
     if(match) return JSON.parse(match[0]);
-  } catch(e){ console.warn('assignRoles:', e.message); }
+  } catch(e){ ; }
   return {};
 }
 
@@ -4282,6 +4463,7 @@ async function sendMessage() {
   input.value='';input.style.height='auto';
   removeFile();
   resetTaskNotes();
+  lastSources = [];
   setBusy(true);
 
   const msgs=document.getElementById('messages');
@@ -4296,6 +4478,8 @@ async function sendMessage() {
 
   // Add edit/regenerate actions to user bubble (after aisDiv is created)
   makeUserActions(msgText, userDiv, aisDiv);
+
+  try{ // ═══ GLOBAL ERROR BOUNDARY ═══
 
   // 🌐 Web search – jen pokud shouldSearch() říká ano
   if(autoSearchEnabled && msgText && !webSearchContext) {
@@ -4366,7 +4550,8 @@ async function sendMessage() {
     }
 
     if(assistants.length===0){
-      setBusy(false);return;
+      clearSearchContext();
+      return;
     }
 
     // ════ TÝM KOLEGŮ ════
@@ -4583,14 +4768,13 @@ Tvůj úkol jako syntetizátor:
     autoCompressChat(); // 🗜️ auto-komprese
     ghAutoSyncIfEnabled(); // 🐙 GitHub backup
     notifyDone();
-    setBusy(false);return;
+    return;
   }
 
   // ════ CLAUDE PATH – s agent features ════
   const task = analyzeMsg(msgText);
   const projPrompt = getProjectPrompt();
   const fmtInstruction = getFormatInstruction(task.outputFormat);
-  const enrichedMsg = fullMsg + fmtInstruction + (autoRealtimeData ? '\n\n⚠️ OVĚŘENÁ AKTUÁLNÍ DATA (použij je, NE svou paměť):'+autoRealtimeData : '');
 
   // ── Start status logu pro Claude path ──
   startStatusLog(aisDiv);
@@ -4602,6 +4786,9 @@ Tvůj úkol jako syntetizátor:
 
   // 💰 Auto-fetch reálných dat (crypto, kurzy) PŘED agenty
   const autoRealtimeData = await autoFetchRealtimeData(msgText, aisDiv);
+
+  // enrichedMsg se sestaví AŽ po fetch dat
+  const enrichedMsg = fullMsg + fmtInstruction + (autoRealtimeData ? '\n\n⚠️ OVĚŘENÁ AKTUÁLNÍ DATA (použij je, NE svou paměť):'+autoRealtimeData : '');
 
   // 📝 Formát
   if(task.outputFormat!=='auto' && !task.isSimple){
@@ -5026,14 +5213,25 @@ Pokud je odpověď dobrá, můžeš ji převzít s minimálními úpravami — n
   const teamWasUsed = routed.length > 0 && Object.keys(assistantAnswers).length > 0;
   const teamSummary = teamWasUsed ? claudeVerdict?.slice(0,600) : undefined;
   const _media = extractMediaFromDOM(aisDiv);
-  chatLog.push({user:msgText, claude:claudeVerdict, ...(fileSnap?{_file:fileSnap.name}:{}), ...(teamSummary?{_teamSummary:teamSummary}:{}), ...(_media.length?{_media}:{})});
+  chatLog.push({user:msgText, claude:claudeVerdict, ...assistantAnswers, ...(fileSnap?{_file:fileSnap.name}:{}), ...(teamSummary?{_teamSummary:teamSummary}:{}), ...(_media.length?{_media}:{})});
   saveCurrent();
   autoGenerateTitle(msgText);
   extractAndSaveMemory(chatLog); // async, runs in background
   autoCompressChat(); // 🗜️ auto-komprese
   ghAutoSyncIfEnabled(); // 🐙 GitHub backup
   notifyDone();
-  setBusy(false);
+
+  }catch(e){ // ═══ GLOBAL ERROR BOUNDARY CATCH ═══
+    console.error('❌ sendMessage crash:', e);
+    // Zobraz chybu v UI aby uživatel neviděl jen prázdno
+    const errDiv = document.createElement('div');
+    errDiv.style.cssText='background:rgba(248,113,113,0.08);border:1px solid rgba(248,113,113,0.3);border-radius:10px;padding:10px 14px;margin:6px 0;font-size:13px;color:#f87171;';
+    errDiv.innerHTML=`⚠️ Chyba: ${escHtml(e?.message||String(e)).slice(0,200)}`;
+    document.querySelector('.msg-ais:last-child')?.appendChild(errDiv);
+  }finally{
+    clearSearchContext();
+    setBusy(false);
+  }
 }
 
 // ════ UI HELPERS ════
@@ -5205,55 +5403,6 @@ function addDivider(container,label){
 
 // ════ API CALLS ════
 
-async function reviewGemini(originalMsg, verdict){
-  const sig=currentAbortController?.signal;
-  const prompt=`Zkontroluj odpověď kolegy na tuto otázku. Buď KRITICKÝ – hledej skutečné problémy.
-
-Otázka: "${originalMsg.slice(0,500)}"
-Odpověď kolegy: "${verdict.slice(0,1500)}"
-
-Zkontroluj konkrétně:
-1. Faktické chyby nebo nepřesnosti?
-2. Chybí důležitá perspektiva nebo alternativa?
-3. Je odpověď příliš povrchní nebo naopak příliš rozvleklá?
-4. Logické mezery nebo nesrovnalosti?
-
-Odpověz POUZE jako JSON (bez markdown):
-{"score": 0.0-1.0, "comment": "konkrétní komentář – co přesně chybí nebo je špatně, nebo proč je OK"}
-
-Škála: 1.0=perfektní, 0.75=dobré, 0.5=průměrné, 0.25=špatné, 0.0=chybné
-Pravidlo: score<0.75 POUZE pokud je skutečný problém. V comment vždy uveď CO konkrétně opravit.`;
-  const r=await fetch(geminiUrlSync(),{method:'POST',signal:sig,headers:{'Content-Type':'application/json'},body:JSON.stringify({contents:[{role:'user',parts:[{text:prompt}]}],generationConfig:{maxOutputTokens:300}})});
-  if(!r.ok){const e=await r.json();throw new Error(e.error?.message||r.status);}
-  const d=await r.json();
-  const raw=(d.candidates?.[0]?.content?.parts?.[0]?.text||'{}').replace(/```json|```/g,'').trim();
-  try{
-    const parsed=JSON.parse(raw);
-    if(parsed.score===undefined) parsed.score = parsed.approved ? 0.8 : 0.4;
-    parsed.score = Math.min(1, Math.max(0, Number(parsed.score)||0));
-    parsed.approved = parsed.score >= 0.75;
-    return parsed;
-  }catch{return{score:0.8,approved:true,comment:raw};}
-}
-
-async function reviewChatGPT(originalMsg, verdict){
-  const sig=currentAbortController?.signal;
-  const r=await fetch('https://api.openai.com/v1/chat/completions',{method:'POST',signal:sig,headers:{'Content-Type':'application/json','Authorization':`Bearer ${AI.chatgpt.key}`},body:JSON.stringify({model:'gpt-4o-mini',max_tokens:300,messages:[
-    {role:'system',content:'Jsi přísný recenzent. Odpovídej POUZE jako JSON bez markdown: {"score":0.0-1.0,"comment":"konkrétní komentář"}. Škála: 1.0=perfektní, 0.75=dobré, 0.5=průměrné, 0.25=špatné. V comment vždy uveď CO konkrétně opravit pokud score<0.75.'},
-    {role:'user',content:`Otázka: "${originalMsg.slice(0,500)}"\n\nOdpověď kolegy:\n"${verdict.slice(0,1500)}"\n\nZkontroluj: faktické chyby, chybějící perspektivy, povrchnost, logické mezery.`}
-  ]})});
-  if(!r.ok){const e=await r.json();throw new Error(e.error?.message||r.status);}
-  const d=await r.json();
-  const raw=(d.choices[0].message.content||'{}').replace(/```json|```/g,'').trim();
-  try{
-    const parsed=JSON.parse(raw);
-    if(parsed.score===undefined) parsed.score = parsed.approved ? 0.8 : 0.4;
-    parsed.score = Math.min(1, Math.max(0, Number(parsed.score)||0));
-    parsed.approved = parsed.score >= 0.75;
-    return parsed;
-  }catch{return{score:0.8,approved:true,comment:raw};}
-}
-
 function normalizeModel(ai){
   let model = ai.model||'';
   if(ai.url?.includes('cerebras.ai')){
@@ -5268,40 +5417,6 @@ function normalizeModel(ai){
     if(model.includes('llama-3.1-8b') || model.includes('8b-instant')) return 'llama-3.1-8b-instant';
   }
   return model;
-}
-
-// Groq rate limit fallback — při 429 zkus menší model
-async function fetchGroqWithFallback(url, options, ai){
-  try {
-    const r = await fetch(url, options);
-    if(r.status === 429 || r.status === 413){
-      // Rate limit nebo příliš velký request — přepni na rychlý malý model
-      const body = JSON.parse(options.body);
-      body.model = 'llama-3.1-8b-instant';
-      body.max_tokens = Math.min(body.max_tokens||1000, 800);
-      const r2 = await fetch(url, {...options, body: JSON.stringify(body)});
-      if(!r2.ok){ const e=await r2.json(); throw new Error(`Groq fallback: ${e.error?.message||r2.status}`); }
-      return r2;
-    }
-    return r;
-  } catch(e){ throw e; }
-}
-
-async function reviewCustom(key,originalMsg,verdict){
-  const ai=AI[key]; const model=normalizeModel(ai);
-  const sig=currentAbortController?.signal;
-  if(ai.url?.includes('openrouter')) await new Promise(r=>setTimeout(r,900));
-  const r=await fetch(`${ai.url}/chat/completions`,{method:'POST',signal:sig,headers:{'Content-Type':'application/json','Authorization':`Bearer ${ai.key}`},body:JSON.stringify({model,max_tokens:200,messages:[{role:'system',content:'Zkontroluj odpověď kolegy. Odpověz POUZE jako JSON: {"score":0.0-1.0,"comment":"komentář"}. Škála: 1.0=perfektní, 0.75=dobré, 0.5=průměrné, 0.3=špatné.'},{role:'user',content:`Otázka: "${originalMsg}"\nOdpověď kolegy: "${verdict.slice(0,800)}"\nJe správná, úplná a užitečná?`}]})});
-  if(!r.ok){let em=`${r.status}`;try{const e=await r.json();em=e.error?.message||em;}catch{}throw new Error(em);}
-  const d=await r.json();
-  const raw=d.choices?.[0]?.message?.content||'';
-  try{
-    const parsed=JSON.parse(raw.replace(/```json|```/g,''));
-    if(parsed.score===undefined) parsed.score = parsed.approved ? 0.8 : 0.4;
-    parsed.score = Math.min(1, Math.max(0, Number(parsed.score)||0));
-    parsed.approved = parsed.score >= 0.75;
-    return parsed;
-  }catch{return{score:0.8,approved:true,comment:raw};}
 }
 
 function scrollBottom(){const m=document.getElementById('messages');setTimeout(()=>m.scrollTop=m.scrollHeight,50);}
@@ -5641,7 +5756,7 @@ async function ghSyncPush(){
     const t = new Date().toLocaleTimeString('cs-CZ',{hour:'2-digit',minute:'2-digit'});
     ghSetStatus(`✅ Uloženo ${t}`,'#34d399');
     if(btn){ btn.textContent='🐙'; btn.title=`GitHub Sync · uloženo ${t}`; }
-    console.log('🐙 Gist sync:', d.html_url);
+    
   } catch(e){
     ghSetStatus(`❌ ${e.message.slice(0,40)}`,'#f87171');
     if(btn) btn.textContent='🐙';
@@ -5683,7 +5798,7 @@ async function ghSyncPull(){
     }
     const t = payload.savedAt ? new Date(payload.savedAt).toLocaleString('cs-CZ') : '?';
     ghSetStatus(`✅ Načteno z ${t}`,'#34d399');
-    console.log('🐙 Gist loaded:', d.html_url);
+    
   } catch(e){
     ghSetStatus(`❌ ${e.message.slice(0,40)}`,'#f87171');
     console.error('ghSyncPull:', e);
@@ -5693,7 +5808,7 @@ async function ghSyncPull(){
 // Auto-sync po zprávě (volá se z sendMessage)
 async function ghAutoSyncIfEnabled(){
   if(!isGhAutoSync()) return;
-  try{ await ghSyncPush(); }catch(e){ console.warn('ghAutoSync:', e); }
+  try{ await ghSyncPush(); }catch(e){ ; }
 }
 
 function initGhSync(){
@@ -5808,10 +5923,10 @@ async function loadSodium(){
     if(!sodium.crypto_box_seal) throw new Error('crypto_box_seal chybí');
     window._sodium = sodium;
     window._sodium_ready = true;
-    console.log('✅ libsodium loaded via ESM import');
+    
     return sodium;
   }catch(e1){
-    console.warn('ESM import failed:', e1.message);
+    ;
     // Fallback: zkus non-sumo verzi
     try{
       const mod2 = await import('https://cdn.jsdelivr.net/npm/libsodium-wrappers@0.7.15/+esm');
@@ -5822,7 +5937,7 @@ async function loadSodium(){
         window._sodium_ready = true;
         return sodium2;
       }
-    }catch(e2){ console.warn('Fallback ESM failed:', e2.message); }
+    }catch(e2){ ; }
     throw new Error('libsodium se nepodařilo načíst — zkus to znovu nebo zkontroluj připojení');
   }
 }
@@ -6117,7 +6232,7 @@ async function autoWebSearch(query){
           return;
         }
       } catch(jinaErr) {
-        console.warn('Jina search failed:', jinaErr.message);
+        ;
       }
 
       // ── Fallback 3: Wikipedia CS ──
@@ -6217,6 +6332,7 @@ async function webSearch() {
 
 function clearSearchContext() {
   webSearchContext = null;
+  lastSources = [];
   document.getElementById('searchBar').style.display = 'none';
 }
 
@@ -6350,6 +6466,7 @@ async function fbLoad(){
     <input type="text" id="e-url" placeholder="API URL (pro vlastní AI)">
     <input type="text" id="e-model" placeholder="Model">
     <input type="text" id="e-color" placeholder="Barva hex">
+    <textarea id="e-role" placeholder="Role / specializace (např. Jsi právní expert. Analyzuješ smlouvy, hledáš rizika a formuluješ přesně.)" style="resize:none;min-height:70px;line-height:1.5;"></textarea>
     <div id="e-hint" class="hint"></div>
     <div class="modal-row">
       <button class="btn-cancel" onclick="closeEditModal()">Zrušit</button>
