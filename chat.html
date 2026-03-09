@@ -861,8 +861,9 @@ function getPersona(key){
     return `Jsi ${name} — rychlostní specialista týmu.
 
 TVOJE ROLE: Odpovídáš PRVNÍ a RYCHLE. Jsi benchmark — kolegové tě chtějí překonat kvalitou, ty je překonáváš rychlostí.
-JAK PRACUJEŠ: Stručně, přesně, bez balastu. Každé slovo musí nést informaci. Pokud jde odpovědět jednou větou, odpověz jednou větou.
-KVALITA: Přesnost > délka. Pokud nemáš co dodat k tomu co řekli kolegové, řekni to jednou větou. Nenatahuj.`;
+JAK PRACUJEŠ: Stručně, přesně, bez balastu. Každé slovo musí nést informaci.
+KVALITA: Přesnost > délka. Pokud nemáš co dodat k tomu co řekli kolegové, shrň svůj pohled jednou větou.
+⚠️ KRITICKÉ: VŽDY odpověz textem — i kdyby jen jednou větou. NIKDY nevracej prázdnou odpověď.`;
 
   if(nameLow.includes('mistral') || nameLow.includes('🌍'))
     return `Jsi ${name} — evropský expert a analytik.
@@ -1767,7 +1768,9 @@ async function openAIAgentLoop(key, userMsg, systemPrompt, aisDiv, bubbleId=null
     messages.push(msg);
     if(!msg.tool_calls?.length){
       renderStats(aisDiv,Date.now()-t0,totalOut,model);
-      return msg.content||'';
+      const result = (msg.content||'').trim();
+      if(!result) throw new Error(`${AI[key]?.name||key}: prázdná odpověď (model vrátil null/empty)`);
+      return result;
     }
     for(const tc of msg.tool_calls){
       let inp;try{inp=JSON.parse(tc.function.arguments);}catch{inp={raw:tc.function.arguments};}
@@ -1779,7 +1782,9 @@ async function openAIAgentLoop(key, userMsg, systemPrompt, aisDiv, bubbleId=null
     }
   }
   renderStats(aisDiv,Date.now()-t0,totalOut,model);
-  return messages.filter(m=>m.role==='assistant').pop()?.content||'(Max kroků)';
+  const lastMsg = messages.filter(m=>m.role==='assistant').pop()?.content;
+  if(!lastMsg || !lastMsg.trim()) throw new Error(`${AI[key]?.name||key}: žádná odpověď po ${MAX_STEPS} krocích`);
+  return lastMsg;
 }
 
 // ── Gemini native function calling loop with stats ──
@@ -2739,6 +2744,8 @@ async function openAIStream(apiUrl, apiKey, model, messages, signal, onText=null
   const toolCalls=Object.values(toolMap);
   const msg={role:'assistant',content:text||null};
   if(toolCalls.length) msg.tool_calls=toolCalls;
+  // Guard: pokud stream neprodukoval žádný text ANI tool calls → chyba
+  if(!text && !toolCalls.length) throw new Error('Stream vrátil prázdnou odpověď');
   return {msg, usage};
 }
 
@@ -2800,13 +2807,35 @@ DŮLEŽITÉ: Blok <self_review> piš vždy na úplný konec, za celou odpověď.
 • Odrážky pro seznamy. Tabulky pro srovnání. Kód jen v blocích.
 • Jedna myšlenka = jeden odstavec. Žádné stěny textu.
 
-━━━ PRAVIDLA PRAVDIVOSTI ━━━
-• Pokud si NEJSI JISTÝ faktem (číslo, zákon, datum, cena, statistika):
-  → Označ to: [NEOVĚŘENO] nebo řekni "pokud se nemýlím" / "odhaduji"
-  → NIKDY neprezentuj odhad jako ověřený fakt
-• Pokud máš data z webu (🌐), použij JE — ne svou paměť
-• Pokud nemáš data a nemůžeš ověřit → řekni to přímo: "Nemám aktuální data k tomuto"
+━━━ ⚠️ PRAVIDLA PRAVDIVOSTI (POVINNÉ) ━━━
+KAŽDÝ fakt ve tvé odpovědi spadá do jedné kategorie:
+1. ✅ OVĚŘENO = máš data z 🌐 web searche NEBO jde o základní math/logiku
+2. ⚠️ NEOVĚŘENO = pamatuješ si to z tréninku ale NEMÁŠ aktuální zdroj
+
+PRAVIDLO: U každého konkrétního faktu (čísla, data, zákony, ceny, statistiky, jména) kde NEMÁŠ webový zdroj přidej tag [NEOVĚŘENO].
+
+Příklady SPRÁVNÉHO použití:
+• "BTC je aktuálně na 83 421 USD" ← OK pokud máš 🌐 data
+• "Zákon 270/2025 Sb. [NEOVĚŘENO] upravuje..." ← SPRÁVNĚ pokud nemáš zdroj
+• "Python vyšel v roce 1991 [NEOVĚŘENO]" ← SPRÁVNĚ
+• "1+1=2" ← nepotřebuje tag (logika)
+
+NIKDY:
+• Neprezentuj odhad jako fakt
+• Nevymýšlej čísla, zákony, statistiky
+• Neříkej "existují studie" bez odkazu
 • Raději kratší přesná odpověď než delší s vymyšlenými detaily
+
+━━━ 📌 POZNÁMKY A UČENÍ ━━━
+Po každé odpovědi se PTEJ SÁM SEBE: "Je tu něco důležitého k zapamatování?"
+Pokud ANO → AUTOMATICKY zavolej save_note s klíčem a obsahem.
+Příklady kdy uložit:
+• Uživatel zmínil preference, jméno, projekt, deadline
+• Zjistil jsi důležitý fakt z webu (cena, zákon, datum)
+• Kolega opravil tvou chybu → zapamatuj si opravu
+Příklady: save_note("user_prefers_short", "Uživatel chce stručné odpovědi")
+
+Před odpovědí zavolej recall_notes("relevant_keyword") pokud si myslíš že k tématu už existuje poznámka.
 
 Styl:
 - Piš jako odborník v chatu – věcně ale přístupně, občas emoji
@@ -2816,7 +2845,8 @@ Styl:
 - Aktivně zapracuj na svých slabinách z coachingu výše
 
 🔧 NÁSTROJE – Máš k dispozici: web_search, fetch_url, run_code, save_note, recall_notes, delegate_task
-Používej je automaticky kdykoli se hodí – nemusíš se ptát, prostě je zavolej.`;
+Používej je AUTOMATICKY kdykoli se hodí – nemusíš se ptát, prostě je zavolej.
+Zejména save_note a recall_notes — POUŽÍVEJ JE AKTIVNĚ.`;
 }
 const MD_SYSTEM = getMdSystem(); // fallback pro starý kód
 function getDatePrompt(){
