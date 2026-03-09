@@ -5746,11 +5746,13 @@ async function encryptSecret(pubKeyB64, value){
 }
 async function setSecret(token,owner,repo,name,value){
   const r1=await fetch(`https://api.github.com/repos/${owner}/${repo}/actions/secrets/public-key`,{headers:{'Authorization':`token ${token}`}});
-  if(!r1.ok)throw new Error('PubKey:'+r1.status);
-  const{key,key_id}=await r1.json();
-  const enc=await encryptSecret(key,value);
-  const r2=await fetch(`https://api.github.com/repos/${owner}/${repo}/actions/secrets/${name}`,{method:'PUT',headers:{'Authorization':`token ${token}`,'Content-Type':'application/json'},body:JSON.stringify({encrypted_value:enc,key_id})});
-  if(!r2.ok)throw new Error('Secret '+name+':'+r2.status);
+  const d1=await r1.json().catch(()=>({}));
+  if(!r1.ok)throw new Error(`PubKey pro ${name}: ${d1.message||r1.status}`);
+  if(!d1.key)throw new Error(`PubKey pro ${name}: prázdný klíč`);
+  bgwStatus(`🔐 Šifruji ${name}…`,'#8b5cf6');
+  const enc=await encryptSecret(d1.key,value);
+  const r2=await fetch(`https://api.github.com/repos/${owner}/${repo}/actions/secrets/${name}`,{method:'PUT',headers:{'Authorization':`token ${token}`,'Content-Type':'application/json'},body:JSON.stringify({encrypted_value:enc,key_id:d1.key_id})});
+  if(!r2.ok){const e=await r2.json().catch(()=>({}));throw new Error(`Secret ${name}: ${e.message||r2.status}`);}
 }
 
 // ── Setup ──
@@ -5768,17 +5770,26 @@ async function bgwSetup(){
 
     bgwStatus('📦 Vytvářím repo…','#8b5cf6');
     const rr=await fetch('https://api.github.com/user/repos',{method:'POST',headers:{'Authorization':`token ${token}`,'Content-Type':'application/json'},body:JSON.stringify({name:BGW_REPO,private:true,description:'AI Background Worker',auto_init:true})});
-    if(!rr.ok){const e=await rr.json();if(!e.errors?.some(x=>x.message?.includes('already exists')))throw new Error('Repo: '+e.message);}
+    if(!rr.ok){
+      const re=await rr.json().catch(()=>({}));
+      const isExists=re.errors?.some(x=>x.message?.includes('already exists'))||re.message?.includes('already exists');
+      if(!isExists)throw new Error('Repo: '+(re.message||rr.status));
+    }
+
+    // Počkej chvíli aby GitHub dotvořil repo
+    await new Promise(r=>setTimeout(r,2000));
 
     bgwStatus('📝 Gist…','#8b5cf6');
     let gistId=getGhGistId();
     if(!gistId){
       const gr=await fetch('https://api.github.com/gists',{method:'POST',headers:{'Authorization':`token ${token}`,'Content-Type':'application/json'},body:JSON.stringify({description:'AI Chat + Background Tasks',public:false,files:{'ai-chat-sync.json':{content:'{}'},'ai-tasks.json':{content:'[]'},'ai-results.json':{content:'[]'}}})});
-      if(!gr.ok)throw new Error('Gist: '+(await gr.json()).message);
-      gistId=(await gr.json()).id;
+      const gd=await gr.json().catch(()=>({}));
+      if(!gr.ok)throw new Error('Gist: '+(gd.message||gr.status));
+      gistId=gd.id;
+      if(!gistId)throw new Error('Gist: chybí ID v odpovědi');
       localStorage.setItem('gh-gist-id',gistId);
     } else {
-      const gist=await(await fetch(`https://api.github.com/gists/${gistId}`,{headers:{'Authorization':`token ${token}`}})).json();
+      const gist=await(await fetch(`https://api.github.com/gists/${gistId}`,{headers:{'Authorization':`token ${token}`}})).json().catch(()=>({}));
       const patch={};
       if(!gist.files?.['ai-tasks.json'])patch['ai-tasks.json']={content:'[]'};
       if(!gist.files?.['ai-results.json'])patch['ai-results.json']={content:'[]'};
@@ -5791,9 +5802,9 @@ async function bgwSetup(){
     const fr=await fetch(`https://api.github.com/repos/${owner}/${BGW_REPO}/contents/${wPath}`,{headers:{'Authorization':`token ${token}`}});
     const fSha=fr.ok?(await fr.json()).sha:null;
     const wr=await fetch(`https://api.github.com/repos/${owner}/${BGW_REPO}/contents/${wPath}`,{method:'PUT',headers:{'Authorization':`token ${token}`,'Content-Type':'application/json'},body:JSON.stringify({message:'AI worker workflow',content:wB64,...(fSha?{sha:fSha}:{})})});
-    if(!wr.ok)throw new Error('Push workflow: '+(await wr.json()).message);
+    if(!wr.ok){const we=await wr.json().catch(()=>({}));throw new Error('Workflow: '+(we.message||wr.status));}
 
-    bgwStatus('🔐 Secrets…','#8b5cf6');
+    bgwStatus('🔐 Secrets (libsodium)…','#8b5cf6');
     await setSecret(token,owner,BGW_REPO,'GH_TOKEN',token);
     await setSecret(token,owner,BGW_REPO,'GIST_ID',gistId);
     const gk=AI.gemini?.key||localStorage.getItem('key-gemini')||'';
@@ -5803,7 +5814,11 @@ async function bgwSetup(){
     bgwStatus(`✅ Hotovo! <a href="https://github.com/${owner}/${BGW_REPO}/actions" target="_blank" style="color:#34d399">Zobrazit Actions ↗</a>`,'#34d399');
     document.getElementById('bgw-setup').style.display='none';
     document.getElementById('bgw-tasks').style.display='flex';
-  }catch(e){bgwStatus(`❌ ${e.message}`,'#f87171');console.error('bgwSetup:',e);}
+  }catch(e){
+    const msg=e?.message||String(e)||'Neznámá chyba';
+    bgwStatus(`❌ ${msg}`,'#f87171');
+    console.error('bgwSetup:',e);
+  }
   btn.textContent='🚀 Nastavit pozadí worker';btn.disabled=false;
 }
 
