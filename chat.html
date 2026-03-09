@@ -5724,18 +5724,33 @@ jobs:
 
 // ── Šifrování secretů pro GitHub API ──
 async function loadSodium(){
-  if(window._sodium_ready) return window.sodium;
-  return new Promise((res,rej)=>{
-    const s=document.createElement('script');
-    s.src='https://cdnjs.cloudflare.com/ajax/libs/libsodium-wrappers-sumo/0.7.13/sodium.js';
-    s.onload=async()=>{
-      await window.sodium.ready;
-      window._sodium_ready=true;
-      res(window.sodium);
-    };
-    s.onerror=rej;
-    document.head.appendChild(s);
-  });
+  if(window._sodium_ready && window.sodium?.crypto_box_seal) return window.sodium;
+  // Zkus několik CDN — různé URL formáty
+  const urls = [
+    'https://cdn.jsdelivr.net/npm/libsodium-wrappers-sumo@0.7.15/dist/modules-sumo/libsodium-wrappers.js',
+    'https://unpkg.com/libsodium-wrappers-sumo@0.7.15/dist/modules-sumo/libsodium-wrappers.js',
+    'https://cdn.jsdelivr.net/npm/libsodium-wrappers@0.7.15/dist/modules/libsodium-wrappers.js',
+  ];
+  for(const url of urls){
+    try{
+      await new Promise((res,rej)=>{
+        const s=document.createElement('script');
+        s.src=url;
+        s.onload=res;
+        s.onerror=()=>rej(new Error('Load failed: '+url.split('/')[4]));
+        document.head.appendChild(s);
+      });
+      if(window.sodium){
+        await window.sodium.ready;
+        if(window.sodium.crypto_box_seal){
+          window._sodium_ready=true;
+          console.log('✅ libsodium loaded from:', url);
+          return window.sodium;
+        }
+      }
+    }catch(e){ console.warn('libsodium CDN failed:', e.message); }
+  }
+  throw new Error('libsodium se nepodařilo načíst — zkontroluj připojení k internetu');
 }
 async function encryptSecret(pubKeyB64, value){
   const sodium=await loadSodium();
