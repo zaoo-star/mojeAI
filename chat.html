@@ -130,7 +130,6 @@ html,body{height:100%;height:100dvh;background:var(--bg);color:var(--text);font-
 .messages::-webkit-scrollbar-thumb{background:var(--border2);border-radius:3px;}
 
 /* USER BUBBLE */
-.msg-user{display:flex;justify-content:flex-end;}
 .msg-user-bubble{background:linear-gradient(135deg,var(--accent),var(--accent2));color:#fff;border-radius:18px 18px 4px 18px;padding:12px 16px;max-width:82%;font-size:15px;line-height:1.5;font-weight:500;box-shadow:0 4px 16px var(--glow);overflow-wrap:break-word;word-break:break-word;}
 .msg-file-badge{display:inline-flex;align-items:center;gap:6px;background:rgba(255,255,255,0.15);border-radius:8px;padding:4px 8px;font-size:11px;margin-top:6px;}
 
@@ -178,18 +177,37 @@ html,body{height:100%;height:100dvh;background:var(--bg);color:var(--text);font-
 
 /* INPUT AREA */
 .input-area{background:rgba(15,15,26,0.97);backdrop-filter:blur(12px);border-top:1px solid var(--border);padding:10px 12px;padding-bottom:max(10px,env(safe-area-inset-bottom));flex-shrink:0;}
-.input-btn{width:34px;height:34px;border-radius:10px;background:var(--card);border:1px solid var(--border);color:var(--muted2);cursor:pointer;display:flex;align-items:center;justify-content:center;flex-shrink:0;font-size:15px;transition:all .2s;}
+.input-btn{width:38px;height:38px;border-radius:11px;background:var(--card);border:1px solid var(--border);color:var(--muted2);cursor:pointer;display:flex;align-items:center;justify-content:center;flex-shrink:0;font-size:17px;transition:all .2s;}
 .input-btn:hover{border-color:var(--accent);color:var(--accent);}
+.input-btn:active{transform:scale(.93);}
 .input-btn.recording{background:rgba(239,68,68,0.15);border-color:#ef4444;color:#ef4444;animation:pulse 1s infinite;}
 @keyframes pulse{0%,100%{opacity:1}50%{opacity:.5}}
 @keyframes spin{to{transform:rotate(360deg)}}
 #msgInput{width:100%;background:var(--card);border:1.5px solid var(--border);border-radius:14px;padding:11px 14px;color:var(--text);font-family:'Outfit',sans-serif;font-size:15px;outline:none;resize:none;max-height:140px;line-height:1.5;transition:border-color .2s;display:block;box-sizing:border-box;margin-bottom:7px;}
 #msgInput:focus{border-color:var(--border2);}
 #msgInput::placeholder{color:var(--muted);}
-.send-btn{width:36px;height:36px;border-radius:12px;background:linear-gradient(135deg,var(--accent),var(--accent2));border:none;cursor:pointer;display:flex;align-items:center;justify-content:center;flex-shrink:0;box-shadow:0 3px 12px var(--glow);transition:transform .15s,box-shadow .15s;}
-.send-btn:active{transform:scale(.95);}
+.send-btn{width:44px;height:44px;border-radius:14px;background:linear-gradient(135deg,var(--accent),var(--accent2));border:none;cursor:pointer;display:flex;align-items:center;justify-content:center;flex-shrink:0;box-shadow:0 3px 16px var(--glow);transition:transform .15s,box-shadow .15s;}
+.send-btn:active{transform:scale(.92);box-shadow:0 1px 8px var(--glow);}
 .send-btn:disabled{background:#2a2a3a;box-shadow:none;cursor:default;}
-.send-btn svg{width:16px;height:16px;}
+.send-btn svg{width:18px;height:18px;}
+
+/* LIVE STATUS BANNER */
+#liveStatusBanner{display:none;align-items:center;gap:8px;padding:7px 14px;background:rgba(45,212,191,0.06);border-bottom:1px solid rgba(45,212,191,0.12);font-size:12px;color:var(--teal);flex-shrink:0;animation:fadeIn .2s ease;}
+#liveStatusBanner.visible{display:flex;}
+#liveStatusBanner .lsb-dot{width:7px;height:7px;border-radius:50%;background:var(--teal);flex-shrink:0;animation:pulse 1s infinite;}
+#liveStatusBanner .lsb-text{flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+#liveStatusBanner .lsb-agents{display:flex;gap:4px;flex-shrink:0;}
+#liveStatusBanner .lsb-agent{padding:2px 7px;border-radius:20px;font-size:10px;font-weight:600;letter-spacing:.4px;}
+#liveStatusBanner .lsb-agent.working{background:rgba(45,212,191,0.15);color:var(--teal);}
+#liveStatusBanner .lsb-agent.done{background:rgba(74,222,128,0.1);color:#4ade80;}
+#liveStatusBanner .lsb-agent.failed{background:rgba(248,113,113,0.1);color:#f87171;}
+
+/* AGENT FAILURE SUMMARY */
+.agent-fail-summary{margin:6px 0 4px 42px;padding:8px 12px;background:rgba(248,113,113,0.05);border:1px solid rgba(248,113,113,0.15);border-radius:10px;font-size:11px;color:var(--muted);}
+.agent-fail-summary .afs-title{color:#f87171;font-weight:600;margin-bottom:4px;font-size:10px;letter-spacing:.5px;text-transform:uppercase;}
+.agent-fail-row{display:flex;align-items:center;gap:6px;padding:2px 0;}
+.agent-fail-row .af-name{font-weight:600;color:var(--muted2);min-width:80px;}
+.agent-fail-row .af-reason{color:var(--muted);flex:1;}
 
 /* SEARCH BAR */
 #searchBar{padding:7px 14px;background:rgba(45,212,191,0.06);border-bottom:1px solid rgba(45,212,191,0.15);font-size:12px;color:var(--teal);flex-shrink:0;}
@@ -432,7 +450,7 @@ onAuthStateChanged(auth, user => {
     <input type="password" id="key-gemini" placeholder="AIza..." autocomplete="off">
     <div class="hint">→ aistudio.google.com/app/apikey</div>
     <div style="display:flex;gap:6px;align-items:center;margin-top:4px">
-      <button onclick="testGeminiKey()" style="background:var(--card2);border:1px solid var(--border);border-radius:6px;padding:3px 10px;font-size:11px;cursor:pointer;color:var(--fg)">🔍 Test modelu</button>
+      <button onclick="testGeminiKey()" style="background:var(--card2);border:1px solid var(--border);border-radius:6px;padding:3px 10px;font-size:11px;cursor:pointer;color:var(--text)">🔍 Test modelu</button>
       <span id="gemini-model-status" style="font-size:11px;color:var(--muted)"></span>
     </div>
   </div>
@@ -481,7 +499,7 @@ onAuthStateChanged(auth, user => {
   <div class="section-title" style="margin-top:4px">⏰ Naplánované prompty</div>
   <div id="scheduledPromptsCard" style="background:var(--card);border:1px solid var(--border);border-radius:16px;padding:14px 16px;display:flex;flex-direction:column;gap:10px;">
     <div id="scheduleList" style="display:flex;flex-direction:column;gap:6px;"></div>
-    <div id="scheduleForm" style="display:none;background:var(--surface);border:1px solid var(--border2);border-radius:12px;padding:12px;display:none;flex-direction:column;gap:8px;">
+    <div id="scheduleForm" style="display:none;background:var(--surface);border:1px solid var(--border2);border-radius:12px;padding:12px;flex-direction:column;gap:8px;">
       <div style="display:flex;gap:8px;flex-wrap:wrap;">
         <input id="sch-time" type="time" value="08:00" style="background:var(--card);border:1px solid var(--border2);border-radius:8px;padding:6px 10px;color:var(--text);font-family:'Outfit',sans-serif;font-size:13px;flex:1;min-width:90px;">
         <select id="sch-repeat" style="background:var(--card);border:1px solid var(--border2);border-radius:8px;padding:6px 10px;color:var(--text);font-family:'Outfit',sans-serif;font-size:13px;flex:1;min-width:110px;">
@@ -540,6 +558,11 @@ onAuthStateChanged(auth, user => {
     <button class="file-preview-remove" onclick="removeFile()">✕</button>
   </div>
   <div id="searchBar" style="display:none;padding:8px 16px;background:var(--card);border-bottom:1px solid var(--border);font-size:12px;color:var(--muted);flex-shrink:0;">🔍 <span id="searchStatus"></span></div>
+  <div id="liveStatusBanner">
+    <div class="lsb-dot"></div>
+    <span class="lsb-text" id="liveStatusText">Přemýšlím…</span>
+    <div class="lsb-agents" id="liveStatusAgents"></div>
+  </div>
   <div class="pinned-bar" id="pinnedBar"><span class="pinned-label">📌</span></div>
   <div class="messages" id="messages" role="log" aria-live="polite" aria-label="Konverzace"></div>
   <div class="input-area">
@@ -1363,13 +1386,14 @@ async function executeTool(name, input, aisDiv){
         assignVoice();
         window.speechSynthesis.speak(utter);
       } else {
+        let spoken = false;
+        const speakOnce = () => { if(spoken) return; spoken=true; assignVoice(); window.speechSynthesis.speak(utter); };
         window.speechSynthesis.onvoiceschanged = () => {
-          assignVoice();
-          window.speechSynthesis.speak(utter);
+          speakOnce();
           window.speechSynthesis.onvoiceschanged = null;
         };
         // Fallback — Chrome někdy nevolá onvoiceschanged po prvním načtení
-        setTimeout(() => { if(!utter.voice) { assignVoice(); window.speechSynthesis.speak(utter); } }, 500);
+        setTimeout(speakOnce, 500);
       }
       // Chip s ovládáním
       const chip = document.createElement('div');
@@ -1446,7 +1470,7 @@ async function claudeAgentLoop(userMsg, systemPrompt, aisDiv, fileSnap=null, bub
       const text=resp.content.find(b=>b.type==='text')?.text||'';
       if(bubbleId&&text.length>60){
         const rid=logStep('🔎 Self-reflection...','active');
-        const ref=await selfReflect('claude',String(userMsg).slice(0,400),text,signal).catch(()=>null);
+        const ref=await selfReflect(null,String(userMsg).slice(0,400),text,signal).catch(()=>null);
         if(ref&&!ref.startsWith('OK')&&ref.includes('VYLEPŠIT')){
           const hint=ref.replace(/^VYLEPŠIT:\s*/i,'');
           logStep(`🔎 Zlepšuji: ${hint.slice(0,55)}`,'active',null,rid);
@@ -1637,8 +1661,6 @@ const CLAUDE_MODELS = {
 
 // ════ THEME ════
 let isDark = localStorage.getItem('theme')!=='light';
-function applyThemeSimple(){ document.body.classList.toggle('theme-light',!isDark); document.getElementById('themeBtn').textContent=isDark?'🌙':'☀️'; }
-function toggleThemeLegacy(){ isDark=!isDark; localStorage.setItem('theme',isDark?'dark':'light'); applyTheme(); }
 
 // ════ STATS ════
 let statsEnabled = localStorage.getItem('stats')!=='0';
@@ -1752,9 +1774,9 @@ function renderAgentDashboard(){
       ${spark}
 
       <div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:10px">
-        <span style="font-size:11px;color:var(--muted)">📊 Hodnocení šéfem: <b style="color:var(--fg)">${totalReviews}</b></span>
-        <span style="font-size:11px;color:var(--muted)">🔄 Self-reflexí: <b style="color:var(--fg)">${totalSelf}</b></span>
-        <span style="font-size:11px;color:var(--muted)">📝 Zapracování: <b style="color:var(--fg)">${applyRate}</b></span>
+        <span style="font-size:11px;color:var(--muted)">📊 Hodnocení šéfem: <b style="color:var(--text)">${totalReviews}</b></span>
+        <span style="font-size:11px;color:var(--muted)">🔄 Self-reflexí: <b style="color:var(--text)">${totalSelf}</b></span>
+        <span style="font-size:11px;color:var(--muted)">📝 Zapracování: <b style="color:var(--text)">${applyRate}</b></span>
         <span style="font-size:11px;color:var(--muted)">👍 ${userLikes} / 👎 ${userDislikes}</span>
       </div>
 
@@ -2288,24 +2310,18 @@ function quotePinned(id){
 
 // ════ AUTO-TITLE ════
 async function autoGenerateTitle(msgText){
-  const claudeKey = localStorage.getItem('key-claude');
-  if(!claudeKey || chatLog.length !== 1) return; // only on first message
+  if(chatLog.length !== 1) return; // only on first message
+  if(!getOrchestratorChain().length) return;
   try{
-    const r = await fetch('https://api.anthropic.com/v1/messages',{
-      method:'POST',
-      headers:{'Content-Type':'application/json','x-api-key':claudeKey,'anthropic-version':'2023-06-01','anthropic-dangerous-direct-browser-access':'true'},
-      body:JSON.stringify({model:'claude-haiku-4-5-20251001',max_tokens:20,
-        messages:[{role:'user',content:`Navrhni krátký název chatu (max 5 slov, žádné uvozovky) pro tuto zprávu: "${msgText.slice(0,200)}"`}]})
-    });
-    if(!r.ok) return;
-    const d = await r.json();
-    const title = d.content?.[0]?.text?.trim().replace(/^["']|["']$/g,'').slice(0,40);
+    const title = await callOrchestratorQuick( 'Navrhni krátký název chatu (max 5 slov, česky, žádné uvozovky). Odpověz POUZE názvem.', `Zpráva: "${msgText.slice(0,200)}"`, 20);
     if(title){
-      document.getElementById('chatTitle').textContent = title;
-      // Update saved chat title
-      const chats = getChats();
-      const idx = chats.findIndex(c=>c.id===currentChatId);
-      if(idx!==-1){ chats[idx].title=title; saveChats(chats); }
+      const cleanTitle = title.replace(/^["']|["']$/g,'').replace(/\n.*/,'').slice(0,40);
+      if(cleanTitle){
+        document.getElementById('chatTitle').textContent = cleanTitle;
+        const chats = getChats();
+        const idx = chats.findIndex(c=>c.id===currentChatId);
+        if(idx!==-1){ chats[idx].title=cleanTitle; saveChats(chats); }
+      }
     }
   }catch{}
 }
@@ -2342,7 +2358,69 @@ function setBusy(on){
   document.getElementById('cancelBtn').style.display=on?'':'none';
   isBusy=on; document.getElementById('sendBtn').disabled=on;
   if(on){ currentAbortController=new AbortController(); }
-  else { currentAbortController=null; }
+  else { currentAbortController=null; hideLiveBanner(); }
+}
+
+// ── Live Status Banner ──
+const _liveAgentState = {}; // key → 'working'|'done'|'failed'
+function showLiveBanner(text, agents=[]){
+  const b = document.getElementById('liveStatusBanner');
+  const t = document.getElementById('liveStatusText');
+  const a = document.getElementById('liveStatusAgents');
+  if(t) t.textContent = text;
+  if(a && agents.length){
+    a.innerHTML = agents.map(k => {
+      const state = _liveAgentState[k] || 'working';
+      const name = (AI[k]?.name||k).split(' ')[0];
+      return `<span class="lsb-agent ${state}">${name}</span>`;
+    }).join('');
+  }
+  if(b) b.classList.add('visible');
+}
+function updateLiveAgent(key, state){ // state: 'working'|'done'|'failed'
+  _liveAgentState[key] = state;
+  const el = document.getElementById('liveStatusAgents');
+  if(!el) return;
+  // Aktualizuj jen konkrétní span
+  const spans = el.querySelectorAll('.lsb-agent');
+  const name = (AI[key]?.name||key).split(' ')[0];
+  spans.forEach(s => {
+    if(s.textContent === name){
+      s.className = `lsb-agent ${state}`;
+    }
+  });
+}
+function hideLiveBanner(){
+  Object.keys(_liveAgentState).forEach(k => delete _liveAgentState[k]);
+  const b = document.getElementById('liveStatusBanner');
+  if(b) b.classList.remove('visible');
+}
+function setLiveBannerText(text){
+  const t = document.getElementById('liveStatusText');
+  if(t) t.textContent = text;
+}
+
+// ── Agent Failure Summary ──
+function showAgentFailSummary(aisDiv, failures){ // failures: [{key, reason}]
+  if(!failures.length) return;
+  const div = document.createElement('div');
+  div.className = 'agent-fail-summary';
+  div.innerHTML = `<div class="afs-title">⚠️ ${failures.length} agent${failures.length>1?'i':''} selhal${failures.length>1?'i':''}</div>`
+    + failures.map(f => `<div class="agent-fail-row">
+      <span class="af-name">${AI[f.key]?.name?.split(' ')[0]||f.key}</span>
+      <span class="af-reason">${escHtml(categorizeError(f.reason))}</span>
+    </div>`).join('');
+  aisDiv.appendChild(div);
+}
+function categorizeError(msg){
+  const m = (msg||'').toLowerCase();
+  if(m.includes('rate') || m.includes('429')) return '🔴 Rate limit — zkus za chvíli';
+  if(m.includes('credit') || m.includes('billing') || m.includes('quota')) return '💳 Nedostatek kreditů';
+  if(m.includes('401') || m.includes('api key') || m.includes('invalid key')) return '🔑 Neplatný API klíč';
+  if(m.includes('not found') || m.includes('model')) return '🤖 Model nedostupný';
+  if(m.includes('timeout') || m.includes('network') || m.includes('fetch')) return '🌐 Síťová chyba';
+  if(m.includes('zrušeno') || m.includes('abort')) return '⏹ Zrušeno uživatelem';
+  return msg?.slice(0,60) || 'Neznámá chyba';
 }
 
 // ════ STREAMING HELPERS ════
@@ -2446,23 +2524,11 @@ function makeStreamingBubble(bubbleEl){
 
 // ════ SELF-REFLECTION ════
 async function selfReflect(key, question, answer, signal){
-  // Quick check: is the answer complete? Should we do more tool calls?
   const prompt=`Otázka: "${question.slice(0,300)}"\n\nTvoje odpověď: "${answer.slice(0,600)}"\n\nJe odpověď kompletní, přesná a odpovídá na otázku? Odpověz POUZE: "OK" nebo "VYLEPŠIT: [co konkrétně chybí nebo je špatně]"`;
-  try{
-    if(key==='claude'){
-      const r=await fetch('https://api.anthropic.com/v1/messages',{method:'POST',signal,headers:{'Content-Type':'application/json','x-api-key':AI.claude.key,'anthropic-version':'2023-06-01','anthropic-dangerous-direct-browser-access':'true'},body:JSON.stringify({model:'claude-haiku-4-5-20251001',max_tokens:100,messages:[{role:'user',content:prompt}]})});
-      if(!r.ok) return null;
-      const d=await r.json(); return d.content?.[0]?.text?.trim()||null;
-    } else if(key==='chatgpt'){
-      const r=await fetch('https://api.openai.com/v1/chat/completions',{method:'POST',signal,headers:{'Content-Type':'application/json','Authorization':`Bearer ${AI.chatgpt.key}`},body:JSON.stringify({model:'gpt-4o-mini',max_tokens:80,messages:[{role:'user',content:prompt}]})});
-      if(!r.ok) return null;
-      const d=await r.json(); return d.choices?.[0]?.message?.content?.trim()||null;
-    } else if(key==='gemini'){
-      const r=await fetch(geminiUrlSync(),{method:'POST',signal,headers:{'Content-Type':'application/json'},body:JSON.stringify({contents:[{role:'user',parts:[{text:prompt}]}],generationConfig:{maxOutputTokens:80}})});
-      if(!r.ok) return null;
-      const d=await r.json(); return d.candidates?.[0]?.content?.parts?.[0]?.text?.trim()||null;
-    }
-  }catch{} return null;
+  return await callOrchestratorQuick(
+    'Zkontroluj odpověď. Odpověz POUZE: "OK" nebo "VYLEPŠIT: [co konkrétně chybí nebo je špatně]"',
+    prompt, 100
+  );
 }
 
 
@@ -2685,7 +2751,7 @@ async function buildCumulativeMemory(){
     const msgs = chat.messages || [];
     if(msgs.length < 2) continue;
     try {
-      const convText = msgs.slice(-6).map(m=>{const aiParts=Object.entries(m).filter(([k])=>k!=='user'&&k!=='_file'&&k!=='_synth'&&typeof m[k]==='string').map(([k,v])=>v.slice(0,150)).join(' | ');return `Uživatel: ${m.user||''}\nAI: ${aiParts}`;}).join('\n');
+      const convText = msgs.slice(-6).map(m=>{const aiParts=Object.entries(m).filter(([k])=>k!=='user'&&!k.startsWith('_')&&typeof m[k]==='string').map(([k,v])=>v.slice(0,150)).join(' | ');return `Uživatel: ${m.user||''}\nAI: ${aiParts}`;}).join('\n');
       const newFacts = await extractFactsFromText(convText);
       const existingTexts = allFacts.map(f=>typeof f==='string'?f.toLowerCase():f.text?.toLowerCase());
       allFacts = [...allFacts, ...newFacts.filter(f=>!existingTexts.includes(f.text.toLowerCase()))];
@@ -2699,8 +2765,7 @@ async function buildCumulativeMemory(){
 }
 
 async function extractFactsFromText(convText){
-  const claudeKey = localStorage.getItem('key-claude');
-  const groqAI = Object.values(AI).find(a=>a.url?.includes('groq') && a.key);
+  if(!getOrchestratorChain().length) return [];
   const memPrompt = `Z této konverzace vypiš max 6 faktů o uživateli které stojí za zapamatování.
 Každý fakt vrať na nový řádek ve formátu: KATEGORIE|fakt
 Kategorie: me (osobní info), project (projekty/práce), pref (preference/styl), decision (rozhodnutí/plány)
@@ -2712,13 +2777,7 @@ pref|Preferuje stručné odpovědi bez zbytečného textu
 decision|Chce přidat scheduler pro automatické prompty`;
   let text = '';
   try{
-    if(claudeKey){
-      const resp=await fetch('https://api.anthropic.com/v1/messages',{method:'POST',headers:{'Content-Type':'application/json','x-api-key':claudeKey,'anthropic-version':'2023-06-01','anthropic-dangerous-direct-browser-access':'true'},body:JSON.stringify({model:'claude-haiku-4-5-20251001',max_tokens:400,system:memPrompt,messages:[{role:'user',content:convText}]})});
-      const d=await resp.json(); text=d.content?.[0]?.text?.trim()||'';
-    } else if(groqAI){
-      const resp=await fetch(`${groqAI.url}/chat/completions`,{method:'POST',headers:{'Content-Type':'application/json','Authorization':`Bearer ${groqAI.key}`},body:JSON.stringify({model:'llama-3.1-8b-instant',max_tokens:400,messages:[{role:'system',content:memPrompt},{role:'user',content:convText}]})});
-      const d=await resp.json(); text=d.choices?.[0]?.message?.content?.trim()||'';
-    }
+    text = await callOrchestratorQuick( memPrompt, convText, 400) || '';
   } catch(e){ return []; }
   if(!text||text.toLowerCase().includes('nic')) return [];
   const now = new Date().toISOString();
@@ -2738,7 +2797,7 @@ async function extractAndSaveMemory(conversation){
   if(conversation.length < 1) return;
   const convText = conversation.slice(-4).map(m=>{
     const aiParts = Object.entries(m)
-      .filter(([k])=>k!=='user'&&k!=='_file'&&typeof m[k]==='string')
+      .filter(([k])=>k!=='user'&&!k.startsWith('_')&&typeof m[k]==='string')
       .map(([,v])=>v.slice(0,200)).join(' | ');
     return `Uživatel: ${m.user||''}\nAI: ${aiParts}`;
   }).join('\n');
@@ -3201,9 +3260,10 @@ function exportAs(format) {
   if(format==='txt'){
     let out=`AI Chat – ${date}\n${'='.repeat(40)}\n\n`;
     for(const h of chatLog){
+      if(h._compressedSummary){ out+=`[Starší zprávy zkomprimovány: ${h._compressedSummary.slice(0,120)}…]\n\n`; continue; }
       out+=`Ty: ${h.user}\n\n`;
       for(const [k,v] of Object.entries(h)){
-        if(k==='user'||k==='_file'||k==='_synth'||typeof v!=='string')continue;
+        if(k==='user'||k.startsWith('_')||typeof v!=='string')continue;
         out+=`${AI[k]?.name||k}:\n${v}\n\n`;
       }
       out+=`${'-'.repeat(40)}\n\n`;
@@ -3214,9 +3274,10 @@ function exportAs(format) {
   if(format==='md'){
     let out=`# AI Chat – ${date}\n\n`;
     for(const h of chatLog){
+      if(h._compressedSummary){ out+=`> 📦 *[Starší zprávy zkomprimovány: ${escHtml(h._compressedSummary.slice(0,120))}…]*\n\n`; continue; }
       out+=`## 💬 ${escHtml(h.user)}\n\n`;
       for(const [k,v] of Object.entries(h)){
-        if(k==='user'||k==='_file'||k==='_synth'||typeof v!=='string')continue;
+        if(k==='user'||k.startsWith('_')||typeof v!=='string')continue;
         out+=`### ${AI[k]?.name||k}\n\n${v}\n\n`;
       }
       out+=`---\n\n`;
@@ -3279,9 +3340,10 @@ function exportAs(format) {
   if(format==='html'){
     let msgs='';
     for(const h of chatLog){
+      if(h._compressedSummary){ msgs+=`<div style="background:#fffbe6;border-left:3px solid #f59e0b;padding:8px 12px;margin:8px 0;font-style:italic;font-size:12px;color:#92400e">📦 ${escHtml(h._compressedSummary.slice(0,120))}…</div>`; continue; }
       msgs+=`<div class="msg-user"><strong>Ty:</strong> ${escHtml(h.user)}</div>`;
       for(const [k,v] of Object.entries(h)){
-        if(k==='user'||k==='_file'||k==='_synth'||typeof v!=='string')continue;
+        if(k==='user'||k.startsWith('_')||typeof v!=='string')continue;
         const ai=AI[k];
         msgs+=`<div class="msg-ai" style="border-left:3px solid ${ai?.rawColor||'#888'}"><strong style="color:${ai?.rawColor||'#888'}">${ai?.name||k}</strong><div>${marked.parse(v)}</div></div>`;
       }
@@ -3441,8 +3503,7 @@ function getAgentStyleHint(agentKey){
 
 // Požádá Clauda aby ohodnotil každého agenta po syntéze (async, na pozadí)
 async function claudeTeachAgents(question, agentAnswers, peerScores){
-  const claudeKey = localStorage.getItem('key-claude');
-  if(!claudeKey || !Object.keys(agentAnswers).length) return;
+  if(!getOrchestratorChain().length || !Object.keys(agentAnswers).length) return;
   const keys = Object.keys(agentAnswers).filter(k=>!k.startsWith('_') && agentAnswers[k]);
   if(!keys.length) return;
   try{
@@ -3459,14 +3520,8 @@ Pro každého agenta vrať JSON na samostatném řádku:
 Buď konkrétní — ne "dobrá odpověď" ale např. "přesné příklady", "logická struktura" / "chybí alternativy", "příliš obecné".
 Hodnoť přísně ale spravedlivě. Vrať pouze JSON řádky, nic jiného.`;
 
-    const r = await fetch('https://api.anthropic.com/v1/messages',{
-      method:'POST',
-      headers:{'Content-Type':'application/json','x-api-key':claudeKey,'anthropic-version':'2023-06-01','anthropic-dangerous-direct-browser-access':'true'},
-      body: JSON.stringify({model:'claude-haiku-4-5-20251001', max_tokens:600, messages:[{role:'user',content:prompt}]})
-    });
-    if(!r.ok) return;
-    const d = await r.json();
-    const text = d.content?.[0]?.text||'';
+    const text = await callOrchestratorQuick( 'Jsi přísný hodnotitel AI odpovědí. Odpovídej POUZE JSON řádky.', prompt, 600);
+    if(!text) return;
     // Parsuj každý JSON řádek
     const results = [];
     text.split('\n').forEach(line=>{
@@ -3506,16 +3561,16 @@ Hodnoť přísně ale spravedlivě. Vrať pouze JSON řádky, nic jiného.`;
       const id = 'teach_'+Date.now();
       toast.innerHTML = `
         <div id="${id}_hdr" onclick="document.getElementById('${id}_body').style.display=document.getElementById('${id}_body').style.display==='none'?'block':'none';this.querySelector('.chevron').textContent=document.getElementById('${id}_body').style.display==='none'?'▸':'▾'"
-          style="padding:7px 12px;background:var(--bg2);cursor:pointer;display:flex;align-items:center;gap:6px;user-select:none">
+          style="padding:7px 12px;background:var(--surface);cursor:pointer;display:flex;align-items:center;gap:6px;user-select:none">
           <span>🎓</span>
-          <span style="flex:1;color:var(--muted)">Claude ohodnotil agenty</span>
+          <span style="flex:1;color:var(--muted)">Hodnocení agentů</span>
           <span class="chevron" style="color:var(--muted);font-size:10px">▸</span>
         </div>
         <div id="${id}_body" style="display:none;background:var(--bg)">${rowsHtml}</div>`;
       msgsDiv.appendChild(toast);
       msgsDiv.scrollTop = msgsDiv.scrollHeight;
     }
-    console.log('🎓 Claude ohodnotil agenty, feedback uložen');
+    console.log('🎓 Hodnocení agentů, feedback uložen');
   } catch(e){ console.log('claudeTeachAgents error:', e); }
 }
 
@@ -3569,9 +3624,7 @@ async function autoCompressChat(){
   // Přeskoč pokud jsou tam jen compressed entries
   if(toCompress.every(h => h._compressedSummary)) return;
 
-  const claudeKey = localStorage.getItem('key-claude');
-  const groqAI = Object.values(AI).find(a => a.url?.includes('groq') && a.key);
-  if(!claudeKey && !groqAI) return; // bez AI klíče nelze komprimovat
+  if(!getOrchestratorChain().length) return;
 
   // Zobraz notifikaci
   const notif = document.createElement('div');
@@ -3586,15 +3639,7 @@ async function autoCompressChat(){
     }).join('\n\n---\n\n');
 
     const prompt = `Shrň tuto část konverzace do 3-5 vět. Zaměř se na klíčová témata, rozhodnutí a závěry. Buď konkrétní — co bylo řečeno, co bylo rozhodnuto:\n\n${convText.slice(0,6000)}`;
-    let summary = '';
-
-    if(claudeKey){
-      const r = await fetch('https://api.anthropic.com/v1/messages',{method:'POST',headers:{'Content-Type':'application/json','x-api-key':claudeKey,'anthropic-version':'2023-06-01','anthropic-dangerous-direct-browser-access':'true'},body:JSON.stringify({model:'claude-haiku-4-5-20251001',max_tokens:300,messages:[{role:'user',content:prompt}]})});
-      const d = await r.json(); summary = d.content?.[0]?.text?.trim()||'';
-    } else if(groqAI){
-      const r = await fetch(`${groqAI.url}/chat/completions`,{method:'POST',headers:{'Content-Type':'application/json','Authorization':`Bearer ${groqAI.key}`},body:JSON.stringify({model:'llama-3.1-8b-instant',max_tokens:300,messages:[{role:'user',content:prompt}]})});
-      const d = await r.json(); summary = d.choices?.[0]?.message?.content?.trim()||'';
-    }
+    const summary = await callOrchestratorQuick( 'Shrň konverzaci stručně a konkrétně.', prompt, 300) || '';
 
     if(summary){
       // Nahraď komprimované zprávy jedním záznamem
@@ -3812,24 +3857,82 @@ async function iterateIfNeeded(key, originalMsg, reply, maxIter=2){
 }
 
 // ════ HELPER: rychlé volání jednoho agenta ════
+// Hodí QuotaError při quota/rate limit chybách
+class QuotaError extends Error { constructor(msg,key){ super(msg); this.name='QuotaError'; this.agentKey=key; } }
+function isQuotaError(text){
+  const t = (text||'').toLowerCase();
+  return t.includes('quota') || t.includes('rate') || t.includes('limit') || t.includes('exceeded')
+    || t.includes('resource_exhausted') || t.includes('429') || t.includes('insufficient')
+    || t.includes('billing') || t.includes('too many');
+}
+
 async function callAgentQuick(key, systemPrompt, userPrompt, maxTokens=500){
   if(getSignal()?.aborted) return null;
   const ai = AI[key]; const sig = getSignal();
   try{
+    let r, d;
     if(key==='claude'){
-      const r=await fetchWithRetry('https://api.anthropic.com/v1/messages',{method:'POST',signal:sig,headers:{'Content-Type':'application/json','x-api-key':ai.key,'anthropic-version':'2023-06-01','anthropic-dangerous-direct-browser-access':'true'},body:JSON.stringify({model:'claude-haiku-4-5-20251001',max_tokens:maxTokens,system:systemPrompt,messages:[{role:'user',content:userPrompt}]})});
-      const d=await r.json(); return d.content?.[0]?.text?.trim()||null;
+      r=await fetchWithRetry('https://api.anthropic.com/v1/messages',{method:'POST',signal:sig,headers:{'Content-Type':'application/json','x-api-key':ai.key,'anthropic-version':'2023-06-01','anthropic-dangerous-direct-browser-access':'true'},body:JSON.stringify({model:'claude-haiku-4-5-20251001',max_tokens:maxTokens,system:systemPrompt,messages:[{role:'user',content:userPrompt}]})});
+      if(!r.ok){ const e=await r.json().catch(()=>({})); const msg=e.error?.message||`${r.status}`; if(r.status===429||isQuotaError(msg)) throw new QuotaError(msg,key); return null; }
+      d=await r.json(); return d.content?.[0]?.text?.trim()||null;
     } else if(key==='gemini'){
-      const r=await fetchWithRetry(geminiUrlSync(),{method:'POST',signal:sig,headers:{'Content-Type':'application/json'},body:JSON.stringify({systemInstruction:{parts:[{text:systemPrompt}]},contents:[{role:'user',parts:[{text:userPrompt}]}],generationConfig:{maxOutputTokens:maxTokens}})});
-      const d=await r.json(); return d.candidates?.[0]?.content?.parts?.[0]?.text?.trim()||null;
+      r=await fetchWithRetry(geminiUrlSync(),{method:'POST',signal:sig,headers:{'Content-Type':'application/json'},body:JSON.stringify({systemInstruction:{parts:[{text:systemPrompt}]},contents:[{role:'user',parts:[{text:userPrompt}]}],generationConfig:{maxOutputTokens:maxTokens}})});
+      if(!r.ok){ const e=await r.json().catch(()=>({})); const msg=e.error?.message||`${r.status}`; if(r.status===429||isQuotaError(msg)) throw new QuotaError(msg,key); return null; }
+      d=await r.json(); return d.candidates?.[0]?.content?.parts?.[0]?.text?.trim()||null;
     } else if(key==='chatgpt' || ai.url){
       const url = ai.url ? `${ai.url}/chat/completions` : 'https://api.openai.com/v1/chat/completions';
       const model = key==='chatgpt' ? 'gpt-4o-mini' : normalizeModel(ai);
       if(ai.url?.includes('openrouter')) await new Promise(r=>setTimeout(r,700));
-      const r=await fetchWithRetry(url,{method:'POST',signal:sig,headers:{'Content-Type':'application/json','Authorization':`Bearer ${ai.key}`},body:JSON.stringify({model,max_tokens:maxTokens,messages:[{role:'system',content:systemPrompt},{role:'user',content:userPrompt}]})});
-      const d=await r.json(); return d.choices?.[0]?.message?.content?.trim()||null;
+      r=await fetchWithRetry(url,{method:'POST',signal:sig,headers:{'Content-Type':'application/json','Authorization':`Bearer ${ai.key}`},body:JSON.stringify({model,max_tokens:maxTokens,messages:[{role:'system',content:systemPrompt},{role:'user',content:userPrompt}]})});
+      if(!r.ok){ const e=await r.json().catch(()=>({})); const msg=e.error?.message||`${r.status}`; if(r.status===429||isQuotaError(msg)) throw new QuotaError(msg,key); return null; }
+      d=await r.json(); return d.choices?.[0]?.message?.content?.trim()||null;
     }
-  } catch(e){ console.warn('callAgentQuick', key, e.message); return null; }
+  } catch(e){
+    if(e instanceof QuotaError) throw e; // propaguj quota error pro fallback
+    console.warn('callAgentQuick', key, e.message); return null;
+  }
+  return null;
+}
+
+// ════ FREE ORCHESTRATOR ════
+// Vrátí klíč nejlepšího FREE modelu pro orchestrační úlohy.
+// Claude se použije JEN jako poslední možnost.
+function getFreeOrchestrator(){
+  const chain = getOrchestratorChain();
+  return chain[0] || null;
+}
+
+// Vrátí seřazený chain všech dostupných orchestrátorů
+// Pořadí: Gemini Flash (zdarma) > custom AI (Groq, DeepSeek...) > ChatGPT > Claude
+function getOrchestratorChain(){
+  const chain = [];
+  if(AI.gemini?.key) chain.push('gemini');
+  for(const k of Object.keys(AI)){
+    if(['claude','gemini','chatgpt'].includes(k)) continue;
+    if(AI[k].key && AI[k].url) chain.push(k);
+  }
+  if(AI.chatgpt?.key) chain.push('chatgpt');
+  if(AI.claude?.key) chain.push('claude');
+  return chain;
+}
+
+// Zavolá orchestrační úlohu s automatickým fallbackem při quota/rate limit chybách
+// Gemini dojdou tokeny → zkusí Groq → ChatGPT → Claude
+async function callOrchestratorQuick(systemPrompt, userPrompt, maxTokens=500){
+  const chain = getOrchestratorChain();
+  if(!chain.length) return null;
+  for(const key of chain){
+    try{
+      const result = await callAgentQuick(key, systemPrompt, userPrompt, maxTokens);
+      if(result) return result;
+    } catch(e){
+      if(e instanceof QuotaError){
+        console.warn(`⚡ ${AI[key]?.name||key} quota limit → fallback na dalšího`);
+        continue; // zkus dalšího v chainu
+      }
+      return null; // jiná chyba → stop
+    }
+  }
   return null;
 }
 
@@ -3846,11 +3949,10 @@ const WORKER_TYPES = {
 
 async function pmRoute(msg, agents){
   if(agents.length < 2) return {}; // PM má smysl jen pro 2+ agenty
-  const claudeKey = localStorage.getItem('key-claude');
-  if(!claudeKey) return {};
+  if(!getOrchestratorChain().length) return {};
   const workerKeys = Object.keys(WORKER_TYPES);
   const workerList = workerKeys.map(k=>`${k}: ${WORKER_TYPES[k].desc}`).join('\n');
-  const result = await callAgentQuick('claude',
+  const result = await callOrchestratorQuick(
     `Jsi PM manažer (Lana). Přiděluješ worker typy agentům pro co nejlepší výsledek.
 Dostupné worker typy:\n${workerList}
 Odpověz POUZE jako JSON: {"agent0":"typ","agent1":"typ",...} kde agentN jsou indexy agentů 0,1,2...
@@ -3875,10 +3977,7 @@ Každý agent musí mít jiný typ. Maximálně ${agents.length} typů.`,
 // Přidělí každému agentovi konkrétní perspektivu před diskuzí
 async function assignRoles(msg, agents){
   if(!agents.length || getSignal()?.aborted) return {};
-  // Použij Clauda pokud dostupný, jinak prvního agenta
-  const claudeKey = localStorage.getItem('key-claude');
-  const orchestratorKey = claudeKey ? 'claude' : agents[0];
-  if(!AI[orchestratorKey]?.key && !claudeKey) return {};
+  if(!getOrchestratorChain().length) return {};
 
   const agentNames = agents.map(k=>AI[k].name).join(', ');
   const sys = 'Odpovídej POUZE jako JSON objekt. Žádný text před ani za.';
@@ -3891,7 +3990,7 @@ Použij přesně tyto klíče: ${agents.map(k=>`"${k}"`).join(', ')}
 Příklady úhlů: technická správnost, praktická použitelnost, rizika a nevýhody, historický kontext, alternativní přístupy, kreativní řešení, datová analýza, etické dopady`;
 
   try{
-    const text = await callAgentQuick(orchestratorKey, sys, prompt, 300);
+    const text = await callOrchestratorQuick( sys, prompt, 300);
     if(!text) return {};
     const match = text.match(/\{[\s\S]*\}/);
     if(match) return JSON.parse(match[0]);
@@ -4045,7 +4144,7 @@ async function sendMessage() {
   }
 
   const currentSelected = mentionKey
-    ? (selected.has(mentionKey) ? [mentionKey] : [...selected]) // pokud agent zapnutý, jen on; jinak ignoruj
+    ? (selected.includes(mentionKey) ? [mentionKey] : [...selected]) // pokud agent zapnutý, jen on; jinak ignoruj
     : [...selected];
   const assistants=currentSelected.filter(k=>!AI[k].boss);
   // Agenti jen pro review (Gemini) — odpovídají ale nejsou primární workeři pokud jsou zapnutí jiní
@@ -4055,7 +4154,6 @@ async function sendMessage() {
   // Pokud jsou POUZE reviewOnly agenti, nech je odpovídat normálně
   const actualWorkers = primaryWorkers.length > 0 ? primaryWorkers : assistants;
   const hasClaude=currentSelected.includes('claude');
-  const MAX_ROUNDS=5;
   // Pro obrázky nepřidávej base64 do textu – callClaude a callClaudeFinal to řeší přes vision API
   const fullMsg=fileSnap?(fileSnap.isImage?msgText:`${msgText}\n\nObsah souboru "${fileSnap.name}":\n\`\`\`\n${fileSnap.content.slice(0,12000)}\n\`\`\``):msgText;
 
@@ -4114,19 +4212,23 @@ async function sendMessage() {
     const MAX_CONSENSUS_ROUNDS = 4;
 
     // ── KOLO 1: Sekvenční odpovědi – každý vidí předchozí ──
-    // Kratký popis tématu pro labely
     const _topicSnip = msgText.replace(/["""]/g,'').slice(0,42).trim() + (msgText.length>42?'…':'');
     startStatusLog(aisDiv);
     addDivider(aisDiv, assistants.length>1 ? `💬 Tým ${assistants.length} AI odpovídá...` : `💬 ${AI[assistants[0]]?.name||'AI'} přemýšlí...`);
+
+    // Live banner
+    showLiveBanner(`Zpracovává ${assistants.length} AI…`, assistants);
+    const _teamFailures = [];
+
     for(let i=0; i<assistants.length; i++){
       const key = assistants[i];
+      updateLiveAgent(key, 'working');
       const _prevDone = assistants.slice(0,i).filter(k=>kb[k]?.text).length;
       const _bubLbl = _prevDone>0
         ? `${AI[key].name} · čte ${_prevDone} koleg${_prevDone===1?'u':'y'} → „${_topicSnip}"`
         : `${AI[key].name} · zpracovává: „${_topicSnip}"`;
       const bubble = addBubble(aisDiv, key, _bubLbl);
       try{
-        // Sestav kontext z odpovědí kolegů kteří již odpověděli
         const prevAnswers = assistants.slice(0,i)
           .filter(k => kb[k]?.text)
           .map(k => `${AI[k].name} napsal: ${kb[k].text.slice(0,600)}`)
@@ -4135,19 +4237,20 @@ async function sendMessage() {
           ? `\n\n📋 Kolegové již odpověděli:\n${prevAnswers}\n\nTy jsi na řadě – přidej svůj pohled, doplň nebo oprav co vidíš jinak.`
           : '';
         const p = `${baseMsg}${autoCalcResult}${webNote}${contextNote}`;
-        // Native agent loop
         let text = await callTeamAI(key, p, bubble);
-        // Parsuj self-reflection a ulož do style memory
         extractAndSaveSelfReview(key, text);
-        // Odstraň self_review blok z viditelné odpovědi
         text = stripHidden(text);
         kb[key] = {text, vote:'souhlas'};
         assistantAnswers[key] = text;
+        updateLiveAgent(key, 'done');
         updateBubbleLabel(bubble, `${AI[key].name}`);
-        finishBubble(bubble, text);
+        // Solo agent bez Claude → rovnou final
+        const isSoloFinal = assistants.length === 1;
+        finishBubble(bubble, text, null, isSoloFinal);
       }catch(e){
         kb[key] = {text:'', vote:'nesouhlas'};
-        // Zaznamenej chybu – možná limit nebo špatný klíč
+        updateLiveAgent(key, 'failed');
+        _teamFailures.push({key, reason: e.message});
         const errLow = e.message.toLowerCase();
         if(errLow.includes('quota') || errLow.includes('rate') || errLow.includes('limit') || errLow.includes('insufficient') || errLow.includes('billing')){
           AI[key]._limitHit = true;
@@ -4157,6 +4260,11 @@ async function sendMessage() {
         }
       }
       scrollBottom();
+    }
+
+    // Zobraz souhrn chyb
+    if(_teamFailures.length > 0 && Object.keys(assistantAnswers).length > 0){
+      showAgentFailSummary(aisDiv, _teamFailures);
     }
 
     // ── KONSENSUÁLNÍ SMYČKA ──
@@ -4284,7 +4392,9 @@ Tvůj úkol jako syntetizátor:
       aisDiv.appendChild(srcDiv);
     }
     clearSearchContext();
-    chatLog.push({user:msgText,...assistantAnswers});
+    // BUG FIX: Ulož jako konzistentní formát — hlavní odpověď pod klíčem 'claude' pro getConvHistoryPrompt
+    const _synthReply = assistantAnswers['_synth'] || Object.values(assistantAnswers).find(v=>v) || '';
+    chatLog.push({user:msgText, claude:_synthReply, ...assistantAnswers});
     saveCurrent();
     autoGenerateTitle(msgText);
     extractAndSaveMemory(chatLog);
@@ -4337,8 +4447,6 @@ Tvůj úkol jako syntetizátor:
     const skipped = actualWorkers.filter(k=>!routed.includes(k)).map(k=>AI[k].name).join(', ');
     addDivider(aisDiv,`🎯 Specializace → ${routed.map(k=>AI[k].name).join(', ')} (${skipped} přeskočen)`);
   }
-  // Přidej reviewOnly agenty do routed jen pro peer-review fázi (ne jako workeři)
-  const routedForReview = [...new Set([...routed, ...reviewOnlyAgents.filter(k=>AI[k].key)])];
 
   // 🎭 PM ROUTING (Lana) — přidělí worker typy před diskuzí
   let workerRoles = {};
@@ -4377,11 +4485,16 @@ Tvůj úkol jako syntetizátor:
     }
     addDivider(aisDiv, task.isSimple ? 'ASISTENTI ODPOVÍDAJÍ' : '💬 ASISTENTI · PARALELNÍ ODPOVĚDI');
 
-    // ⚡ Paralelizace: OpenRouter musí být sekvenční (rate limit), zbytek paralelně
+    // ⚡ Paralelizace
     const parallelKeys = routed.filter(k => !AI[k].url?.includes('openrouter'));
     const sequentialKeys = routed.filter(k => AI[k].url?.includes('openrouter'));
 
+    // Zobraz live banner se jmény agentů
+    showLiveBanner(`Zpracovává ${routed.length} AI…`, routed);
+
+    const agentFailures = []; // sbíráme chyby pro souhrn
     const runAgent = async (key, i) => {
+      updateLiveAgent(key, 'working');
       const bubble = addBubble(aisDiv, key, `${AI[key].name} · ${workerRoles[key]?.label||'zpracovává'}: „${msgText.slice(0,38)}${msgText.length>38?'…':''}"`);
       try {
         const roleHint = agentRoles[key] ? `\n\nTvoje perspektiva v této diskuzi: ${agentRoles[key]}` : '';
@@ -4401,8 +4514,14 @@ Tvůj úkol jako syntetizátor:
           updateBubbleLabel(bubble, `${AI[key].name.toUpperCase()} · ${scoreEmoji}${result.score}/5${iterLabel}`);
         }
         assistantAnswers[key] = stripHidden(reply);
-        finishBubble(bubble, reply);
-      } catch(e) { finishBubble(bubble, null, e.message); }
+        updateLiveAgent(key, 'done');
+        const isSoloFinal = routed.length === 1 && !AI.claude?.key;
+        finishBubble(bubble, reply, null, isSoloFinal);
+      } catch(e) {
+        updateLiveAgent(key, 'failed');
+        agentFailures.push({key, reason: e.message});
+        finishBubble(bubble, null, e.message);
+      }
       scrollBottom();
     };
 
@@ -4411,6 +4530,15 @@ Tvůj úkol jako syntetizátor:
     for(let i=0; i<sequentialKeys.length; i++){
       await new Promise(r=>setTimeout(r,1500));
       await runAgent(sequentialKeys[i], parallelKeys.length+i);
+    }
+
+    // Zobraz souhrn chyb pokud nějaké byly
+    if(agentFailures.length > 0 && Object.keys(assistantAnswers).length > 0){
+      showAgentFailSummary(aisDiv, agentFailures);
+    }
+    // Aktualizuj banner pro syntézu
+    if(Object.keys(assistantAnswers).length > 0){
+      setLiveBannerText('Claude syntetizuje výsledky…');
     }
 
     // 💬 DISCUSSION ROUND — agenti reagují na sebe navzájem
@@ -4569,9 +4697,26 @@ Odpověz POUZE jako JSON:
     addDivider(aisDiv, `📊 Průměrné skóre: <span style="color:${scoreColor2};font-weight:700">${avgPeerScore.toFixed(2)}</span>`);
 
     if(recommendation === 'take_best'){
-      claudeVerdict = assistantAnswers[bestKey] || Object.values(assistantAnswers).find(v=>v) || '';
-      addDivider(aisDiv, `✅ ${AI[bestKey]?.name||bestKey} · nejlepší odpověď`);
-      finishLog();
+      if(!AI.claude?.key){
+        claudeVerdict = assistantAnswers[bestKey] || Object.values(assistantAnswers).find(v=>v) || '';
+        addDivider(aisDiv, `✅ ${AI[bestKey]?.name||bestKey} · nejlepší odpověď`);
+        finishLog();
+      } else {
+        addDivider(aisDiv, `✅ Kvalita OK · Claude schvaluje a finalizuje`);
+        const claudeBubble = addBubble(aisDiv,'claude','Claude 👑 · schvaluje…',true);
+        try{
+          const bestAnswer = assistantAnswers[bestKey] || Object.values(assistantAnswers).find(v=>v) || '';
+          const claudeSys = getMdSystem('claude')+getDatePrompt()+getMemoryPrompt()+getSearchPrompt()
+            +`\nJsi šéf týmu. Gemini doporučil odpověď od ${AI[bestKey]?.name||bestKey} jako nejlepší.
+Tvůj úkol: zkontroluj ji, oprav drobnosti pokud nějaké jsou, a dej finální odpověď.
+Pokud je odpověď dobrá, můžeš ji převzít s minimálními úpravami. Nemusíš přepisovat od nuly.`;
+          const claudePrompt = `Otázka: ${fullMsg}\n\nNejlepší odpověď od ${AI[bestKey]?.name||bestKey}:\n${bestAnswer.slice(0,8000)}\n\nTvoje finální verze:`;
+          claudeVerdict = await claudeAgentLoop(claudePrompt, claudeSys, aisDiv, fileSnap, claudeBubble);
+          updateBubbleLabel(claudeBubble, 'CLAUDE 👑 · schválil ✓');
+          finishBubble(claudeBubble, claudeVerdict, null, true);
+        } catch(e){ finishBubble(claudeBubble, null, e.message); claudeVerdict = assistantAnswers[bestKey]||''; }
+        scrollBottom();
+      }
       claudeTeachAgents(msgText, assistantAnswers, peerScores);
 
     } else if(recommendation === 'rescue' || avgPeerScore < 0.75){
@@ -4636,9 +4781,44 @@ Tvůj úkol: syntetizuj NEJLEPŠÍ části do jedné výborné odpovědi.`;
     }
 
   } else {
-    // Jednoduchý dotaz — vezmi první dostupnou odpověď rovnou
-    claudeVerdict = Object.values(assistantAnswers).find(v=>v) || '';
-    finishLog();
+    // Jednoduchý dotaz nebo 1 agent
+    const bestAnswer = Object.values(assistantAnswers).find(v=>v) || '';
+    const soloKey = Object.keys(assistantAnswers).find(k=>assistantAnswers[k]);
+
+    if(!AI.claude?.key || !bestAnswer){
+      // Claude není k dispozici → workerova odpověď rovnou jako finální
+      claudeVerdict = bestAnswer;
+      if(soloKey){
+        const bubbles = aisDiv.querySelectorAll('.ai-bubble-wrap');
+        bubbles.forEach(bwrap => {
+          const nameEl = bwrap.querySelector('.ai-name');
+          if(nameEl?.textContent?.toLowerCase().includes(AI[soloKey]?.name?.toLowerCase().split(' ')[0]||soloKey)){
+            const bubbleEl = bwrap.querySelector('[class*="bubble-"]');
+            if(bubbleEl && !bubbleEl.classList.contains('final')){
+              bubbleEl.classList.add('final');
+              const msgAi = bubbleEl.closest('.msg-ai');
+              if(msgAi) msgAi.classList.remove('collapsed');
+            }
+          }
+        });
+      }
+      finishLog();
+    } else {
+      // Claude má poslední slovo — rychlá finalizace
+      finishLog();
+      startStatusLog(aisDiv);
+      const claudeBubble = addBubble(aisDiv,'claude','Claude 👑 · finalizuje…',true);
+      try{
+        const claudeSys = getMdSystem('claude')+getDatePrompt()+getMemoryPrompt()+getSearchPrompt()
+          +`\nJsi šéf týmu. Kolega ti dodal odpověď. Zkontroluj ji, uprav pokud je potřeba, a dej finální verzi.
+Pokud je odpověď dobrá, můžeš ji převzít s minimálními úpravami — neplýtvej slovy.`;
+        const claudePrompt = `Otázka: ${fullMsg}\n\nOdpověď od ${AI[soloKey]?.name||'workera'}:\n${bestAnswer.slice(0,8000)}\n\nTvoje finální verze:`;
+        claudeVerdict = await claudeAgentLoop(claudePrompt, claudeSys, aisDiv, fileSnap, claudeBubble);
+        updateBubbleLabel(claudeBubble, 'CLAUDE 👑 · ✓');
+        finishBubble(claudeBubble, claudeVerdict, null, true);
+      } catch(e){ finishBubble(claudeBubble, null, e.message); claudeVerdict = bestAnswer; }
+      scrollBottom();
+    }
   }
 
   } // end else (workers available)
@@ -4806,9 +4986,10 @@ function finishBubble(id,text,error=null,isFinal=false){
     if(bwrap) addReactionsBar(bwrap, id);
   } else {
     el.innerHTML=formatText(text);
-    // preview prvních ~50 znaků odpovědi
-    const preview = (text||'').replace(/[#*`\n]/g,' ').replace(/\s+/g,' ').trim().slice(0,55);
-    logStep((preview ? '„'+preview+(text.length>55?'…"':'„') : 'hotovo ✓'), 'done', null, lid);
+    // Odstraň <think> tagy z preview
+    const previewText = (text||'').replace(/<think>[\s\S]*?<\/think>/gi,'').replace(/[#*`\n]/g,' ').replace(/\s+/g,' ').trim();
+    const preview = previewText.slice(0,55);
+    logStep((preview ? '„'+preview+(previewText.length>55?'…"':'"') : 'hotovo ✓'), 'done', null, lid);
     // Add reactions bar
     const bwrap = el.closest('.ai-bubble-wrap');
     if(bwrap && !bwrap.querySelector('.reactions-bar')) addReactionsBar(bwrap, id);
@@ -4829,15 +5010,6 @@ function addDivider(container,label){
 }
 
 // ════ API CALLS ════
-async function pickModel(msg){
-  // If user manually chose a model, respect it
-  if(selectedModel && selectedModel !== 'auto') return selectedModel;
-  // Otherwise auto-detect based on complexity
-  const r=await fetchWithRetry('https://api.anthropic.com/v1/messages',{method:'POST',headers:{'Content-Type':'application/json','x-api-key':AI.claude.key,'anthropic-version':'2023-06-01','anthropic-dangerous-direct-browser-access':'true'},body:JSON.stringify({model:'claude-haiku-4-5-20251001',max_tokens:10,system:'Ohodnoť složitost. Odpověz POUZE: haiku, sonnet, nebo opus.\n- haiku: pozdrav, jednoduchá otázka\n- sonnet: vysvětlení, analýza\n- opus: kód, matematika, věda, velký dokument',messages:[{role:'user',content:msg.slice(0,500)}]})});
-  if(!r.ok)return'sonnet';
-  const d=await r.json();const c=d.content[0].text.trim().toLowerCase();
-  return CLAUDE_MODELS[c]?c:'sonnet';
-}
 
 async function reviewGemini(originalMsg, verdict){
   const sig=currentAbortController?.signal;
@@ -4964,7 +5136,7 @@ function formatText(t){
     }catch{ highlighted = escHtml(decoded); }
     const langLabel = lang||'code';
     const copyId = 'cp_'+Math.random().toString(36).slice(2);
-    return `<div class="pre-wrap"><button class="copy-btn" id="${copyId}" onclick="copyCode('${copyId}',this)">копировать</button><pre style="margin:0"><code class="hljs language-${langLabel}">${highlighted}</code></pre></div>`;
+    return `<div class="pre-wrap"><button class="copy-btn" id="${copyId}" onclick="copyCode('${copyId}',this)">kopírovat</button><pre style="margin:0"><code class="hljs language-${langLabel}">${highlighted}</code></pre></div>`;
   });
   return thinkHtml + html;
 }
@@ -5034,7 +5206,7 @@ function loadChat(id){
     // AI bubbles
     const aisDiv=document.createElement('div');
     aisDiv.className='msg-ais';
-    const aiEntries = Object.entries(h).filter(([k])=>k!=='user'&&k!=='_file'&&k!=='_synth');
+    const aiEntries = Object.entries(h).filter(([k])=>k!=='user'&&!k.startsWith('_')&&typeof h[k]==='string');
     for(const [k,v] of aiEntries){
       const ai=AI[k];
       const color=ai?.rawColor||'#888';
@@ -5133,23 +5305,14 @@ async function shouldSearch(query){
   if(hardNo.test(t) && t.length < 60) return false;
   // Pro vše ostatní delší než 15 slov – hledej
   if(t.split(' ').length > 15) return true;
-  // Zkus Groq nebo Claude pro rozhodnutí
-  const claudeKey = localStorage.getItem('key-claude');
-  const groqAI = Object.values(AI).find(a=>a.url?.includes('groq') && a.key);
+  // Zkus free model pro rozhodnutí
+  if(!getOrchestratorChain().length) return false;
   try{
-    if(claudeKey){
-      const r=await fetch('https://api.anthropic.com/v1/messages',{method:'POST',headers:{'Content-Type':'application/json','x-api-key':claudeKey,'anthropic-version':'2023-06-01','anthropic-dangerous-direct-browser-access':'true'},body:JSON.stringify({model:'claude-haiku-4-5-20251001',max_tokens:5,system:'Odpověz pouze ANO nebo NE. ANO = otázka by profitovala z aktuálních dat z webu (fakta, události, ceny, osoby, místa...). NE = lze dobře odpovědět ze znalostí.',messages:[{role:'user',content:query.slice(0,200)}]})});
-      if(!r.ok) return true;
-      const d=await r.json();
-      return d.content[0].text.trim().toUpperCase().startsWith('ANO');
-    } else if(groqAI){
-      const r=await fetch(`${groqAI.url}/chat/completions`,{method:'POST',headers:{'Content-Type':'application/json','Authorization':`Bearer ${groqAI.key}`},body:JSON.stringify({model:'llama-3.1-8b-instant',max_tokens:5,messages:[{role:'system',content:'Odpověz pouze ANO nebo NE. ANO = otázka by profitovala z aktuálních dat z webu. NE = lze dobře odpovědět ze znalostí.'},{role:'user',content:query.slice(0,200)}]})});
-      if(!r.ok) return true;
-      const d=await r.json();
-      return d.choices[0].message.content.trim().toUpperCase().startsWith('ANO');
-    }
+    const answer = await callOrchestratorQuick(
+      'Odpověz pouze ANO nebo NE. ANO = otázka by profitovala z aktuálních dat z webu (fakta, události, ceny, osoby, místa...). NE = lze dobře odpovědět ze znalostí.',
+      query.slice(0,200), 5);
+    return (answer||'').trim().toUpperCase().startsWith('ANO');
   }catch(e){ return false; } // při chybě raději nehledej
-  return false;
 }
 
 // ════ AUTO WEB SEARCH ════
@@ -5510,7 +5673,7 @@ async function fbLoad(){
 </div>
 <!-- MODAL: Agent Progress Dashboard -->
 <div id="agentDashboard" onclick="if(event.target===this)closeAgentDashboard()" style="position:fixed;inset:0;background:rgba(0,0,0,0.85);display:none;align-items:center;justify-content:center;z-index:400;padding:16px;overflow-y:auto;">
-  <div style="background:var(--bg2);border-radius:20px;width:100%;max-width:680px;max-height:90vh;overflow-y:auto;padding:24px;box-shadow:0 20px 60px rgba(0,0,0,0.5)">
+  <div style="background:var(--surface);border-radius:20px;width:100%;max-width:680px;max-height:90vh;overflow-y:auto;padding:24px;box-shadow:0 20px 60px rgba(0,0,0,0.5)">
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px">
       <h2 style="margin:0;font-size:18px">🎓 Pokrok agentů</h2>
       <button onclick="closeAgentDashboard()" style="background:none;border:none;color:var(--muted);font-size:22px;cursor:pointer;line-height:1">✕</button>
