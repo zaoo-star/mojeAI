@@ -834,7 +834,14 @@ JAK KOMUNIKUJEŠ:
 KVALITA:
 • Preferuj přesnost před rychlostí. Raději kratší přesná odpověď než dlouhá vágní.
 • Každé tvrzení musí být podložené — logikou, daty, nebo alespoň transparentním odhadem.
-• Když nemáš data, řekni "nemám data, ale logický odhad je X, protože Y".`,
+• Když nemáš data, řekni "nemám data, ale logický odhad je X, protože Y".
+
+QUALITY MANAGER ROLE:
+Občas budeš požádán o hodnocení kolegů (jako QM). V tom případě:
+• NEODPOVÍDEJ na otázku uživatele — hodnoť POUZE odpovědi kolegů
+• Výstup je POUZE JSON — žádný pozdrav, žádné "rád ti pomůžu", žádné úvody
+• Buď PŘÍSNÝ ale spravedlivý — score 1.0 jen za perfektní odpověď
+• Identifikuj KONKRÉTNÍ problémy, ne obecné "mohlo by být lepší"`,
 
   chatgpt: `Jsi CHATGPT — kreativní generalista, komunikátor a řešitel problémů.
 
@@ -5197,7 +5204,15 @@ Tvůj úkol jako syntetizátor — KOMPLETNÍ ODPOVĚĎ:
       try {
         const roleHint = agentRoles[key] ? `\n\nTvoje perspektiva v této diskuzi: ${agentRoles[key]}` : '';
         const workerHint = workerRoles[key] ? `\n\n👷 Worker role: ${workerRoles[key].label} — ${workerRoles[key].desc}` : '';
-        const assignedTask = (subtasks ? `${enrichedMsg}\n\nTvůj konkrétní podúkol: ${subtasks[i % subtasks.length]}` : enrichedMsg) + projPrompt + roleHint + workerHint;
+        // Koordinace: předej kolegovy odpovědi pokud už existují
+        const peerContext = Object.entries(assistantAnswers)
+          .filter(([k,v])=>k!==key && !k.startsWith('_') && typeof v==='string' && v.length>20)
+          .map(([k,v])=>`${AI[k]?.name||k}: ${cleanForSynthesis(v).slice(0,400)}`)
+          .join('\n\n');
+        const peerNote = peerContext
+          ? `\n\n📋 Kolegové již odpověděli (přidej svůj UNIKÁTNÍ pohled, neopakuj co řekli):\n${peerContext}`
+          : (routed.length>1 ? '\n\nJsi první kdo odpovídá. Kolegové odpovídají paralelně — zaměř se na SVOU specializaci.' : '');
+        const assignedTask = (subtasks ? `${enrichedMsg}\n\nTvůj konkrétní podúkol: ${subtasks[i % subtasks.length]}` : enrichedMsg) + projPrompt + roleHint + workerHint + peerNote;
         const sys = getMdSystem(key)+getDatePrompt()+getMemoryPrompt()+getSearchPrompt()+getTeamHistoryContext();
         let reply;
         if(key==='gemini') reply = await geminiAgentLoop(assignedTask, sys, aisDiv, fileSnap);
@@ -5341,34 +5356,52 @@ Máš přístup k nástrojům: web_search, fetch_url, run_code, save_note, recal
         ).join('\n\n---\n\n');
         const myAnswer = assistantAnswers['gemini'] ? `\n\nMoje vlastní odpověď pro referenci:\n${cleanForSynthesis(assistantAnswers['gemini']).slice(0,perBudget)}` : '';
 
+        const qmSystem = `Jsi Quality Manager v AI týmu. Tvůj JEDINÝ úkol je hodnotit odpovědi kolegů a dát šéfovi (Claude) doporučení.
+NEODPOVÍDEJ na otázku uživatele. NEPIŠ vlastní odpověď. NEPOZDRAVUJ.
+Tvůj výstup je POUZE strukturované JSON hodnocení. Nic jiného.`;
+
         const prompt = `Otázka uživatele: "${msgText.slice(0,400)}"
 
-Odpovědi týmu:
+Odpovědi týmu k hodnocení:
 ${answersBlock}${myAnswer}
 
-Tvůj úkol jako Quality Manager:
-1. Ohodnoť každého (score 0.0-1.0, silné stránky, slabiny)
-2. Urči NEJLEPŠÍHO workera
-3. Dej šéfovi JASNÉ doporučení: syntetizovat / zachránit / vzít nejlepšího rovnou
+TVŮJ ÚKOL — hodnoť KAŽDÉHO workera:
+1. score 0.0-1.0 (přísně! 1.0 = perfektní, 0.5 = průměrné, 0.0 = k ničemu)
+2. strengths: co udělal dobře (konkrétně)
+3. weaknesses: co chybí nebo je špatně (konkrétně)
+4. Urči NEJLEPŠÍHO workera
+5. Dej doporučení: "synthesize" (sloučit nejlepší) / "rescue" (šéf musí přepsat) / "take_best" (jeden stačí)
 
-Odpověz POUZE jako JSON:
-{
-  "scores": {"worker_key": {"score": 0.0-1.0, "strengths": ["..."], "weaknesses": ["..."]}},
-  "best": "worker_key",
-  "avgScore": 0.0-1.0,
-  "recommendation": "synthesize|rescue|take_best",
-  "reason": "proč toto doporučuješ šéfovi"
-}`;
+ODPOVĚZ POUZE TÍMTO JSON (bez markdown, bez pozdravu, bez vysvětlení):
+{"scores":{"worker_key":{"score":0.0,"strengths":["..."],"weaknesses":["..."]}},"best":"worker_key","avgScore":0.0,"recommendation":"synthesize","reason":"důvod"}`;
 
         const r = await fetch(geminiUrlSync(),{
           method:'POST', signal: currentAbortController?.signal,
           headers:{'Content-Type':'application/json'},
-          body: JSON.stringify({contents:[{role:'user',parts:[{text:prompt}]}], generationConfig:{maxOutputTokens:600}})
+          body: JSON.stringify({
+            systemInstruction:{parts:[{text:qmSystem}]},
+            contents:[{role:'user',parts:[{text:prompt}]}],
+            generationConfig:{maxOutputTokens:800, temperature:0.1}
+          })
         });
         if(!r.ok) throw new Error((await r.json()).error?.message||r.status);
         const d = await r.json();
         const raw = (d.candidates?.[0]?.content?.parts?.[0]?.text||'{}').replace(/```json|```/g,'').trim();
-        geminiVerdict = JSON.parse(raw);
+        // Pokus o parsování — pokud Gemini vrátil pozdrav místo JSON, zkus extrahovat
+        let parsed;
+        try{ parsed = JSON.parse(raw); }catch{
+          // Zkus najít JSON v textu (Gemini někdy přidá text před/za JSON)
+          const jsonMatch = raw.match(/\{[\s\S]*"scores"[\s\S]*\}/);
+          if(jsonMatch) try{ parsed = JSON.parse(jsonMatch[0]); }catch{}
+        }
+        if(!parsed || !parsed.scores){
+          // QM selhal — fallback: rovnoměrné skóre pro všechny
+          logStep('⚠️ QM: neplatný výstup, přeskakuji', 'error');
+          geminiVerdict = {scores:{}, best:workerKeys[0], avgScore:0.75, recommendation:'synthesize', reason:'QM nedal platné hodnocení'};
+          for(const k of workerKeys) geminiVerdict.scores[k] = {score:0.75, strengths:['N/A'], weaknesses:['N/A']};
+        } else {
+          geminiVerdict = parsed;
+        }
 
         // Ulož skóre pro teaching
         for(const [k, v] of Object.entries(geminiVerdict.scores||{})){
