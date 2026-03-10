@@ -1155,7 +1155,9 @@ async function executeTool(name, input, aisDiv){
     const approved = await requireApproval(name, input, aisDiv);
     if(!approved) return `🚫 Akce "${name}" zrušena uživatelem`;
   }
-
+  // Guard: input musí být objekt
+  if(!input || typeof input !== 'object') input = {};
+  try{
   switch(name){
 
     case 'web_search':{
@@ -1226,24 +1228,30 @@ async function executeTool(name, input, aisDiv){
     }
 
     case 'save_note':{
-      taskNotes[input.key]=input.content;
+      const noteKey = input.key || input.name || 'note_'+Date.now();
+      const noteContent = input.content || input.text || input.value || '';
+      if(!noteContent) return '⚠️ Prázdná poznámka — nic neuloženo';
+      taskNotes[noteKey]=noteContent;
       const all=JSON.parse(localStorage.getItem('agent-notes')||'{}');
-      all[input.key]={content:input.content,ts:Date.now()};
+      all[noteKey]={content:noteContent,ts:Date.now()};
       localStorage.setItem('agent-notes',JSON.stringify(all));
-      return `✅ Uloženo jako "${input.key}" (${input.content.length} znaků)`;
+      return `✅ Uloženo jako "${noteKey}" (${noteContent.length} znaků)`;
     }
 
     case 'recall_notes':{
       const all={...JSON.parse(localStorage.getItem('agent-notes')||'{}'), ...Object.fromEntries(Object.entries(taskNotes).map(([k,v])=>[k,{content:v}]))};
       if(!Object.keys(all).length) return 'Žádné uložené poznámky.';
-      if(input.query==='all') return Object.entries(all).map(([k,v])=>`[${k}]:\n${v.content}`).join('\n\n---\n\n');
-      const q=input.query.toLowerCase();
-      const hits=Object.entries(all).filter(([k,v])=>k.toLowerCase().includes(q)||v.content.toLowerCase().includes(q));
-      return hits.length?hits.map(([k,v])=>`[${k}]:\n${v.content}`).join('\n\n---\n\n'):'Nic nenalezeno pro: '+input.query;
+      const query = input.query || input.keyword || input.key || 'all';
+      if(query==='all') return Object.entries(all).map(([k,v])=>`[${k}]:\n${v.content||''}`).join('\n\n---\n\n');
+      const q=(query+'').toLowerCase();
+      const hits=Object.entries(all).filter(([k,v])=>k.toLowerCase().includes(q)||(v.content||'').toLowerCase().includes(q));
+      return hits.length?hits.map(([k,v])=>`[${k}]:\n${v.content||''}`).join('\n\n---\n\n'):'Nic nenalezeno pro: '+query;
     }
 
     case 'delegate_task':{
-      const agentKey=Object.keys(AI).find(k=>k===input.agent||AI[k]?.name?.toLowerCase().includes(input.agent.toLowerCase()));
+      const agentName = input.agent || input.to || '';
+      if(!agentName) return 'Chybí jméno agenta pro delegaci. Dostupní: '+Object.keys(AI).filter(k=>AI[k].key).join(', ');
+      const agentKey=Object.keys(AI).find(k=>k===agentName||AI[k]?.name?.toLowerCase().includes(agentName.toLowerCase()));
       if(!agentKey||!AI[agentKey]?.key) return `Agent "${input.agent}" není dostupný nebo nemá API klíč. Dostupní: ${Object.keys(AI).filter(k=>AI[k].key).join(', ')}`;
       try{
         const ai=AI[agentKey];
@@ -1646,6 +1654,7 @@ async function executeTool(name, input, aisDiv){
       return `✅ Hudba generována: "${prompt}" (${duration}s) – přehrávač zobrazen`;
     }
   }
+  }catch(e){ return `⚠️ Chyba nástroje ${name}: ${(e.message||String(e)).slice(0,120)}`; }
 }
 
 // ── Render collapsible tool step in UI ──
