@@ -805,6 +805,12 @@ OVĚŘENÍ:
 • Pokud workeři si protiřečí → rozhodni kdo má pravdu a vysvětli proč.
 • Pokud chybí data → explicitně řekni co chybí a proč.
 
+ŘEŠENÍ KONFLIKTŮ MEZI AGENTY:
+• Pokud si workeři protiřečí → rozhodni na základě: 1) ověřená data > neověřená, 2) konkrétní > obecné, 3) logický argument > tvrzení bez důkazu
+• Pokud odpověď obsahuje [ODPOVĚĎ PRAVDĚPODOBNĚ OŘÍZNUTÁ] → doplň chybějící část sám
+• Pokud worker navrhuje nerelevantní řešení (GPU optimalizace pro cloud API) → explicitně řekni proč to není aplikovatelné
+• Vždy uveď KTERÉ workerovy poznatky jsi použil a KTERÉ jsi zamítl a proč
+
 ⛔ ZAKÁZÁNO:
 • NIKDY neopakuj otázku uživatele na začátku odpovědi. Rovnou odpovídej.
 • NIKDY nezačínej "Reakce na kolegy:" — to je interní anotace.
@@ -973,7 +979,7 @@ const TOOL_DEFS = [
   },
   {
     name: 'generate_image',
-    description: 'Generuje obrázek pomocí DALL-E 3. Použij když uživatel chce vizualizaci, ilustraci, nebo konkrétně žádá obrázek.',
+    description: 'Generuje obrázek. Nabídne uživateli výběr: Pollinations (ZDARMA, bez klíče) nebo DALL-E 3 (placené). VŽDY zavolej tento nástroj když uživatel chce obrázek — i bez OpenAI klíče funguje přes Pollinations zdarma.',
     input_schema: { type:'object', properties:{
       prompt: {type:'string', description:'Detailní anglický popis obrázku'}
     }, required:['prompt'] }
@@ -1327,7 +1333,7 @@ async function executeTool(name, input, aisDiv){
 
     case 'generate_image':{
       const url = await generateImage(input.prompt, aisDiv);
-      return url ? `✅ Obrázek vygenerován: ${url}` : '⚠️ Generování obrázku selhalo (zkontroluj OpenAI klíč)';
+      return url ? `✅ Obrázek vygenerován: ${url}` : '⚠️ Generování obrázku selhalo — zkus to znovu';
     }
 
     case 'set_reminder':{
@@ -1838,7 +1844,7 @@ async function openAIAgentLoop(key, userMsg, systemPrompt, aisDiv, bubbleId=null
   const isGroq = ai.url?.includes('groq.com');
   let model=isGPT?'gpt-4o':normalizeModel(ai);
   // Groq: max_tokens nižší aby se vyhnul credit/rate limitům
-  const maxTokens = isGroq ? 1024 : isGPT ? 2048 : 1500;
+  const maxTokens = isGroq ? 2048 : isGPT ? 4096 : 3000;
   const MAX_STEPS=10; const t0=Date.now(); let totalOut=0;
   const signal=currentAbortController?.signal;
   const supportsStream=isGPT||(!ai.url?.includes('openrouter'));
@@ -1959,7 +1965,7 @@ async function _geminiAgentLoopWithModel(userMsg, systemPrompt, aisDiv, fileSnap
     if(signal?.aborted) throw new Error('Zrušeno');
     const r=await fetchWithRetry(`https://generativelanguage.googleapis.com/v1beta/models/${geminiModel}:generateContent?key=${AI.gemini.key}`,{
       method:'POST',signal,headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({systemInstruction:{parts:[{text:fullSystem}]},contents,tools:getGeminiTools(),toolConfig:{functionCallingConfig:{mode:'AUTO'}},generationConfig:{maxOutputTokens:1500,temperature:_adaptiveTemp||0.6}})
+      body:JSON.stringify({systemInstruction:{parts:[{text:fullSystem}]},contents,tools:getGeminiTools(),toolConfig:{functionCallingConfig:{mode:'AUTO'}},generationConfig:{maxOutputTokens:3000,temperature:_adaptiveTemp||0.6}})
     });
     if(!r.ok){const e=await r.json();throw new Error(e.error?.message||r.status);}
     const data=await r.json();
@@ -2339,10 +2345,16 @@ async function generateWithPollinations(prompt, container){
       clearTimeout(timer);
       logStep('🆓 Pollinations selhalo', 'error');
       const el = document.getElementById(loadId);
-      if(el) el.innerHTML = '⚠️ Pollinations selhalo' + (localStorage.getItem('key-chatgpt') ? ' — zkouším DALL-E…' : '');
-      if(localStorage.getItem('key-chatgpt')){
-        resolve(await generateWithDalle(prompt, wrap));
-      } else resolve(null);
+      if(el) el.innerHTML = `<div style="text-align:center;padding:20px;">
+        <div style="font-size:14px;color:#f87171;margin-bottom:10px;">⚠️ Pollinations selhalo</div>
+        <button onclick="this.closest('.img-gen-result').remove();imgRetryPollinations(${JSON.stringify(prompt)})"
+          style="background:rgba(52,211,153,0.15);border:1px solid rgba(52,211,153,0.4);border-radius:8px;color:#34d399;cursor:pointer;padding:8px 16px;font-size:13px;">🔄 Zkusit znovu</button>
+        ${localStorage.getItem('key-chatgpt')
+          ? ` <button onclick="this.closest('.img-gen-result').remove();generateWithDalle(${JSON.stringify(prompt)},document.querySelector('.msg-ais:last-child'))"
+              style="background:rgba(251,191,36,0.15);border:1px solid rgba(251,191,36,0.4);border-radius:8px;color:#fbbf24;cursor:pointer;padding:8px 16px;font-size:13px;margin-left:8px;">✨ Zkusit DALL-E</button>`
+          : ''}
+      </div>`;
+      resolve(null);
     };
     img.src = url;
   });
@@ -2351,6 +2363,11 @@ async function generateWithPollinations(prompt, container){
 async function imgUpgradeDalle(prompt, div){
   div.innerHTML = `<div style="display:flex;align-items:center;justify-content:center;height:180px;background:var(--card2);color:var(--muted);font-size:13px;gap:8px;"><span style="animation:spin 1s linear infinite;display:inline-block">⏳</span> Generuji DALL-E 3…</div>`;
   await generateWithDalle(prompt, div);
+}
+
+async function imgRetryPollinations(prompt){
+  const container = document.querySelector('.msg-ais:last-child');
+  if(container) await generateWithPollinations(prompt, container);
 }
 // ── DALL-E 3 upgrade/fallback ──
 async function generateWithDalle(prompt, replaceDiv){
@@ -2852,7 +2869,7 @@ async function openAIStream(apiUrl, apiKey, model, messages, signal, onText=null
   const r=await fetchWithRetry(apiUrl,{
     method:'POST', signal,
     headers:{'Content-Type':'application/json','Authorization':`Bearer ${apiKey}`},
-    body:JSON.stringify({model,max_tokens:2048,messages,tools:getOpenAITools(),tool_choice:'auto',stream:true,temperature:_adaptiveTemp||0.6})
+    body:JSON.stringify({model,max_tokens:4096,messages,tools:getOpenAITools(),tool_choice:'auto',stream:true,temperature:_adaptiveTemp||0.6})
   });
   if(!r.ok){let em=r.status;try{const e=await r.json();em=e.error?.message||em;}catch{}throw new Error(em);}
   const reader=r.body.getReader(); const dec=new TextDecoder();
@@ -3061,6 +3078,44 @@ function proactiveRecallNotes(query){
     .slice(0,5);
   if(!hits.length) return '';
   return '\n\n📌 Relevantní poznámky z minulých úkolů:\n' + hits.map(([k,v])=>`• ${v.content||k}`).join('\n');
+}
+
+
+// Vyčistí agent-notes: odstraní prázdné, duplicity, omezí na 50
+function cleanupAgentNotes(){
+  try{
+    const raw = JSON.parse(localStorage.getItem('agent-notes')||'{}');
+    const cleaned = {};
+    const seenContent = new Set();
+    const entries = Object.entries(raw)
+      .filter(([k,v]) => {
+        // Odstraň prázdné
+        if(!v || !v.content || v.content.trim().length < 3) return false;
+        // Odstraň numerické klíče ([0]:, [1]:)
+        if(/^\d+$/.test(k)) return false;
+        // Odstraň duplicitní obsah
+        const norm = v.content.trim().toLowerCase().slice(0,100);
+        if(seenContent.has(norm)) return false;
+        seenContent.add(norm);
+        return true;
+      })
+      .sort((a,b) => (b[1].ts||0) - (a[1].ts||0))
+      .slice(0, 50); // Max 50 notes
+    for(const [k,v] of entries) cleaned[k] = v;
+    localStorage.setItem('agent-notes', JSON.stringify(cleaned));
+  }catch{}
+}
+// Vyčisti při startu
+cleanupAgentNotes();
+
+// Základní sanitizace vstupu před odesláním do LLM
+function sanitizeUserInput(text){
+  if(!text) return '';
+  // Omez délku
+  let clean = text.slice(0, 8000);
+  // Odstraň potenciální prompt injection patterny (ale zachovej legitimní obsah)
+  clean = clean.replace(/\[SYSTEM\]|\[INST\]|<\|im_start\|>|<\|im_end\|>/gi, '');
+  return clean.trim();
 }
 
 
@@ -4809,7 +4864,7 @@ async function sendMessage() {
   const input=document.getElementById('msgInput');
   const text=input.value.trim();
   if(!text&&!attachedFile)return;
-  const msgText=text||'Analyzuj přiložený soubor.';
+  const msgText=sanitizeUserInput(text)||'Analyzuj přiložený soubor.';
   const fileSnap=attachedFile;
   input.value='';input.style.height='auto';
   removeFile();
@@ -4943,7 +4998,7 @@ async function sendMessage() {
       } else if(key==='chatgpt' || ai.url){
         result = await openAIAgentLoop(key, userPrompt, sys, aisDiv, bubbleId);
       } else {
-        const r=await fetch(`https://api.openai.com/v1/chat/completions`,{method:'POST',signal:sig,headers:{'Content-Type':'application/json','Authorization':`Bearer ${ai.key}`},body:JSON.stringify({model:normalizeModel(ai),max_tokens:1500,messages:[{role:'system',content:sys},{role:'user',content:userPrompt}]})});
+        const r=await fetch(`https://api.openai.com/v1/chat/completions`,{method:'POST',signal:sig,headers:{'Content-Type':'application/json','Authorization':`Bearer ${ai.key}`},body:JSON.stringify({model:normalizeModel(ai),max_tokens:3000,messages:[{role:'system',content:sys},{role:'user',content:userPrompt}]})});
         if(!r.ok){const e=await r.json();throw new Error(e.error?.message||r.status);}
         const d=await r.json(); result = d.choices?.[0]?.message?.content||'';
       }
@@ -5225,6 +5280,10 @@ Tvůj úkol jako syntetizátor — KOMPLETNÍ ODPOVĚĎ:
       /přelož|translate/.test(msgText.toLowerCase()) ? '🌐 překlad' : '⚡ specializovaný úkol';
     addDivider(aisDiv, `⚡ Claude sám (${reason} → tým by nepomohl)`);
     routed = [];
+  } else if(routed.length > 0 && task.isImageRequest){
+    // Obrázky → Claude sám — jen on má přístup k generate_image tool flow
+    addDivider(aisDiv, `🎨 Claude generuje obrázek`);
+    routed = [];
   } else if(routed.length < actualWorkers.length && routed.length > 0){
     const skipped = actualWorkers.filter(k=>!routed.includes(k)).map(k=>AI[k].name).join(', ');
     addDivider(aisDiv,`🎯 Specializace → ${routed.map(k=>AI[k].name).join(', ')} (${skipped} přeskočen)`);
@@ -5322,7 +5381,14 @@ Tvůj úkol jako syntetizátor — KOMPLETNÍ ODPOVĚĎ:
           return;
         }
         const cleanReply = stripHidden(reply);
-        assistantAnswers[key] = cleanReply;
+        // Detekce oříznuté odpovědi (končí uprostřed věty)
+        const lastChar = cleanReply.trim().slice(-1);
+        const isTruncated = cleanReply.length > 200 && !/[.!?:;)\]}"'`]/.test(lastChar) && !/\n$/.test(cleanReply);
+        if(isTruncated){
+          assistantAnswers[key] = cleanReply + '\n\n⚠️ [ODPOVĚĎ PRAVDĚPODOBNĚ OŘÍZNUTÁ]';
+        } else {
+          assistantAnswers[key] = cleanReply;
+        }
         resetCircuit(key);
         updateLiveAgent(key, 'done');
         const isSoloFinal = routed.length === 1 && !AI.claude?.key;
@@ -5390,6 +5456,10 @@ Tvůj úkol jako syntetizátor — KOMPLETNÍ ODPOVĚĎ:
     // Sestav bohatý system prompt který nahrazuje týmovou diskuzi
     let soloSys = getMdSystem('claude') + getDatePrompt() + getMemoryPrompt() + getSearchPrompt();
 
+    if(wantsImage){
+      soloSys += `\n\n🎨 POVINNÉ: Uživatel chce obrázek. MUSÍŠ zavolat nástroj generate_image s detailním anglickým promptem. NEZKOUŠEJ odpovědět textem — VŽDY použij nástroj.`;
+    }
+
     if(!task.isSimple){
       soloSys += `
 Pracuješ sám, ale přemýšlej strukturovaně jako tým:
@@ -5446,16 +5516,24 @@ Máš přístup k nástrojům: web_search, fetch_url, run_code, save_note, recal
         ).join('\n\n---\n\n');
         const myAnswer = assistantAnswers['gemini'] ? `\n\nMoje vlastní odpověď pro referenci:\n${cleanForSynthesis(assistantAnswers['gemini']).slice(0,perBudget)}` : '';
 
-        const qmSystem = `Jsi Quality Manager v AI týmu. Tvůj JEDINÝ úkol je hodnotit odpovědi kolegů a dát šéfovi (Claude) doporučení.
+        const qmSystem = `Jsi Quality Manager v AI týmu. Tvůj JEDINÝ úkol je hodnotit odpovědi OSTATNÍCH kolegů.
 NEODPOVÍDEJ na otázku uživatele. NEPIŠ vlastní odpověď. NEPOZDRAVUJ.
+⚠️ CONFLICT OF INTEREST: Ty sám jsi Gemini a máš vlastní odpověď — NESMÍŠ hodnotit sám sebe.
+Hodnoť POUZE workery uvedené níže. Pokud je tam tvoje odpověď, IGNORUJ ji.
 Tvůj výstup je POUZE strukturované JSON hodnocení. Nic jiného.`;
+
+        // Vyloučit Gemini z hodnocení — conflict of interest
+        const qmWorkerKeys = workerKeys.filter(k=>k!=='gemini');
+        const answersForQM = qmWorkerKeys.map(k =>
+          `### ${AI[k]?.name||k}\n${cleanForSynthesis(assistantAnswers[k]).slice(0, perBudget)}`
+        ).join('\n\n---\n\n');
 
         const prompt = `Otázka uživatele: "${msgText.slice(0,400)}"
 
-Odpovědi týmu k hodnocení:
-${answersBlock}${myAnswer}
+Odpovědi týmu k hodnocení (BEZ tvé vlastní odpovědi):
+${answersForQM}
 
-TVŮJ ÚKOL — hodnoť KAŽDÉHO workera:
+TVŮJ ÚKOL — hodnoť KAŽDÉHO workera výše (NE sebe):
 1. score 0.0-1.0 (přísně! 1.0 = perfektní, 0.5 = průměrné, 0.0 = k ničemu)
 2. strengths: co udělal dobře (konkrétně)
 3. weaknesses: co chybí nebo je špatně (konkrétně)
