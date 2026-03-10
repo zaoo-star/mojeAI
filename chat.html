@@ -1749,14 +1749,18 @@ async function claudeAgentLoop(userMsg, systemPrompt, aisDiv, fileSnap=null, bub
         const ref=await selfReflect(null,String(userMsg).slice(0,400),finalText,signal).catch(()=>null);
         if(ref&&!ref.startsWith('OK')&&ref.includes('VYLEPŠIT')){
           const hint=ref.replace(/^VYLEPŠIT:\s*/i,'');
-          logStep(`🔎 Zlepšuji: ${hint.slice(0,55)}`,'active',null,rid);
-          messages.push({role:'user',content:`Doplň/oprav: ${hint}`});
+          logStep(`🔎 Doplňuji: ${hint.slice(0,55)}`,'active',null,rid);
+          // DŮLEŽITÉ: Doplň k existující odpovědi, NEPŘEPISUJ od nuly
+          messages.push({role:'user',content:`Tvoje odpověď je dobrá, ale potřebuje DOPLNĚNÍ (ne přepsání!).
+Co doplnit: ${hint}
+PRAVIDLO: Zopakuj CELOU svou předchozí odpověď a PŘIDEJ k ní chybějící část. NESMÍŠ odpověď zkrátit — jen rozšířit. Minimálně stejná délka jako předtím.`});
           const r2=await claudeStream(messages,systemPrompt,signal);
           if(r2.usage) totalOut+=(r2.usage.output_tokens||0);
-          const t2=r2.content.find(b=>b.type==='text')?.text||finalText;
-          logStep('🔎 Vylepšeno ✓','done',null,rid);
+          const t2=r2.content.find(b=>b.type==='text')?.text||'';
+          logStep('🔎 Doplněno ✓','done',null,rid);
           renderStats(aisDiv,Date.now()-t0,totalOut,'claude-sonnet-4-6');
-          return t2;
+          // Vždy vrať DELŠÍ verzi — reflexe nesmí zkrátit odpověď
+          return (t2.length > finalText.length) ? t2 : finalText;
         } else logStep('🔎 Odpověď OK ✓','done',null,rid);
       }
       renderStats(aisDiv,Date.now()-t0,totalOut,'claude-sonnet-4-6');
