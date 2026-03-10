@@ -776,7 +776,7 @@ TVOJE ZODPOVĚDNOSTI:
 JAK MYSLÍŠ:
 • Nejdřív identifikuj JÁDRO problému — co uživatel skutečně potřebuje, ne co doslova napsal.
 • Hledej slepá místa: co se neptá ale měl by vědět? Na co zapomněl?
-• Když je odpověď jednoduchá, odpověz jednoduše. Nekomplikuj co je jasné.
+• Mysli strategicky: jaké jsou důsledky? Co by se mohlo pokazit? Jaký je optimální postup?
 
 JAK KOMUNIKUJEŠ:
 • Sebejistě, přímo, bez výplňových frází ("rád ti pomůžu", "skvělá otázka").
@@ -784,15 +784,32 @@ JAK KOMUNIKUJEŠ:
 • Pokud nevíš, řekni co nevíš a proč, místo vyhýbavé odpovědi.
 • České odpovědi, pokud uživatel píše česky. Anglické pokud anglicky.
 
-KVALITA:
-• Každá tvoje odpověď musí být taková, aby ji šlo rovnou použít — ne "základ na kterém se dá stavět".
-• Konkrétní příklady > obecné rady. Čísla > dojmy. Fakta > spekulace.
-• Pokud je potřeba kód, piš funkční kód. Pokud je potřeba plán, piš proveditelný plán.
+━━━ KVALITA FINÁLNÍHO VÝSTUPU (KLÍČOVÉ) ━━━
+Jsi CEO. Tvůj výstup musí být na úrovni senior konzultanta — NE stručný chatbot.
+
+ROZSAH:
+• Tvoje syntéza musí být OBSÁHLEJŠÍ a DETAILNĚJŠÍ než odpovědi jednotlivých workerů.
+• Zahrň VŠECHNY relevantní poznatky od každého workera — nepřeskakuj ani nezjednodušuj.
+• Pokud workeři zmínili čísla, fakta, URL, metriky → přenes je do finální odpovědi.
+• Pokud máš data z nástrojů (počasí, kurzy, web) → uveď KOMPLETNÍ data, ne jen souhrn.
+
+STRUKTURA:
+• Hlavní odpověď nejdřív (konkrétní, akční, s daty).
+• Pak kontext a detaily — organizované do logických sekcí s emoji nadpisy.
+• Pokud je více aspektů, pojednaj o KAŽDÉM. Neřez.
+• Tabulky pro srovnání, odrážky pro seznamy, bloky pro kód.
+• Na konci krátké CEO doporučení / závěr / co dál.
+
+OVĚŘENÍ:
+• Každý fakt ve tvé odpovědi musí mít zdroj: buď z webového vyhledávání (🌐), z nástroje (🔧), nebo označen [NEOVĚŘENO].
+• Pokud workeři si protiřečí → rozhodni kdo má pravdu a vysvětli proč.
+• Pokud chybí data → explicitně řekni co chybí a proč.
 
 ⛔ ZAKÁZÁNO:
 • NIKDY neopakuj otázku uživatele na začátku odpovědi. Rovnou odpovídej.
-• NIKDY nezačínej "Reakce na kolegy:" — to je interní anotace, ne odpověď uživateli.
-• NIKDY nezačínej odpověď tím co jsi udělal ("Uložil jsem poznámku") — to uživatel vidí v tool chipu.
+• NIKDY nezačínej "Reakce na kolegy:" — to je interní anotace.
+• NIKDY nezačínej odpověď tím co jsi udělal ("Uložil jsem poznámku").
+• NIKDY nezkracuj jen proto že je to "jen chat". Piš profesionálně a kompletně.
 • Piš NOVOU odpověď, ne kopii/echo workera.`,
 
   gemini: `Jsi GEMINI — analytik, datový inženýr a quality manager týmu.
@@ -1439,7 +1456,7 @@ async function executeTool(name, input, aisDiv){
           const dn=i===0?'Dnes':i===1?'Zítra':new Date(t).toLocaleDateString('cs-CZ',{weekday:'short',day:'numeric',month:'numeric'});
           return `${dn}: ${wmoText(days_.weather_code[i])}, ${Math.round(days_.temperature_2m_max[i])}°/${Math.round(days_.temperature_2m_min[i])}°${days_.precipitation_probability_max?.[i]!=null?', srážky '+days_.precipitation_probability_max[i]+'%':''}${days_.precipitation_sum[i]>0?', '+days_.precipitation_sum[i]+'mm':''}${days_.wind_speed_10m_max?.[i]?', vítr '+Math.round(days_.wind_speed_10m_max[i])+'km/h':''}`;
         }).join('\n');
-        return `✅ Počasí ${cityName} (${new Date().toLocaleDateString('cs-CZ')} ${new Date().toLocaleTimeString('cs-CZ',{hour:'2-digit',minute:'2-digit'})}):\nAktuálně: ${Math.round(cur.temperature_2m)}°C (pocitově ${Math.round(cur.apparent_temperature)}°C), ${wmoText(cur.weather_code)}, vlhkost ${cur.relative_humidity_2m}%, vítr ${Math.round(cur.wind_speed_10m)} km/h ${windDir(cur.wind_direction_10m)}${cur.precipitation>0?', srážky '+cur.precipitation+'mm':''}\nPředpověď:\n${forecastText}`;
+        return `✅ Počasí ${cityName} (${new Date().toLocaleDateString('cs-CZ')} ${new Date().toLocaleTimeString('cs-CZ',{hour:'2-digit',minute:'2-digit'})}):\n🌡️ Teplota: ${Math.round(cur.temperature_2m)}°C | Pocitová: ${Math.round(cur.apparent_temperature)}°C\n🌤️ Obloha: ${wmoText(cur.weather_code)}\n💧 Vlhkost: ${cur.relative_humidity_2m}%\n💨 Vítr: ${Math.round(cur.wind_speed_10m)} km/h ${windDir(cur.wind_direction_10m)}${cur.precipitation>0?'\n🌧️ Srážky: '+cur.precipitation+'mm':''}\n\n📋 Předpověď:\n${forecastText}\n\n⚠️ INSTRUKCE: Uveď VŠECHNY metriky ve své odpovědi (teplota + pocitová, obloha, vítr směr+rychlost, srážky). Nezkracuj.`;
       }catch(e){ logStep('🌤️ Počasí selhalo','error'); return `⚠️ Počasí selhalo: ${e.message}`; }
     }
 
@@ -1718,7 +1735,7 @@ async function claudeAgentLoop(userMsg, systemPrompt, aisDiv, fileSnap=null, bub
       if(!text.trim() && step > 0 && step < MAX_STEPS - 1){
         // Odeber poslední assistant message (prázdnou) a požádej znovu
         messages.pop();
-        messages.push({role:'user',content:'Výsledky nástrojů máš výše. Teď napiš TEXTOVOU odpověď uživateli — shrň co jsi zjistil a odpověz na původní otázku. Nepoužívej další nástroje.'});
+        messages.push({role:'user',content:'DŮLEŽITÉ: Výsledky nástrojů máš výše. Teď napiš SVOU ODPOVĚĎ uživateli jako TEXT. Shrň co jsi zjistil a odpověz na původní otázku. NEVOLEJ další nástroje.'});
         continue;
       }
       // Pokud stále prázdné, zkus extrahovat text z předchozích assistant zpráv
@@ -1726,7 +1743,8 @@ async function claudeAgentLoop(userMsg, systemPrompt, aisDiv, fileSnap=null, bub
         .filter(m=>m.role==='assistant')
         .flatMap(m=>Array.isArray(m.content)?m.content.filter(b=>b.type==='text').map(b=>b.text):[m.content||''])
         .filter(t=>t&&t.trim())
-        .pop() || '(Nástroje provedeny — viz výsledky výše)';
+        .pop();
+      if(!finalText) throw new Error('Claude: žádná textová odpověď po nástrojích');
       if(bubbleId&&finalText.length>60){
         const rid=logStep('🔎 Self-reflection...','active');
         const ref=await selfReflect(null,String(userMsg).slice(0,400),finalText,signal).catch(()=>null);
@@ -1762,7 +1780,9 @@ async function claudeAgentLoop(userMsg, systemPrompt, aisDiv, fileSnap=null, bub
     }
   }
   renderStats(aisDiv,Date.now()-t0,totalOut,'claude-sonnet-4-6');
-  return messages.filter(m=>m.role==='assistant').pop()?.content?.find?.(b=>b.type==='text')?.text||'(Max kroků)';
+  const lastClaudeText = messages.filter(m=>m.role==='assistant').pop()?.content?.find?.(b=>b.type==='text')?.text;
+  if(!lastClaudeText?.trim()) throw new Error('Claude: žádná odpověď po '+MAX_STEPS+' krocích');
+  return lastClaudeText;
 }
 
 // ── OpenAI-compatible tool use loop with streaming ──
@@ -1809,7 +1829,7 @@ async function openAIAgentLoop(key, userMsg, systemPrompt, aisDiv, bubbleId=null
       // Pokud po tools vrátil prázdný text, zkus vynutit odpověď
       if(!result && step > 0 && step < MAX_STEPS - 1){
         messages.pop(); // odeber prázdnou assistant zprávu
-        messages.push({role:'user',content:'Výsledky nástrojů máš výše. Teď napiš TEXTOVOU odpověď. Nepoužívej další nástroje.'});
+        messages.push({role:'user',content:'DŮLEŽITÉ: Výsledky nástrojů máš výše. Teď napiš SVOU ODPOVĚĎ uživateli jako TEXT. Shrň co jsi zjistil a odpověz na otázku. NEVOLEJ další nástroje.'});
         continue;
       }
       if(!result){
@@ -1904,13 +1924,17 @@ async function _geminiAgentLoopWithModel(userMsg, systemPrompt, aisDiv, fileSnap
     const funcCalls=respParts.filter(p=>p.functionCall);
     if(!funcCalls.length){
       const text = respParts.filter(p=>p.text).map(p=>p.text).join('').trim();
-      // Pokud po tools vrátil prázdný text, požádej o odpověď
-      if(!text && step > 0 && step < MAX_STEPS - 1){
-        contents.push({role:'user',parts:[{text:'Výsledky nástrojů máš výše. Teď napiš TEXTOVOU odpověď uživateli.'}]});
+      // Pokud po tools vrátil prázdný text, požádej o odpověď (max 2x retry)
+      if(!text && step > 0 && step < MAX_STEPS - 2){
+        contents.push({role:'user',parts:[{text:'DŮLEŽITÉ: Výsledky nástrojů máš výše. Teď napiš SVOU ODPOVĚĎ uživateli jako TEXT. NEVOLEJ další nástroje. Shrň co jsi zjistil a odpověz na otázku.'}]});
         continue;
       }
       renderStats(aisDiv,Date.now()-t0,totalOut,geminiModel);
-      return text || contents.filter(c=>c.role==='model').flatMap(c=>(c.parts||[]).filter(p=>p.text).map(p=>p.text)).join('').trim() || '(Nástroje provedeny)';
+      // Fallback: sebrat text z předchozích model zpráv
+      const allModelText = contents.filter(c=>c.role==='model').flatMap(c=>(c.parts||[]).filter(p=>p.text).map(p=>p.text)).join('\n').trim();
+      if(text) return text;
+      if(allModelText) return allModelText;
+      throw new Error('Gemini: žádná textová odpověď po nástrojích');
     }
     const funcResults=[];
     for(const p of funcCalls){
@@ -1925,7 +1949,9 @@ async function _geminiAgentLoopWithModel(userMsg, systemPrompt, aisDiv, fileSnap
   }
   renderStats(aisDiv,Date.now()-t0,totalOut,geminiModel);
   const last=contents.filter(c=>c.role==='model').pop();
-  return last?.parts?.filter(p=>p.text).map(p=>p.text).join('')||'(Max kroků)';
+  const lastText = last?.parts?.filter(p=>p.text).map(p=>p.text).join('');
+  if(!lastText?.trim()) throw new Error('Gemini: žádná odpověď po '+MAX_STEPS+' krocích');
+  return lastText;
 }
 
 
@@ -2917,7 +2943,9 @@ const MD_SYSTEM = getMdSystem(); // fallback pro starý kód
 function getDatePrompt(){
   const now = new Date();
   const days = ['neděle','pondělí','úterý','středa','čtvrtek','pátek','sobota'];
-  return `\n\nAktuální datum a čas: ${days[now.getDay()]} ${now.toLocaleDateString('cs-CZ')} ${now.toLocaleTimeString('cs-CZ',{hour:'2-digit',minute:'2-digit'})}`;
+  const tomorrow = new Date(now); tomorrow.setDate(tomorrow.getDate()+1);
+  const yesterday = new Date(now); yesterday.setDate(yesterday.getDate()-1);
+  return `\n\n📅 DNES je ${days[now.getDay()]} ${now.toLocaleDateString('cs-CZ')}, čas ${now.toLocaleTimeString('cs-CZ',{hour:'2-digit',minute:'2-digit'})}. ZÍTRA je ${days[tomorrow.getDay()]} ${tomorrow.toLocaleDateString('cs-CZ')}. VČERA bylo ${yesterday.toLocaleDateString('cs-CZ')}. Používej TYTO datumy — ne svou paměť.`;
 }
 function getSearchPrompt(){ return webSearchContext ? `\n\nDŮLEŽITÉ – Aktuální data z internetu (${new Date().toLocaleDateString('cs-CZ')}):\n---\n${webSearchContext}\n---\nTyto informace jsou aktuální. Použij je pro odpověď a ignoruj starší znalosti kde jsou v konfliktu.` : ''; }
 
@@ -5000,11 +5028,14 @@ ${allK}
 
 ${disagreements ? 'Neshody které je třeba vyřešit:\n'+disagreements : 'Tým dosáhl konsenzu.'}
 
-Tvůj úkol jako syntetizátor:
-1. Vyber to nejlepší z každé odpovědi
-2. Vyřeš neshody – rozhodni co je správně a proč
-3. Napiš jednu jasnou, přesnou a úplnou odpověď
-4. Mluv přímo jako jeden hlas týmu, ne jako přehled odpovědí`;
+Tvůj úkol jako syntetizátor — KOMPLETNÍ ODPOVĚĎ:
+1. Projdi KAŽDOU odpověď a vyber to nejhodnotnější z každé — nic nezahazuj
+2. Vyřeš neshody – rozhodni co je správně a vysvětli proč
+3. Zahrň VŠECHNA relevantní čísla, fakta, příklady, doporučení
+4. Strukturuj profesionálně: sekce s emoji nadpisy, odrážky, tabulky kde vhodné
+5. Výsledek musí být OBSÁHLEJŠÍ než jakákoli jednotlivá odpověď
+6. Na konci přidej krátké shrnutí / závěr / doporučení co dál
+7. Mluv přímo jako jeden hlas týmu, ne jako přehled odpovědí`;
         const reply = await callTeamAI(synth, p, bubble);
         assistantAnswers['_synth'] = reply;
         logStep('✅ Finální odpověď připravena', 'done');
@@ -5363,9 +5394,14 @@ Odpověz POUZE jako JSON:
           const bestAnswer = cleanForSynthesis(assistantAnswers[bestKey] || Object.values(assistantAnswers).find(v=>v) || '');
           const claudeSys = getMdSystem('claude')+getDatePrompt()+getMemoryPrompt()+getSearchPrompt()
             +`\nJsi šéf týmu. Gemini doporučil odpověď od ${AI[bestKey]?.name||bestKey} jako nejlepší.
-Tvůj úkol: zkontroluj ji, oprav drobnosti pokud nějaké jsou, a dej finální odpověď.
-Pokud je odpověď dobrá, můžeš ji převzít s minimálními úpravami. Nemusíš přepisovat od nuly.`;
-          const claudePrompt = `Otázka: ${fullMsg}\n\nNejlepší odpověď od ${AI[bestKey]?.name||bestKey}:\n${bestAnswer.slice(0,8000)}\n\nTvoje finální verze:`;
+Tvůj úkol: Vezmi tuto odpověď jako základ, ale vylepši ji na CEO úroveň:
+• Doplň chybějící detaily, čísla, kontext
+• Přidej vlastní analýzu nebo doporučení
+• Strukturuj do profesionálního formátu (sekce, odrážky, tabulky kde se hodí)
+• Ověř fakta — co nemáš z webu označ [NEOVĚŘENO]
+• Výsledek musí být KOMPLETNÍ a DETAILNÍ — ne stručné shrnutí`;
+          const otherAnswers = workerKeys.filter(k=>k!==bestKey&&assistantAnswers[k]).map(k=>`${AI[k]?.name||k}: ${cleanForSynthesis(assistantAnswers[k]).slice(0,1500)}`).join('\n\n');
+          const claudePrompt = `Otázka: ${fullMsg}\n\nNejlepší odpověď (${AI[bestKey]?.name||bestKey}):\n${bestAnswer.slice(0,8000)}${otherAnswers?'\n\nDalší pohledy od kolegů (zahrň relevantní poznatky):\n'+otherAnswers:''}\n\nTvoje finální profesionální odpověď:`;
           claudeVerdict = await claudeAgentLoop(claudePrompt, claudeSys, aisDiv, fileSnap, claudeBubble);
           updateBubbleLabel(claudeBubble, 'CLAUDE 👑 · schválil ✓');
           finishBubble(claudeBubble, claudeVerdict, null, true);
@@ -5384,16 +5420,23 @@ Pokud je odpověď dobrá, můžeš ji převzít s minimálními úpravami. Nemu
         addDivider(aisDiv, `⚠️ ${geminiVerdict ? 'Gemini doporučil záchranný zásah' : `Skóre ${avgPeerScore.toFixed(2)}`} — šéf zasahuje…`);
         const claudeBubble = addBubble(aisDiv,'claude','Claude 👑 · zachraňuje…',true);
         try{
-          const perBudget = Math.max(1000, Math.floor(10000/Math.max(workerKeys.length,1)));
+          const perBudget = Math.max(1000, Math.floor(16000/Math.max(workerKeys.length,1)));
           const annotated = workerKeys.map(k=>{
             const sc = peerScores[k] || geminiVerdict?.scores?.[k];
             const gemScore = sc ? `Gemini hodnotí: ${(sc.score??0.5).toFixed(2)} — "${sc.comment||''}"` : '';
             return `### ${AI[k]?.name||k} ${sc?.approved?'✅':'⚠️'}\n${gemScore}\n${cleanForSynthesis(assistantAnswers[k]).slice(0,perBudget)}`;
           }).join('\n\n---\n\n');
           const claudeSys = getMdSystem('claude')+getDatePrompt()+getMemoryPrompt()+getSearchPrompt()
-            +`\nJsi šéf týmu. Gemini (Quality Manager) doporučil zásah: "${geminiVerdict?.reason||'nízká kvalita'}".
-Máš rozbor od Geminiho — co bylo dobré i špatné u každého.
-Tvůj úkol: oprav chyby, doplň co chybí, dej finální odpověď lepší než jakýkoli pokus týmu.`;
+            +`\nJsi šéf týmu. Gemini (Quality Manager) doporučil záchranný zásah: "${geminiVerdict?.reason||'nízká kvalita'}".
+Máš rozbor od Geminiho — co bylo dobré i špatné u každého workera.
+Tvůj úkol jako CEO:
+• Oprav VŠECHNY faktické chyby identifikované Geminim
+• Zachovej to co bylo dobré — nezahazuj kvalitní části
+• Doplň co chybí: kontext, čísla, příklady, alternativy
+• Výsledek musí být KOMPLETNÍ profesionální odpověď — ne stručná oprava
+• Strukturuj do sekcí, použij odrážky, tabulky kde se hodí
+• Ověř fakta — co nemáš z webu označ [NEOVĚŘENO]
+Piš jako senior konzultant, ne jako chatbot.`;
           const claudePrompt = `Otázka: ${fullMsg}\n\nRozbor od Geminiho:\n${annotated}\n\nTvoje opravená finální odpověď:`;
           claudeVerdict = await claudeAgentLoop(claudePrompt, claudeSys, aisDiv, fileSnap, claudeBubble);
           updateBubbleLabel(claudeBubble, 'CLAUDE 👑 · zachránil a zlepšil');
@@ -5414,7 +5457,7 @@ Tvůj úkol: oprav chyby, doplň co chybí, dej finální odpověď lepší než
         addDivider(aisDiv, `✅ Kvalita OK · Claude syntetizuje dle doporučení Geminiho`);
         const claudeBubble = addBubble(aisDiv,'claude','Claude 👑 · syntetizuje…',true);
         try{
-          const perBudget = Math.max(1000, Math.floor(10000/Math.max(workerKeys.length,1)));
+          const perBudget = Math.max(1000, Math.floor(16000/Math.max(workerKeys.length,1)));
           const annotated = workerKeys.map(k=>{
             const sc = peerScores[k] || geminiVerdict?.scores?.[k];
             const gemScore = sc ? `Gemini: ${(sc.score??0.8).toFixed(2)} — "${sc.comment||''}"` : '';
@@ -5424,8 +5467,17 @@ Tvůj úkol: oprav chyby, doplň co chybí, dej finální odpověď lepší než
             +`\nJsi šéf týmu. Gemini (Quality Manager) analyzoval odpovědi a doporučil syntézu.
 Doporučení Geminiho: "${geminiVerdict?.reason||'dobré odpovědi, syntetizuj nejlepší části'}"
 Nejlepší worker dle Geminiho: ${AI[bestKey]?.name||bestKey}
-Tvůj úkol: syntetizuj NEJLEPŠÍ části do jedné výborné odpovědi.`;
-          const claudePrompt = `Otázka: ${fullMsg}\n\nHodnocení od Geminiho:\n${annotated}\n\nTvoje syntetizovaná finální odpověď:`;
+
+Tvůj úkol jako CEO — KOMPLETNÍ SYNTÉZA:
+• Projdi KAŽDOU odpověď a vyber to nejhodnotnější z každé
+• Zahrň VŠECHNA relevantní čísla, fakta, příklady, doporučení — nic nezahazuj
+• Kde si workeři protiřečí → rozhodni kdo má pravdu a vysvětli proč
+• Doplň vlastní analýzu a CEO perspektivu
+• Strukturuj profesionálně: sekce s emoji nadpisy, odrážky, tabulky kde se hodí
+• Výsledek musí být OBSÁHLEJŠÍ než jakákoli jednotlivá odpověď workera
+• Na konci přidej krátké CEO shrnutí / doporučení / další kroky
+• Ověř fakta — co nemáš z webu označ [NEOVĚŘENO]`;
+          const claudePrompt = `Otázka: ${fullMsg}\n\nHodnocení a odpovědi týmu:\n${annotated}\n\nTvoje kompletní profesionální syntéza (zahrň VŠECHNY relevantní poznatky):`;
           claudeVerdict = await claudeAgentLoop(claudePrompt, claudeSys, aisDiv, fileSnap, claudeBubble);
           updateBubbleLabel(claudeBubble, `CLAUDE 👑 · syntéza (doporučení Geminiho)`);
           finishBubble(claudeBubble, claudeVerdict, null, true);
@@ -5468,9 +5520,14 @@ Tvůj úkol: syntetizuj NEJLEPŠÍ části do jedné výborné odpovědi.`;
       const claudeBubble = addBubble(aisDiv,'claude','Claude 👑 · finalizuje…',true);
       try{
         const claudeSys = getMdSystem('claude')+getDatePrompt()+getMemoryPrompt()+getSearchPrompt()
-          +`\nJsi šéf týmu. Kolega ti dodal odpověď. Zkontroluj ji, uprav pokud je potřeba, a dej finální verzi.
-Pokud je odpověď dobrá, můžeš ji převzít s minimálními úpravami — neplýtvej slovy.`;
-        const claudePrompt = `Otázka: ${fullMsg}\n\nOdpověď od ${AI[soloKey]?.name||'workera'}:\n${bestAnswer.slice(0,8000)}\n\nTvoje finální verze:`;
+          +`\nJsi šéf týmu. Kolega ti dodal odpověď. Tvůj úkol jako CEO:
+• Zkontroluj faktickou správnost — označ nejistoty [NEOVĚŘENO]
+• Doplň chybějící kontext, detaily, příklady
+• Rozšiř odpověď o vlastní analýzu a doporučení
+• Strukturuj profesionálně — sekce, odrážky, tabulky kde se hodí
+• Výsledek musí být KOMPLETNÍ a na úrovni senior konzultanta
+Piš rozsáhleji a detailněji než kolega — jsi šéf, tvůj výstup je finální produkt.`;
+        const claudePrompt = `Otázka: ${fullMsg}\n\nOdpověď od ${AI[soloKey]?.name||'workera'}:\n${bestAnswer.slice(0,8000)}\n\nTvoje profesionální finální odpověď (rozšiř a doplň):`;
         claudeVerdict = await claudeAgentLoop(claudePrompt, claudeSys, aisDiv, fileSnap, claudeBubble);
         updateBubbleLabel(claudeBubble, 'CLAUDE 👑 · ✓');
         finishBubble(claudeBubble, claudeVerdict, null, true);
