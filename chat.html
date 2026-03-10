@@ -787,7 +787,13 @@ JAK KOMUNIKUJEŠ:
 KVALITA:
 • Každá tvoje odpověď musí být taková, aby ji šlo rovnou použít — ne "základ na kterém se dá stavět".
 • Konkrétní příklady > obecné rady. Čísla > dojmy. Fakta > spekulace.
-• Pokud je potřeba kód, piš funkční kód. Pokud je potřeba plán, piš proveditelný plán.`,
+• Pokud je potřeba kód, piš funkční kód. Pokud je potřeba plán, piš proveditelný plán.
+
+⛔ ZAKÁZÁNO:
+• NIKDY neopakuj otázku uživatele na začátku odpovědi. Rovnou odpovídej.
+• NIKDY nezačínej "Reakce na kolegy:" — to je interní anotace, ne odpověď uživateli.
+• NIKDY nezačínej odpověď tím co jsi udělal ("Uložil jsem poznámku") — to uživatel vidí v tool chipu.
+• Piš NOVOU odpověď, ne kopii/echo workera.`,
 
   gemini: `Jsi GEMINI — analytik, datový inženýr a quality manager týmu.
 
@@ -1217,7 +1223,8 @@ async function executeTool(name, input, aisDiv){
         const logs=[];
         const mock={log:(...a)=>logs.push(a.map(x=>typeof x==='object'?JSON.stringify(x):String(x)).join(' ')),error:(...a)=>logs.push('ERR: '+a.join(' ')),warn:(...a)=>logs.push('WARN: '+a.join(' '))};
         // Pokud kód neobsahuje return ani console.log, zkus ho obalit do return
-        const src = input.code.trim();
+        const src = (input.code || input.source || input.script || '').trim();
+        if(!src) return '⚠️ Žádný kód k vykonání';
         const needsReturn = !src.includes('return ') && !src.includes('console.') && !src.includes('\n');
         const wrappedSrc = needsReturn ? `return (${src})` : src;
         const fn=new Function('console','Math','Date','JSON','Array','Object','String','Number','parseInt','parseFloat','isFinite','isNaN','"use strict";\n'+wrappedSrc);
@@ -1376,10 +1383,10 @@ async function executeTool(name, input, aisDiv){
         if(!geoData.length) return `⚠️ Místo "${loc}" nenalezeno`;
         const {lat, lon, display_name} = geoData[0];
         const cityName = display_name.split(',')[0];
-        // Weather via open-meteo
-        const wRes = await fetch(`https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&current=temperature_2m,relative_humidity_2m,wind_speed_10m,weather_code&daily=temperature_2m_max,temperature_2m_min,weather_code,precipitation_sum&timezone=auto&forecast_days=${days}`,{signal:getSignal()});
+        const wRes = await fetch(`https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&current=temperature_2m,apparent_temperature,relative_humidity_2m,wind_speed_10m,wind_direction_10m,weather_code,precipitation&daily=temperature_2m_max,temperature_2m_min,weather_code,precipitation_sum,precipitation_probability_max,wind_speed_10m_max,wind_direction_10m_dominant&timezone=auto&forecast_days=${days}`,{signal:getSignal()});
         const w = await wRes.json();
         const cur = w.current;
+        const windDir = d => {const dirs=['S','SSV','SV','VSV','V','VJV','JV','JJV','J','JJZ','JZ','ZJZ','Z','ZSZ','SZ','SSZ']; return dirs[Math.round(d/22.5)%16]||'';};
         const wmoIcon = code => {
           if(code===0)return'☀️'; if(code<=2)return'⛅'; if(code<=3)return'☁️';
           if(code<=49)return'🌫️'; if(code<=69)return'🌧️'; if(code<=79)return'❄️';
@@ -1390,7 +1397,6 @@ async function executeTool(name, input, aisDiv){
           if(code<=49)return'Mlha'; if(code<=69)return'Déšť'; if(code<=79)return'Sníh';
           if(code<=82)return'Přeháňky'; if(code<=99)return'Bouřky'; return'';
         };
-        // Render weather card
         const card = document.createElement('div');
         card.style.cssText='background:var(--card2);border:1px solid var(--border2);border-radius:14px;padding:14px 16px;margin:6px 0;font-size:14px;';
         let forecastHtml = '';
@@ -1398,12 +1404,15 @@ async function executeTool(name, input, aisDiv){
         for(let i=0;i<Math.min(days,days_.time.length);i++){
           const d = new Date(days_.time[i]);
           const dayName = i===0?'Dnes':i===1?'Zítra':d.toLocaleDateString('cs-CZ',{weekday:'short'});
+          const precProb = days_.precipitation_probability_max?.[i];
+          const wdMax = days_.wind_speed_10m_max?.[i];
           forecastHtml += `<div style="display:flex;align-items:center;gap:8px;padding:5px 0;border-top:1px solid var(--border);font-size:13px;">
             <span style="min-width:50px;color:var(--muted2)">${dayName}</span>
             <span style="font-size:16px">${wmoIcon(days_.weather_code[i])}</span>
             <span style="flex:1;color:var(--muted)">${wmoText(days_.weather_code[i])}</span>
             <span style="color:var(--text);font-weight:600">${Math.round(days_.temperature_2m_max[i])}°</span>
             <span style="color:var(--muted)"> / ${Math.round(days_.temperature_2m_min[i])}°</span>
+            ${precProb!=null?`<span style="color:#60a5fa;font-size:11px">🌧${precProb}%</span>`:''}
             <span style="color:#60a5fa;font-size:11px">${days_.precipitation_sum[i]>0?`💧${days_.precipitation_sum[i]}mm`:''}</span>
           </div>`;
         }
@@ -1413,18 +1422,24 @@ async function executeTool(name, input, aisDiv){
             <div>
               <div style="font-weight:700;font-size:16px">${escHtml(cityName)}</div>
               <div style="font-size:24px;font-weight:700;color:var(--accent)">${Math.round(cur.temperature_2m)}°C</div>
+              <div style="font-size:11px;color:var(--muted)">Pocitově ${Math.round(cur.apparent_temperature)}°C</div>
             </div>
             <div style="margin-left:auto;text-align:right;font-size:12px;color:var(--muted);">
               <div>${wmoText(cur.weather_code)}</div>
               <div>💧 ${cur.relative_humidity_2m}%</div>
-              <div>💨 ${Math.round(cur.wind_speed_10m)} km/h</div>
+              <div>💨 ${Math.round(cur.wind_speed_10m)} km/h ${windDir(cur.wind_direction_10m)}</div>
             </div>
           </div>
           ${forecastHtml}
-          <div style="font-size:10px;color:var(--muted);margin-top:8px;opacity:.5">Open-Meteo · zdarma</div>`;
+          <div style="font-size:10px;color:var(--muted);margin-top:8px;opacity:.5">Open-Meteo · aktualizováno ${new Date().toLocaleTimeString('cs-CZ',{hour:'2-digit',minute:'2-digit'})}</div>`;
         aisDiv.appendChild(card);
         logStep(`🌤️ Počasí načteno ✓`, 'done');
-        return `✅ Počasí pro ${cityName}: ${Math.round(cur.temperature_2m)}°C, ${wmoText(cur.weather_code)}`;
+        // Vrať KOMPLETNÍ data agentovi — ne jen krátký shrnutí
+        let forecastText = days_.time.map((t,i)=>{
+          const dn=i===0?'Dnes':i===1?'Zítra':new Date(t).toLocaleDateString('cs-CZ',{weekday:'short',day:'numeric',month:'numeric'});
+          return `${dn}: ${wmoText(days_.weather_code[i])}, ${Math.round(days_.temperature_2m_max[i])}°/${Math.round(days_.temperature_2m_min[i])}°${days_.precipitation_probability_max?.[i]!=null?', srážky '+days_.precipitation_probability_max[i]+'%':''}${days_.precipitation_sum[i]>0?', '+days_.precipitation_sum[i]+'mm':''}${days_.wind_speed_10m_max?.[i]?', vítr '+Math.round(days_.wind_speed_10m_max[i])+'km/h':''}`;
+        }).join('\n');
+        return `✅ Počasí ${cityName} (${new Date().toLocaleDateString('cs-CZ')} ${new Date().toLocaleTimeString('cs-CZ',{hour:'2-digit',minute:'2-digit'})}):\nAktuálně: ${Math.round(cur.temperature_2m)}°C (pocitově ${Math.round(cur.apparent_temperature)}°C), ${wmoText(cur.weather_code)}, vlhkost ${cur.relative_humidity_2m}%, vítr ${Math.round(cur.wind_speed_10m)} km/h ${windDir(cur.wind_direction_10m)}${cur.precipitation>0?', srážky '+cur.precipitation+'mm':''}\nPředpověď:\n${forecastText}`;
       }catch(e){ logStep('🌤️ Počasí selhalo','error'); return `⚠️ Počasí selhalo: ${e.message}`; }
     }
 
@@ -1888,8 +1903,14 @@ async function _geminiAgentLoopWithModel(userMsg, systemPrompt, aisDiv, fileSnap
     contents.push({role:'model',parts:respParts});
     const funcCalls=respParts.filter(p=>p.functionCall);
     if(!funcCalls.length){
+      const text = respParts.filter(p=>p.text).map(p=>p.text).join('').trim();
+      // Pokud po tools vrátil prázdný text, požádej o odpověď
+      if(!text && step > 0 && step < MAX_STEPS - 1){
+        contents.push({role:'user',parts:[{text:'Výsledky nástrojů máš výše. Teď napiš TEXTOVOU odpověď uživateli.'}]});
+        continue;
+      }
       renderStats(aisDiv,Date.now()-t0,totalOut,geminiModel);
-      return respParts.filter(p=>p.text).map(p=>p.text).join('')||'';
+      return text || contents.filter(c=>c.role==='model').flatMap(c=>(c.parts||[]).filter(p=>p.text).map(p=>p.text)).join('').trim() || '(Nástroje provedeny)';
     }
     const funcResults=[];
     for(const p of funcCalls){
@@ -2689,6 +2710,17 @@ function showAgentFailSummary(aisDiv, failures){ // failures: [{key, reason}]
       <span class="af-reason">${escHtml(categorizeError(f.reason))}</span>
     </div>`).join('');
   aisDiv.appendChild(div);
+  // Error logging — ulož do poznámek pro budoucí učení
+  try{
+    const notes = JSON.parse(localStorage.getItem('agent-notes')||'{}');
+    const dateStr = new Date().toISOString().slice(0,16);
+    for(const f of failures){
+      const key = `error_${dateStr}_${(AI[f.key]?.name||f.key).replace(/\s/g,'_')}`;
+      notes[key] = {content:`${AI[f.key]?.name||f.key} selhal: ${categorizeError(f.reason)}`, ts:Date.now(), type:'error_log'};
+    }
+    const entries = Object.entries(notes).sort((a,b)=>(b[1].ts||0)-(a[1].ts||0)).slice(0,100);
+    localStorage.setItem('agent-notes', JSON.stringify(Object.fromEntries(entries)));
+  }catch{}
 }
 function categorizeError(msg){
   const m = (msg||'').toLowerCase();
@@ -3006,9 +3038,15 @@ function getRetrospectiveNotes(){
   const retros = Object.entries(notes)
     .filter(([,v])=>v.type==='retrospective')
     .sort((a,b)=>(b[1].ts||0)-(a[1].ts||0))
-    .slice(0,10);
-  if(!retros.length) return '';
-  return retros.map(([,v])=>`• ${v.content}`).join('\n');
+    .slice(0,8);
+  const errors = Object.entries(notes)
+    .filter(([,v])=>v.type==='error_log')
+    .sort((a,b)=>(b[1].ts||0)-(a[1].ts||0))
+    .slice(0,5);
+  let out = '';
+  if(retros.length) out += retros.map(([,v])=>`• ${v.content}`).join('\n');
+  if(errors.length) out += (out?'\n':'')+'⚠️ Nedávné chyby:\n'+errors.map(([,v])=>`• ${v.content}`).join('\n');
+  return out;
 }
 
 function getLongTermMemory(){
@@ -4046,6 +4084,16 @@ function stripHidden(text){
   }
   return text.trim();
 }
+
+// Vyčistí worker odpověď pro Claudeho syntézu — odstraní reakce, think bloky, interní anotace
+function cleanForSynthesis(text){
+  if(!text) return '';
+  // Odstraň "Reakce na kolegy:" sekce
+  text = text.replace(/\n\n\*\*Reakce na kolegy:\*\*[\s\S]*$/i, '');
+  // Odstraň think bloky
+  text = text.replace(/<think>[\s\S]*?<\/think>/gi, '');
+  return stripHidden(text);
+}
 function extractAndSaveSelfReview(agentKey, text){
   try{
     let obj = null;
@@ -4280,6 +4328,19 @@ async function autoFetchRealtimeData(msg, aisDiv){
         logStep('💱 Kurzy načteny ✓', 'done');
       }
     }catch(e){ logStep('💱 Kurzy: '+(e.name==='AbortError'?'timeout':'chyba'), 'error'); }
+  }
+
+  // ── Počasí ──
+  const weatherMatch = t.match(/\b(počasí|teplota|prší|sněží|bude\s+pršet|předpověď|weather|forecast)\b/i);
+  const locMatch = t.match(/(?:v|ve|pro|na|u|do)\s+([\wáčďéěíňóřšťúůýž]+(?:\s+[\wáčďéěíňóřšťúůýž]+)?)/i);
+  if(weatherMatch){
+    const loc = locMatch?.[1] || 'Praha';
+    try{
+      const weatherResult = await executeTool('get_weather', {location:loc, days:3}, aisDiv);
+      if(weatherResult && !weatherResult.startsWith('⚠️')){
+        data += '\n🌤️ ' + weatherResult;
+      }
+    }catch{}
   }
 
   return data;
@@ -5222,9 +5283,9 @@ Máš přístup k nástrojům: web_search, fetch_url, run_code, save_note, recal
         const totalBudget = 10000;
         const perBudget = Math.max(800, Math.floor(totalBudget / workerKeys.length));
         const answersBlock = workerKeys.filter(k=>k!=='gemini').map(k =>
-          `### ${AI[k]?.name||k}\n${(assistantAnswers[k]||'').slice(0, perBudget)}`
+          `### ${AI[k]?.name||k}\n${cleanForSynthesis(assistantAnswers[k]).slice(0, perBudget)}`
         ).join('\n\n---\n\n');
-        const myAnswer = assistantAnswers['gemini'] ? `\n\nMoje vlastní odpověď pro referenci:\n${assistantAnswers['gemini'].slice(0,perBudget)}` : '';
+        const myAnswer = assistantAnswers['gemini'] ? `\n\nMoje vlastní odpověď pro referenci:\n${cleanForSynthesis(assistantAnswers['gemini']).slice(0,perBudget)}` : '';
 
         const prompt = `Otázka uživatele: "${msgText.slice(0,400)}"
 
@@ -5292,14 +5353,14 @@ Odpověz POUZE jako JSON:
 
     if(recommendation === 'take_best'){
       if(!AI.claude?.key){
-        claudeVerdict = assistantAnswers[bestKey] || Object.values(assistantAnswers).find(v=>v) || '';
+        claudeVerdict = cleanForSynthesis(assistantAnswers[bestKey] || Object.values(assistantAnswers).find(v=>v) || '');
         addDivider(aisDiv, `✅ ${AI[bestKey]?.name||bestKey} · nejlepší odpověď`);
         finishLog();
       } else {
         addDivider(aisDiv, `✅ Kvalita OK · Claude schvaluje a finalizuje`);
         const claudeBubble = addBubble(aisDiv,'claude','Claude 👑 · schvaluje…',true);
         try{
-          const bestAnswer = assistantAnswers[bestKey] || Object.values(assistantAnswers).find(v=>v) || '';
+          const bestAnswer = cleanForSynthesis(assistantAnswers[bestKey] || Object.values(assistantAnswers).find(v=>v) || '');
           const claudeSys = getMdSystem('claude')+getDatePrompt()+getMemoryPrompt()+getSearchPrompt()
             +`\nJsi šéf týmu. Gemini doporučil odpověď od ${AI[bestKey]?.name||bestKey} jako nejlepší.
 Tvůj úkol: zkontroluj ji, oprav drobnosti pokud nějaké jsou, a dej finální odpověď.
@@ -5308,7 +5369,7 @@ Pokud je odpověď dobrá, můžeš ji převzít s minimálními úpravami. Nemu
           claudeVerdict = await claudeAgentLoop(claudePrompt, claudeSys, aisDiv, fileSnap, claudeBubble);
           updateBubbleLabel(claudeBubble, 'CLAUDE 👑 · schválil ✓');
           finishBubble(claudeBubble, claudeVerdict, null, true);
-        } catch(e){ finishBubble(claudeBubble, null, e.message); claudeVerdict = assistantAnswers[bestKey]||''; }
+        } catch(e){ finishBubble(claudeBubble, null, e.message); claudeVerdict = cleanForSynthesis(assistantAnswers[bestKey]||''); }
         scrollBottom();
       }
       claudeTeachAgents(msgText, assistantAnswers, peerScores);
@@ -5316,7 +5377,7 @@ Pokud je odpověď dobrá, můžeš ji převzít s minimálními úpravami. Nemu
     } else if(recommendation === 'rescue' || avgPeerScore < 0.75){
       if(!AI.claude?.key){
         // Claude není k dispozici — zobraz nejlepší dostupnou odpověď
-        claudeVerdict = assistantAnswers[bestKey] || Object.values(assistantAnswers).find(v=>v) || '';
+        claudeVerdict = cleanForSynthesis(assistantAnswers[bestKey] || Object.values(assistantAnswers).find(v=>v) || '');
         addDivider(aisDiv, `⚠️ Nízká kvalita · Claude není k dispozici · zobrazuji nejlepší: ${AI[bestKey]?.name||bestKey}`);
         finishLog();
       } else {
@@ -5327,7 +5388,7 @@ Pokud je odpověď dobrá, můžeš ji převzít s minimálními úpravami. Nemu
           const annotated = workerKeys.map(k=>{
             const sc = peerScores[k] || geminiVerdict?.scores?.[k];
             const gemScore = sc ? `Gemini hodnotí: ${(sc.score??0.5).toFixed(2)} — "${sc.comment||''}"` : '';
-            return `### ${AI[k]?.name||k} ${sc?.approved?'✅':'⚠️'}\n${gemScore}\n${(assistantAnswers[k]||'').slice(0,perBudget)}`;
+            return `### ${AI[k]?.name||k} ${sc?.approved?'✅':'⚠️'}\n${gemScore}\n${cleanForSynthesis(assistantAnswers[k]).slice(0,perBudget)}`;
           }).join('\n\n---\n\n');
           const claudeSys = getMdSystem('claude')+getDatePrompt()+getMemoryPrompt()+getSearchPrompt()
             +`\nJsi šéf týmu. Gemini (Quality Manager) doporučil zásah: "${geminiVerdict?.reason||'nízká kvalita'}".
@@ -5345,7 +5406,7 @@ Tvůj úkol: oprav chyby, doplň co chybí, dej finální odpověď lepší než
     } else {
       if(!AI.claude?.key){
         // Claude není k dispozici — zobraz nejlepší dostupnou odpověď
-        claudeVerdict = assistantAnswers[bestKey] || Object.values(assistantAnswers).find(v=>v) || '';
+        claudeVerdict = cleanForSynthesis(assistantAnswers[bestKey] || Object.values(assistantAnswers).find(v=>v) || '');
         addDivider(aisDiv, `✅ Kvalita OK · nejlepší odpověď: ${AI[bestKey]?.name||bestKey}`);
         finishLog();
         claudeTeachAgents(msgText, assistantAnswers, peerScores);
@@ -5357,7 +5418,7 @@ Tvůj úkol: oprav chyby, doplň co chybí, dej finální odpověď lepší než
           const annotated = workerKeys.map(k=>{
             const sc = peerScores[k] || geminiVerdict?.scores?.[k];
             const gemScore = sc ? `Gemini: ${(sc.score??0.8).toFixed(2)} — "${sc.comment||''}"` : '';
-            return `### ${AI[k]?.name||k} ${sc?.approved?'✅':'⚠️'}\n${gemScore}\n${(assistantAnswers[k]||'').slice(0,perBudget)}`;
+            return `### ${AI[k]?.name||k} ${sc?.approved?'✅':'⚠️'}\n${gemScore}\n${cleanForSynthesis(assistantAnswers[k]).slice(0,perBudget)}`;
           }).join('\n\n---\n\n');
           const claudeSys = getMdSystem('claude')+getDatePrompt()+getMemoryPrompt()+getSearchPrompt()
             +`\nJsi šéf týmu. Gemini (Quality Manager) analyzoval odpovědi a doporučil syntézu.
@@ -5369,14 +5430,14 @@ Tvůj úkol: syntetizuj NEJLEPŠÍ části do jedné výborné odpovědi.`;
           updateBubbleLabel(claudeBubble, `CLAUDE 👑 · syntéza (doporučení Geminiho)`);
           finishBubble(claudeBubble, claudeVerdict, null, true);
           claudeTeachAgents(msgText, assistantAnswers, peerScores);
-        } catch(e){ finishBubble(claudeBubble, null, e.message); claudeVerdict = assistantAnswers[bestKey]||''; }
+        } catch(e){ finishBubble(claudeBubble, null, e.message); claudeVerdict = cleanForSynthesis(assistantAnswers[bestKey]||''); }
         scrollBottom();
       }
     }
 
   } else {
     // Jednoduchý dotaz nebo 1 agent
-    const bestAnswer = Object.values(assistantAnswers).find(v=>v) || '';
+    const bestAnswer = cleanForSynthesis(Object.values(assistantAnswers).find(v=>v) || '');
     const soloKey = Object.keys(assistantAnswers).find(k=>assistantAnswers[k]);
 
     // Claude finalizuje JEN u ne-triviálních odpovědí — jednoduché otázky nechá workerovi
