@@ -1738,13 +1738,14 @@ async function claudeAgentLoop(userMsg, systemPrompt, aisDiv, fileSnap=null, bub
         messages.push({role:'user',content:'DŮLEŽITÉ: Výsledky nástrojů máš výše. Teď napiš SVOU ODPOVĚĎ uživateli jako TEXT. Shrň co jsi zjistil a odpověz na původní otázku. NEVOLEJ další nástroje.'});
         continue;
       }
-      // Pokud stále prázdné, zkus extrahovat text z předchozích assistant zpráv
-      const finalText = text.trim() || messages
+      // Merge ALL assistant text blocks (handles max_tokens continuations)
+      const allTexts = messages
         .filter(m=>m.role==='assistant')
-        .flatMap(m=>Array.isArray(m.content)?m.content.filter(b=>b.type==='text').map(b=>b.text):[m.content||''])
-        .filter(t=>t&&t.trim())
-        .pop() || '';
-      if(bubbleId&&finalText.length>60){
+        .flatMap(m=>Array.isArray(m.content)?m.content.filter(b=>b.type==='text').map(b=>b.text):[])
+        .filter(Boolean);
+      if(text.trim() && !allTexts.includes(text)) allTexts.push(text);
+      const finalText = allTexts.join('\n\n').trim() || '';
+      if(bubbleId&&finalText.length>60&&finalText.length<500){
         const rid=logStep('🔎 Self-reflection...','active');
         const ref=await selfReflect(null,String(userMsg).slice(0,400),finalText,signal).catch(()=>null);
         if(ref&&!ref.startsWith('OK')&&ref.includes('VYLEPŠIT')){
@@ -1777,14 +1778,33 @@ PRAVIDLO: Zopakuj CELOU svou předchozí odpověď a PŘIDEJ k ní chybějící 
         toolResults.push({type:'tool_result',tool_use_id:block.id,content:String(result)});
       }
       messages.push({role:'user',content:toolResults});
+    } else if(resp.stop_reason==='max_tokens' && step < MAX_STEPS - 1){
+      // Claude narazil na token limit — požádej o pokračování
+      const partialText = resp.content.find(b=>b.type==='text')?.text||'';
+      if(partialText.length > 100){
+        logStep('📝 Pokračuji v odpovědi…','active');
+        messages.push({role:'user',content:'Tvoje odpověď byla oříznutá. Pokračuj PŘESNĚ tam kde jsi skončil — nepřepisuj, jen dokonči. Začni přesně od místa kde jsi přestal.'});
+      } else {
+        renderStats(aisDiv,Date.now()-t0,totalOut,'claude-sonnet-4-6');
+        return partialText;
+      }
     } else {
+      // Jiný stop_reason nebo max steps
+      const text = resp.content.find(b=>b.type==='text')?.text||'';
+      // Pokud je z předchozích kroků delší text, seber ho
+      const allTexts = messages.filter(m=>m.role==='assistant')
+        .flatMap(m=>Array.isArray(m.content)?m.content.filter(b=>b.type==='text').map(b=>b.text):[])
+        .filter(Boolean);
       renderStats(aisDiv,Date.now()-t0,totalOut,'claude-sonnet-4-6');
-      return resp.content.find(b=>b.type==='text')?.text||'';
+      return allTexts.length > 1 ? allTexts.join('\n\n') : (text || allTexts[0] || '');
     }
   }
   renderStats(aisDiv,Date.now()-t0,totalOut,'claude-sonnet-4-6');
-  const lastClaudeText = messages.filter(m=>m.role==='assistant').pop()?.content?.find?.(b=>b.type==='text')?.text;
-  return lastClaudeText || '';
+  // Merge all assistant text blocks (handles continuations)
+  const allTexts = messages.filter(m=>m.role==='assistant')
+    .flatMap(m=>Array.isArray(m.content)?m.content.filter(b=>b.type==='text').map(b=>b.text):[])
+    .filter(Boolean);
+  return allTexts.join('\n\n') || '';
 }
 
 // ── OpenAI-compatible tool use loop with streaming ──
@@ -4361,10 +4381,10 @@ async function autoFetchRealtimeData(msg, aisDiv){
     }catch(e){ logStep('💱 Kurzy: '+(e.name==='AbortError'?'timeout':'chyba'), 'error'); }
   }
 
-  // ── Počasí ──
-  const weatherMatch = t.match(/\b(počasí|teplota|prší|sněží|bude\s+pršet|předpověď|weather|forecast)\b/i);
+  // ── Počasí (jen přímé dotazy, ne diskuze O počasí) ──
+  const weatherAsk = /^(jaké|jak[ýáé])\s+(je|bude)\s+počasí|^počasí\s+(v|ve|pro|na)|bude\s+(pršet|sněžit|hezky)|jaká.*teplota\s+(v|ve|na)|předpověď\s+počasí|weather\s+in|forecast\s+for/i.test(t);
   const locMatch = t.match(/(?:v|ve|pro|na|u|do)\s+([\wáčďéěíňóřšťúůýž]+(?:\s+[\wáčďéěíňóřšťúůýž]+)?)/i);
-  if(weatherMatch){
+  if(weatherAsk){
     const loc = locMatch?.[1] || 'Praha';
     try{
       const weatherResult = await executeTool('get_weather', {location:loc, days:3}, aisDiv);
