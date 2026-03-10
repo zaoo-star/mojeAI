@@ -1743,8 +1743,7 @@ async function claudeAgentLoop(userMsg, systemPrompt, aisDiv, fileSnap=null, bub
         .filter(m=>m.role==='assistant')
         .flatMap(m=>Array.isArray(m.content)?m.content.filter(b=>b.type==='text').map(b=>b.text):[m.content||''])
         .filter(t=>t&&t.trim())
-        .pop();
-      if(!finalText) throw new Error('Claude: žádná textová odpověď po nástrojích');
+        .pop() || '';
       if(bubbleId&&finalText.length>60){
         const rid=logStep('🔎 Self-reflection...','active');
         const ref=await selfReflect(null,String(userMsg).slice(0,400),finalText,signal).catch(()=>null);
@@ -1781,8 +1780,7 @@ async function claudeAgentLoop(userMsg, systemPrompt, aisDiv, fileSnap=null, bub
   }
   renderStats(aisDiv,Date.now()-t0,totalOut,'claude-sonnet-4-6');
   const lastClaudeText = messages.filter(m=>m.role==='assistant').pop()?.content?.find?.(b=>b.type==='text')?.text;
-  if(!lastClaudeText?.trim()) throw new Error('Claude: žádná odpověď po '+MAX_STEPS+' krocích');
-  return lastClaudeText;
+  return lastClaudeText || '';
 }
 
 // ── OpenAI-compatible tool use loop with streaming ──
@@ -1835,8 +1833,7 @@ async function openAIAgentLoop(key, userMsg, systemPrompt, aisDiv, bubbleId=null
       if(!result){
         // Fallback: najdi text z předchozích odpovědí
         const fallback = messages.filter(m=>m.role==='assistant'&&m.content&&typeof m.content==='string'&&m.content.trim()).pop()?.content;
-        if(fallback) return fallback;
-        throw new Error(`${AI[key]?.name||key}: prázdná odpověď (model vrátil null/empty)`);
+        return fallback || '';
       }
       return result;
     }
@@ -1851,7 +1848,10 @@ async function openAIAgentLoop(key, userMsg, systemPrompt, aisDiv, bubbleId=null
   }
   renderStats(aisDiv,Date.now()-t0,totalOut,model);
   const lastMsg = messages.filter(m=>m.role==='assistant').pop()?.content;
-  if(!lastMsg || !lastMsg.trim()) throw new Error(`${AI[key]?.name||key}: žádná odpověď po ${MAX_STEPS} krocích`);
+  if(!lastMsg || !lastMsg.trim()){
+    const fallback = messages.filter(m=>m.role==='assistant'&&m.content&&typeof m.content==='string'&&m.content.trim()).pop()?.content;
+    return fallback || '';
+  }
   return lastMsg;
 }
 
@@ -1924,17 +1924,19 @@ async function _geminiAgentLoopWithModel(userMsg, systemPrompt, aisDiv, fileSnap
     const funcCalls=respParts.filter(p=>p.functionCall);
     if(!funcCalls.length){
       const text = respParts.filter(p=>p.text).map(p=>p.text).join('').trim();
-      // Pokud po tools vrátil prázdný text, požádej o odpověď (max 2x retry)
+      // Pokud po tools vrátil prázdný text, požádej o odpověď (1 retry)
       if(!text && step > 0 && step < MAX_STEPS - 2){
-        contents.push({role:'user',parts:[{text:'DŮLEŽITÉ: Výsledky nástrojů máš výše. Teď napiš SVOU ODPOVĚĎ uživateli jako TEXT. NEVOLEJ další nástroje. Shrň co jsi zjistil a odpověz na otázku.'}]});
+        contents.push({role:'user',parts:[{text:'Výsledky nástrojů máš výše. Teď napiš SVOU ODPOVĚĎ jako TEXT.'}]});
         continue;
       }
       renderStats(aisDiv,Date.now()-t0,totalOut,geminiModel);
-      // Fallback: sebrat text z předchozích model zpráv
-      const allModelText = contents.filter(c=>c.role==='model').flatMap(c=>(c.parts||[]).filter(p=>p.text).map(p=>p.text)).join('\n').trim();
+      // Graceful fallback: sebrat text z předchozích model zpráv, nebo vrátit tool výsledky
       if(text) return text;
+      const allModelText = contents.filter(c=>c.role==='model').flatMap(c=>(c.parts||[]).filter(p=>p.text).map(p=>p.text)).join('\n').trim();
       if(allModelText) return allModelText;
-      throw new Error('Gemini: žádná textová odpověď po nástrojích');
+      // Poslední záchrana: vrátit tool výsledky jako text
+      const toolTexts = contents.filter(c=>c.role==='user').flatMap(c=>Array.isArray(c.parts)?c.parts:[]).filter(p=>p.functionResponse).map(p=>`${p.functionResponse.name}: ${p.functionResponse.response?.content||''}`).join('\n');
+      return toolTexts || '';
     }
     const funcResults=[];
     for(const p of funcCalls){
@@ -1949,9 +1951,7 @@ async function _geminiAgentLoopWithModel(userMsg, systemPrompt, aisDiv, fileSnap
   }
   renderStats(aisDiv,Date.now()-t0,totalOut,geminiModel);
   const last=contents.filter(c=>c.role==='model').pop();
-  const lastText = last?.parts?.filter(p=>p.text).map(p=>p.text).join('');
-  if(!lastText?.trim()) throw new Error('Gemini: žádná odpověď po '+MAX_STEPS+' krocích');
-  return lastText;
+  return last?.parts?.filter(p=>p.text).map(p=>p.text).join('')||'';
 }
 
 
@@ -2766,7 +2766,7 @@ async function claudeStream(messages, system, signal, onText=null){
   const r=await fetchWithRetry('https://api.anthropic.com/v1/messages',{
     method:'POST', signal,
     headers:{'Content-Type':'application/json','x-api-key':AI.claude.key,'anthropic-version':'2023-06-01','anthropic-dangerous-direct-browser-access':'true'},
-    body:JSON.stringify({model:'claude-sonnet-4-6',max_tokens:4096,system,tools:TOOL_DEFS,tool_choice:{type:'auto'},messages,stream:true})
+    body:JSON.stringify({model:'claude-sonnet-4-6',max_tokens:8192,system,tools:TOOL_DEFS,tool_choice:{type:'auto'},messages,stream:true})
   });
   if(!r.ok){const e=await r.json();throw new Error(e.error?.message||r.status);}
   const reader=r.body.getReader(); const dec=new TextDecoder();
@@ -4116,10 +4116,9 @@ function stripHidden(text){
 // Vyčistí worker odpověď pro Claudeho syntézu — odstraní reakce, think bloky, interní anotace
 function cleanForSynthesis(text){
   if(!text) return '';
-  // Odstraň "Reakce na kolegy:" sekce
   text = text.replace(/\n\n\*\*Reakce na kolegy:\*\*[\s\S]*$/i, '');
-  // Odstraň think bloky
   text = text.replace(/<think>[\s\S]*?<\/think>/gi, '');
+  text = text.replace(/<think>[\s\S]*/gi, ''); // unclosed
   return stripHidden(text);
 }
 function extractAndSaveSelfReview(agentKey, text){
@@ -5401,7 +5400,7 @@ Tvůj úkol: Vezmi tuto odpověď jako základ, ale vylepši ji na CEO úroveň:
 • Ověř fakta — co nemáš z webu označ [NEOVĚŘENO]
 • Výsledek musí být KOMPLETNÍ a DETAILNÍ — ne stručné shrnutí`;
           const otherAnswers = workerKeys.filter(k=>k!==bestKey&&assistantAnswers[k]).map(k=>`${AI[k]?.name||k}: ${cleanForSynthesis(assistantAnswers[k]).slice(0,1500)}`).join('\n\n');
-          const claudePrompt = `Otázka: ${fullMsg}\n\nNejlepší odpověď (${AI[bestKey]?.name||bestKey}):\n${bestAnswer.slice(0,8000)}${otherAnswers?'\n\nDalší pohledy od kolegů (zahrň relevantní poznatky):\n'+otherAnswers:''}\n\nTvoje finální profesionální odpověď:`;
+          const claudePrompt = `Otázka: ${fullMsg}\n\nNejlepší odpověď (${AI[bestKey]?.name||bestKey}):\n${bestAnswer.slice(0,8000)}${otherAnswers?'\n\nDalší pohledy od kolegů (zahrň relevantní poznatky):\n'+otherAnswers:''}\n\nTvoje finální profesionální odpověď (piš ROZSÁHLE — min. 300 slov, strukturovaně, se sekcemi):`;
           claudeVerdict = await claudeAgentLoop(claudePrompt, claudeSys, aisDiv, fileSnap, claudeBubble);
           updateBubbleLabel(claudeBubble, 'CLAUDE 👑 · schválil ✓');
           finishBubble(claudeBubble, claudeVerdict, null, true);
@@ -5437,7 +5436,7 @@ Tvůj úkol jako CEO:
 • Strukturuj do sekcí, použij odrážky, tabulky kde se hodí
 • Ověř fakta — co nemáš z webu označ [NEOVĚŘENO]
 Piš jako senior konzultant, ne jako chatbot.`;
-          const claudePrompt = `Otázka: ${fullMsg}\n\nRozbor od Geminiho:\n${annotated}\n\nTvoje opravená finální odpověď:`;
+          const claudePrompt = `Otázka: ${fullMsg}\n\nRozbor od Geminiho:\n${annotated}\n\nTvoje opravená finální odpověď (piš ROZSÁHLE — min. 300 slov, zahrň vše co víš):`;
           claudeVerdict = await claudeAgentLoop(claudePrompt, claudeSys, aisDiv, fileSnap, claudeBubble);
           updateBubbleLabel(claudeBubble, 'CLAUDE 👑 · zachránil a zlepšil');
           finishBubble(claudeBubble, claudeVerdict, null, true);
@@ -5477,7 +5476,7 @@ Tvůj úkol jako CEO — KOMPLETNÍ SYNTÉZA:
 • Výsledek musí být OBSÁHLEJŠÍ než jakákoli jednotlivá odpověď workera
 • Na konci přidej krátké CEO shrnutí / doporučení / další kroky
 • Ověř fakta — co nemáš z webu označ [NEOVĚŘENO]`;
-          const claudePrompt = `Otázka: ${fullMsg}\n\nHodnocení a odpovědi týmu:\n${annotated}\n\nTvoje kompletní profesionální syntéza (zahrň VŠECHNY relevantní poznatky):`;
+          const claudePrompt = `Otázka: ${fullMsg}\n\nHodnocení a odpovědi týmu:\n${annotated}\n\nTvoje kompletní profesionální syntéza (piš ROZSÁHLE — min. 400 slov, zahrň KAŽDÝ poznatek od každého workera, strukturuj do sekcí):`;
           claudeVerdict = await claudeAgentLoop(claudePrompt, claudeSys, aisDiv, fileSnap, claudeBubble);
           updateBubbleLabel(claudeBubble, `CLAUDE 👑 · syntéza (doporučení Geminiho)`);
           finishBubble(claudeBubble, claudeVerdict, null, true);
@@ -5527,7 +5526,7 @@ Tvůj úkol jako CEO — KOMPLETNÍ SYNTÉZA:
 • Strukturuj profesionálně — sekce, odrážky, tabulky kde se hodí
 • Výsledek musí být KOMPLETNÍ a na úrovni senior konzultanta
 Piš rozsáhleji a detailněji než kolega — jsi šéf, tvůj výstup je finální produkt.`;
-        const claudePrompt = `Otázka: ${fullMsg}\n\nOdpověď od ${AI[soloKey]?.name||'workera'}:\n${bestAnswer.slice(0,8000)}\n\nTvoje profesionální finální odpověď (rozšiř a doplň):`;
+        const claudePrompt = `Otázka: ${fullMsg}\n\nOdpověď od ${AI[soloKey]?.name||'workera'}:\n${bestAnswer.slice(0,8000)}\n\nTvoje profesionální finální odpověď (rozšiř na min. 300 slov, doplň vlastní analýzu a doporučení):`;
         claudeVerdict = await claudeAgentLoop(claudePrompt, claudeSys, aisDiv, fileSnap, claudeBubble);
         updateBubbleLabel(claudeBubble, 'CLAUDE 👑 · ✓');
         finishBubble(claudeBubble, claudeVerdict, null, true);
@@ -5710,15 +5709,18 @@ function finishBubble(id,text,error=null,isFinal=false){
     logStep(error.slice(0,70), 'error', null, lid);
   } else if(isFinal){
     el.classList.add('final');
-    el.innerHTML=formatText(text);
+    const cleanFinal = (text||'').replace(/<think>[\s\S]*?<\/think>/gi,'').replace(/<think>[\s\S]*/gi,'').trim();
+    el.innerHTML=formatText(cleanFinal);
     if(wrap) wrap.classList.remove('collapsed');
     finishLog();
     // Šéf nedostává reakce — hodnotí se jen workeři
   } else {
     // Worker odpověď — zabalená s preview, klikem rozbalitelná
-    const plainText = (text||'').replace(/<think>[\s\S]*?<\/think>/gi,'').replace(/[#*`\n]/g,' ').replace(/\s+/g,' ').trim();
+    // Strip think tags FIRST (including unclosed)
+    const cleanText = (text||'').replace(/<think>[\s\S]*?<\/think>/gi,'').replace(/<think>[\s\S]*/gi,'').trim();
+    const plainText = cleanText.replace(/[#*`\n]/g,' ').replace(/\s+/g,' ').trim();
     const preview = plainText.slice(0,100) + (plainText.length>100?'…':'');
-    const fullHtml = formatText(text);
+    const fullHtml = formatText(cleanText);
     const cid = 'wc_'+id;
     if(wrap) wrap.classList.add('worker-collapsed');
     el.innerHTML=`<div class="worker-preview" id="${cid}_p" onclick="document.getElementById('${cid}').style.display='block';this.style.display='none';this.closest('.msg-ai')?.classList.remove('worker-collapsed');" style="cursor:pointer;font-size:13px;color:var(--muted2);display:flex;align-items:flex-start;gap:6px;"><span style="opacity:.5;flex-shrink:0">▸</span><span>${escHtml(preview)}</span></div><div id="${cid}" class="worker-full">${fullHtml}<div onclick="this.parentElement.style.display='none';document.getElementById('${cid}_p').style.display='flex';this.closest('.msg-ai')?.classList.add('worker-collapsed');" style="cursor:pointer;font-size:11px;color:var(--muted);margin-top:6px;opacity:.6;user-select:none;">▴ Sbalit</div></div>`;
@@ -5828,6 +5830,8 @@ function formatText(t){
     thinkHtml = `<div class="think-block"><button class="think-toggle" onclick="document.getElementById('${id}').classList.toggle('open')">🧠 Myšlenky <span style="opacity:.5">▾</span></button><div class="think-content" id="${id}">${escHtml(thinkContent).replace(/\n/g,'<br>')}</div></div>`;
     mainText = t.replace(/<think>[\s\S]*?<\/think>/i,'').trim();
   }
+  // Handle unclosed <think> tags
+  mainText = mainText.replace(/<think>[\s\S]*/gi,'').trim();
   let html;
   try{ html = marked.parse(mainText); }
   catch(e){ html = escHtml(mainText).replace(/\n/g,'<br>'); }
@@ -5927,7 +5931,7 @@ function loadChat(id){
     for(const [k,v] of aiEntries){
       const ai=AI[k];
       const color=ai?.rawColor||'#888';
-      const cleanText = stripHidden(v);
+      const cleanText = stripHidden(v).replace(/<think>[\s\S]*?<\/think>/gi,'').replace(/<think>[\s\S]*/gi,'').trim();
       const isFinal = k==='claude' || aiEntries.length===1;
       const wrap=document.createElement('div');
       wrap.className='msg-ai';
