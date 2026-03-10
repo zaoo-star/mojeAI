@@ -1264,7 +1264,14 @@ async function executeTool(name, input, aisDiv){
       if(!noteContent) return '⚠️ Prázdná poznámka — nic neuloženo';
       taskNotes[noteKey]=noteContent;
       const all=JSON.parse(localStorage.getItem('agent-notes')||'{}');
-      all[noteKey]={content:noteContent,ts:Date.now()};
+      all[noteKey]={
+        content:noteContent,
+        ts:Date.now(),
+        saved_by: input.agent || 'unknown',
+        confidence: Number(input.confidence) || null,
+        source: input.source || null,
+        date: new Date().toISOString().slice(0,10)
+      };
       localStorage.setItem('agent-notes',JSON.stringify(all));
       return `✅ Uloženo jako "${noteKey}" (${noteContent.length} znaků)`;
     }
@@ -1272,11 +1279,20 @@ async function executeTool(name, input, aisDiv){
     case 'recall_notes':{
       const all={...JSON.parse(localStorage.getItem('agent-notes')||'{}'), ...Object.fromEntries(Object.entries(taskNotes).map(([k,v])=>[k,{content:v}]))};
       if(!Object.keys(all).length) return 'Žádné uložené poznámky.';
+      const fmtNote = ([k,v]) => {
+        let meta = [];
+        if(v.saved_by) meta.push(`by:${v.saved_by}`);
+        if(v.date) meta.push(v.date);
+        if(v.confidence) meta.push(`conf:${v.confidence}`);
+        if(v.source) meta.push(`src:${v.source}`);
+        if(v.type) meta.push(v.type);
+        return `[${k}]${meta.length?' ('+meta.join(', ')+')':''}\n${v.content||''}`;
+      };
       const query = input.query || input.keyword || input.key || 'all';
-      if(query==='all') return Object.entries(all).map(([k,v])=>`[${k}]:\n${v.content||''}`).join('\n\n---\n\n');
+      if(query==='all') return Object.entries(all).sort((a,b)=>(b[1].ts||0)-(a[1].ts||0)).slice(0,20).map(fmtNote).join('\n\n---\n\n');
       const q=(query+'').toLowerCase();
-      const hits=Object.entries(all).filter(([k,v])=>k.toLowerCase().includes(q)||(v.content||'').toLowerCase().includes(q));
-      return hits.length?hits.map(([k,v])=>`[${k}]:\n${v.content||''}`).join('\n\n---\n\n'):'Nic nenalezeno pro: '+query;
+      const hits=Object.entries(all).filter(([k,v])=>k.toLowerCase().includes(q)||(v.content||'').toLowerCase().includes(q)).sort((a,b)=>(b[1].ts||0)-(a[1].ts||0));
+      return hits.length?hits.map(fmtNote).join('\n\n---\n\n'):'Nic nenalezeno pro: '+query;
     }
 
     case 'delegate_task':{
@@ -1840,7 +1856,7 @@ async function openAIAgentLoop(key, userMsg, systemPrompt, aisDiv, bubbleId=null
       if(streamer) streamer.finish();
       msg=m; usage=u;
     } else {
-      let r=await fetchWithRetry(apiUrl,{method:'POST',signal,headers:{'Content-Type':'application/json','Authorization':`Bearer ${apiKey}`},body:JSON.stringify({model,max_tokens:maxTokens,messages,tools:getOpenAITools(),tool_choice:'auto'})});
+      let r=await fetchWithRetry(apiUrl,{method:'POST',signal,headers:{'Content-Type':'application/json','Authorization':`Bearer ${apiKey}`},body:JSON.stringify({model,max_tokens:maxTokens,messages,tools:getOpenAITools(),tool_choice:'auto',temperature:_adaptiveTemp||0.6})});
       // Groq rate limit fallback → přepni na rychlý malý model
       if(isGroq && (r.status===429||r.status===413)){
         model='llama-3.1-8b-instant';
@@ -1943,7 +1959,7 @@ async function _geminiAgentLoopWithModel(userMsg, systemPrompt, aisDiv, fileSnap
     if(signal?.aborted) throw new Error('Zrušeno');
     const r=await fetchWithRetry(`https://generativelanguage.googleapis.com/v1beta/models/${geminiModel}:generateContent?key=${AI.gemini.key}`,{
       method:'POST',signal,headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({systemInstruction:{parts:[{text:fullSystem}]},contents,tools:getGeminiTools(),toolConfig:{functionCallingConfig:{mode:'AUTO'}},generationConfig:{maxOutputTokens:1500}})
+      body:JSON.stringify({systemInstruction:{parts:[{text:fullSystem}]},contents,tools:getGeminiTools(),toolConfig:{functionCallingConfig:{mode:'AUTO'}},generationConfig:{maxOutputTokens:1500,temperature:_adaptiveTemp||0.6}})
     });
     if(!r.ok){const e=await r.json();throw new Error(e.error?.message||r.status);}
     const data=await r.json();
@@ -2797,7 +2813,7 @@ async function claudeStream(messages, system, signal, onText=null){
   const r=await fetchWithRetry('https://api.anthropic.com/v1/messages',{
     method:'POST', signal,
     headers:{'Content-Type':'application/json','x-api-key':AI.claude.key,'anthropic-version':'2023-06-01','anthropic-dangerous-direct-browser-access':'true'},
-    body:JSON.stringify({model:'claude-sonnet-4-6',max_tokens:8192,system,tools:TOOL_DEFS,tool_choice:{type:'auto'},messages,stream:true})
+    body:JSON.stringify({model:'claude-sonnet-4-6',max_tokens:8192,system,tools:TOOL_DEFS,tool_choice:{type:'auto'},messages,stream:true,temperature:_adaptiveTemp||0.6})
   });
   if(!r.ok){const e=await r.json();throw new Error(e.error?.message||r.status);}
   const reader=r.body.getReader(); const dec=new TextDecoder();
@@ -2836,7 +2852,7 @@ async function openAIStream(apiUrl, apiKey, model, messages, signal, onText=null
   const r=await fetchWithRetry(apiUrl,{
     method:'POST', signal,
     headers:{'Content-Type':'application/json','Authorization':`Bearer ${apiKey}`},
-    body:JSON.stringify({model,max_tokens:2048,messages,tools:getOpenAITools(),tool_choice:'auto',stream:true})
+    body:JSON.stringify({model,max_tokens:2048,messages,tools:getOpenAITools(),tool_choice:'auto',stream:true,temperature:_adaptiveTemp||0.6})
   });
   if(!r.ok){let em=r.status;try{const e=await r.json();em=e.error?.message||em;}catch{}throw new Error(em);}
   const reader=r.body.getReader(); const dec=new TextDecoder();
@@ -3027,6 +3043,24 @@ function getTeamHistoryContext(maxTurns=4) {
     out += '\n';
   }
   return out;
+}
+
+// Proaktivní recall_notes — hledá relevantní poznámky na základě klíčových slov z dotazu
+function proactiveRecallNotes(query){
+  if(!query || query.length < 5) return '';
+  const notes = JSON.parse(localStorage.getItem('agent-notes')||'{}');
+  if(!Object.keys(notes).length) return '';
+  const words = query.toLowerCase().replace(/[^a-záčďéěíňóřšťúůýž0-9\s]/g,'').split(/\s+/).filter(w=>w.length>3);
+  if(!words.length) return '';
+  const hits = Object.entries(notes)
+    .filter(([k,v]) => {
+      const text = (k+' '+(v.content||'')).toLowerCase();
+      return words.some(w=>text.includes(w));
+    })
+    .sort((a,b)=>(b[1].ts||0)-(a[1].ts||0))
+    .slice(0,5);
+  if(!hits.length) return '';
+  return '\n\n📌 Relevantní poznámky z minulých úkolů:\n' + hits.map(([k,v])=>`• ${v.content||k}`).join('\n');
 }
 
 
@@ -4744,14 +4778,16 @@ function analyzeMsg(txt) {
   const t = txt.trim().toLowerCase();
   const words = txt.trim().split(/\s+/).length;
   const needsDebate = words >= 4 && /proč|jak|vysvětli|porovnej|rozdíl|doporuč|analyz|napiš|vytvoř|pomoz|lepší|horší|vs\.?|versus|výhody|nevýhody|hodnocení|srovn|opinion|názor|měl bych|stojí za/.test(t);
-  // Kdy tým OPRAVDU pomáhá: debate/srovnání, research, kreativní brainstorming
-  // Kdy tým BRZDÍ: kód, matematika, překlad — Claude to zvládne líp a rychleji sám
   const isImageRequest = /nakresli|vytvoř obrázek|vygeneruj obrázek|generuj obrázek|udělej obrázek|draw|generate image|create image/i.test(t);
   const teamHurts = !isImageRequest && (
     /^(napiš kód|napiš funkci|napiš skript|napiš program|napiš třídu|napiš metodu|write code|write a function|oprav kód|debug|refactor|přelož|translate|spočítej|calculate)/.test(t)
     || /```[\s\S]|def \w+\(|class \w+|import \w|SELECT .* FROM|INSERT INTO|function \w+\(/.test(txt)
   );
   const teamBenefits = !teamHurts && needsDebate;
+  // Adaptive temperature
+  const isFactual = /kolik|cena|kurz|počasí|teplota|kdo je|kdy|kde|zákon|statistik|číslo|datum|aktuáln|stav|výsledek/.test(t);
+  const isCreative = /napiš|příběh|brainstorm|kreativní|nápady|slogan|reklam|příspěvek|post|text pro|blog|song|báseň|scénář|vymysli/.test(t);
+  const temperature = isFactual ? 0.2 : isCreative ? 0.9 : 0.6;
   return {
     isSimple: words <= 2 || /^(ahoj|čau|hey|hi|hello|dobrý den|díky|ok|jo|super|👍|🙏|haha)/.test(t),
     needsDebate,
@@ -4762,8 +4798,11 @@ function analyzeMsg(txt) {
     hasMath: /[\d]+[\s]*[\+\-\*\/][\s]*[\d]+/.test(txt),
     outputFormat: detectOutputFormat(txt),
     teamBenefits,
+    temperature,
   };
 }
+// Global: adaptive temperature for current message
+let _adaptiveTemp = 0.6;
 
 async function sendMessage() {
   if(isBusy)return;
@@ -4832,13 +4871,40 @@ async function sendMessage() {
   const fullMsg=fileSnap?(fileSnap.isImage?msgText:`${msgText}\n\nObsah souboru "${fileSnap.name}":\n\`\`\`\n${fileSnap.content.slice(0,12000)}\n\`\`\``):msgText;
 
   let claudeVerdict='', assistantAnswers={};
-  // Reset chybových stavů AI
+  // Reset per-message limit flags (not circuit breaker — that persists)
   for(const k of Object.keys(AI)) AI[k]._limitHit = false;
+
+  // ══ Circuit Breaker ══
+  // Po 3 selháních za posledních 10 min → agent se přeskočí automaticky
+  function isCircuitOpen(key){
+    const cb = JSON.parse(localStorage.getItem('circuit-breaker')||'{}');
+    const agent = cb[key];
+    if(!agent) return false;
+    const tenMinAgo = Date.now() - 10*60*1000;
+    // Vyfiltruj jen nedávné chyby
+    const recentFails = (agent.fails||[]).filter(t=>t>tenMinAgo);
+    if(recentFails.length >= 3) return true;
+    return false;
+  }
+  function recordCircuitFail(key){
+    const cb = JSON.parse(localStorage.getItem('circuit-breaker')||'{}');
+    if(!cb[key]) cb[key] = {fails:[]};
+    cb[key].fails.push(Date.now());
+    // Max 10 záznamů per agent
+    cb[key].fails = cb[key].fails.slice(-10);
+    localStorage.setItem('circuit-breaker', JSON.stringify(cb));
+  }
+  function resetCircuit(key){
+    const cb = JSON.parse(localStorage.getItem('circuit-breaker')||'{}');
+    if(cb[key]) cb[key].fails = [];
+    localStorage.setItem('circuit-breaker', JSON.stringify(cb));
+  }
 
   if(!hasClaude){
     // ════ TÝM KOLEGŮ ════
     const task = analyzeMsg(msgText);
     const projPrompt = getProjectPrompt();
+    _adaptiveTemp = task.temperature;
     const fmtInstruction = getFormatInstruction(task.outputFormat);
     const baseMsg = fullMsg + fmtInstruction + projPrompt;
 
@@ -4869,18 +4935,23 @@ async function sendMessage() {
     // ════ TÝM KOLEGŮ ════
     async function callTeamAI(key, userPrompt, bubbleId=null){
       const sig=currentAbortController?.signal;
-      const sys = getMdSystem(key) + getDatePrompt() + getMemoryPrompt() + getSearchPrompt();
+      const sys = getMdSystem(key) + getDatePrompt() + getMemoryPrompt() + getSearchPrompt() + proactiveRecallNotes(msgText);
       const ai = AI[key];
+      let result;
       if(key==='gemini'){
-        return await geminiAgentLoop(userPrompt, sys, aisDiv, fileSnap);
+        result = await geminiAgentLoop(userPrompt, sys, aisDiv, fileSnap);
       } else if(key==='chatgpt' || ai.url){
-        return await openAIAgentLoop(key, userPrompt, sys, aisDiv, bubbleId);
+        result = await openAIAgentLoop(key, userPrompt, sys, aisDiv, bubbleId);
       } else {
-        // Fallback: plain fetch with signal
         const r=await fetch(`https://api.openai.com/v1/chat/completions`,{method:'POST',signal:sig,headers:{'Content-Type':'application/json','Authorization':`Bearer ${ai.key}`},body:JSON.stringify({model:normalizeModel(ai),max_tokens:1500,messages:[{role:'system',content:sys},{role:'user',content:userPrompt}]})});
         if(!r.ok){const e=await r.json();throw new Error(e.error?.message||r.status);}
-        const d=await r.json();return d.choices?.[0]?.message?.content||'';
+        const d=await r.json(); result = d.choices?.[0]?.message?.content||'';
       }
+      // Guard: nikdy nevracej undefined/null/prázdno
+      if(!result || result==='undefined' || result==='null' || result.trim().length < 3){
+        throw new Error(`${AI[key]?.name||key}: prázdná nebo neplatná odpověď`);
+      }
+      return result;
     }
 
     // Znalostní báze: key → {text, vote:'souhlas'|'nesouhlas'|'doplnění'}
@@ -4901,6 +4972,12 @@ async function sendMessage() {
 
     for(let i=0; i<assistants.length; i++){
       const key = assistants[i];
+      // Circuit breaker
+      if(isCircuitOpen(key)){
+        updateLiveAgent(key, 'failed');
+        _teamFailures.push({key, reason:'⏸ Circuit breaker — agent dočasně vypnut'});
+        continue;
+      }
       updateLiveAgent(key, 'working');
       const _prevDone = assistants.slice(0,i).filter(k=>kb[k]?.text).length;
       const _bubLbl = _prevDone>0
@@ -4923,12 +5000,14 @@ async function sendMessage() {
         if(!text || text==='undefined' || text.trim().length < 3){
           kb[key] = {text:'', vote:'nesouhlas'};
           updateLiveAgent(key, 'failed');
+          recordCircuitFail(key);
           _teamFailures.push({key, reason:'Prázdná odpověď'});
           finishBubble(bubble, null, '⚠️ Agent vrátil prázdnou odpověď');
           continue;
         }
         kb[key] = {text, vote:'souhlas'};
         assistantAnswers[key] = text;
+        resetCircuit(key);
         updateLiveAgent(key, 'done');
         updateBubbleLabel(bubble, `${AI[key].name}`);
         // Solo agent bez Claude → rovnou final
@@ -4937,6 +5016,7 @@ async function sendMessage() {
       }catch(e){
         kb[key] = {text:'', vote:'nesouhlas'};
         updateLiveAgent(key, 'failed');
+        recordCircuitFail(key);
         _teamFailures.push({key, reason: e.message});
         const errLow = e.message.toLowerCase();
         if(errLow.includes('quota') || errLow.includes('rate') || errLow.includes('limit') || errLow.includes('insufficient') || errLow.includes('billing')){
@@ -5101,6 +5181,7 @@ Tvůj úkol jako syntetizátor — KOMPLETNÍ ODPOVĚĎ:
   // ════ CLAUDE PATH – s agent features ════
   const task = analyzeMsg(msgText);
   const projPrompt = getProjectPrompt();
+  _adaptiveTemp = task.temperature;
   const fmtInstruction = getFormatInstruction(task.outputFormat);
 
   // ── Start status logu pro Claude path ──
@@ -5199,6 +5280,12 @@ Tvůj úkol jako syntetizátor — KOMPLETNÍ ODPOVĚĎ:
 
     const agentFailures = []; // sbíráme chyby pro souhrn
     const runAgent = async (key, i) => {
+      // Circuit breaker: přeskoč agenta po 3+ selháních za 10 min
+      if(isCircuitOpen(key)){
+        updateLiveAgent(key, 'failed');
+        agentFailures.push({key, reason:'⏸ Circuit breaker — agent dočasně vypnut'});
+        return;
+      }
       updateLiveAgent(key, 'working');
       const bubble = addBubble(aisDiv, key, `${AI[key].name} · ${workerRoles[key]?.label||'zpracovává'}: „${msgText.slice(0,38)}${msgText.length>38?'…':''}"`, false, true);
       try {
@@ -5213,7 +5300,7 @@ Tvůj úkol jako syntetizátor — KOMPLETNÍ ODPOVĚĎ:
           ? `\n\n📋 Kolegové již odpověděli (přidej svůj UNIKÁTNÍ pohled, neopakuj co řekli):\n${peerContext}`
           : (routed.length>1 ? '\n\nJsi první kdo odpovídá. Kolegové odpovídají paralelně — zaměř se na SVOU specializaci.' : '');
         const assignedTask = (subtasks ? `${enrichedMsg}\n\nTvůj konkrétní podúkol: ${subtasks[i % subtasks.length]}` : enrichedMsg) + projPrompt + roleHint + workerHint + peerNote;
-        const sys = getMdSystem(key)+getDatePrompt()+getMemoryPrompt()+getSearchPrompt()+getTeamHistoryContext();
+        const sys = getMdSystem(key)+getDatePrompt()+getMemoryPrompt()+getSearchPrompt()+getTeamHistoryContext()+proactiveRecallNotes(msgText);
         let reply;
         if(key==='gemini') reply = await geminiAgentLoop(assignedTask, sys, aisDiv, fileSnap);
         else if(key==='chatgpt' || AI[key].url) reply = await openAIAgentLoop(key, assignedTask, sys, aisDiv, bubble);
@@ -5229,17 +5316,20 @@ Tvůj úkol jako syntetizátor — KOMPLETNÍ ODPOVĚĎ:
         // Guard: pokud agent vrátil prázdnou/undefined odpověď, zahoď
         if(!reply || reply==='undefined' || reply.trim().length < 3){
           updateLiveAgent(key, 'failed');
+          recordCircuitFail(key);
           agentFailures.push({key, reason:'Prázdná odpověď'});
           finishBubble(bubble, null, '⚠️ Agent vrátil prázdnou odpověď');
           return;
         }
         const cleanReply = stripHidden(reply);
         assistantAnswers[key] = cleanReply;
+        resetCircuit(key);
         updateLiveAgent(key, 'done');
         const isSoloFinal = routed.length === 1 && !AI.claude?.key;
         finishBubble(bubble, cleanReply, null, isSoloFinal);
       } catch(e) {
         updateLiveAgent(key, 'failed');
+        recordCircuitFail(key);
         agentFailures.push({key, reason: e.message});
         finishBubble(bubble, null, e.message);
       }
@@ -5395,10 +5485,38 @@ ODPOVĚZ POUZE TÍMTO JSON (bez markdown, bez pozdravu, bez vysvětlení):
           if(jsonMatch) try{ parsed = JSON.parse(jsonMatch[0]); }catch{}
         }
         if(!parsed || !parsed.scores){
-          // QM selhal — fallback: rovnoměrné skóre pro všechny
-          logStep('⚠️ QM: neplatný výstup, přeskakuji', 'error');
-          geminiVerdict = {scores:{}, best:workerKeys[0], avgScore:0.75, recommendation:'synthesize', reason:'QM nedal platné hodnocení'};
-          for(const k of workerKeys) geminiVerdict.scores[k] = {score:0.75, strengths:['N/A'], weaknesses:['N/A']};
+          // Retry s jednodušším promptem
+          logStep('⚠️ QM: retry s jednodušším formátem…', 'active');
+          try{
+            const simplePrompt = `Ohodnoť tyto AI odpovědi na otázku "${msgText.slice(0,200)}".
+${workerKeys.map(k=>`${k}: ${cleanForSynthesis(assistantAnswers[k]).slice(0,300)}`).join('\n')}
+
+Odpověz POUZE takto (JSON, nic jiného):
+{"best":"${workerKeys[0]}","avgScore":0.75,"recommendation":"synthesize","scores":{${workerKeys.map(k=>`"${k}":{"score":0.7,"strengths":["ok"],"weaknesses":["ok"]}`).join(',')}}}`;
+            const r2 = await fetch(geminiUrlSync(),{method:'POST',signal:currentAbortController?.signal,headers:{'Content-Type':'application/json'},body:JSON.stringify({systemInstruction:{parts:[{text:'Odpověz POUZE JSON. Žádný text před ani za JSON.'}]},contents:[{role:'user',parts:[{text:simplePrompt}]}],generationConfig:{maxOutputTokens:500,temperature:0.05}})});
+            if(r2.ok){
+              const d2=await r2.json();
+              const raw2=(d2.candidates?.[0]?.content?.parts?.[0]?.text||'').replace(/```json|```/g,'').trim();
+              const m2=raw2.match(/\{[\s\S]*\}/);
+              if(m2) try{ parsed=JSON.parse(m2[0]); }catch{}
+            }
+          }catch{}
+        }
+        if(!parsed || !parsed.scores){
+          // Inteligentní fallback na základě délky a obsahu odpovědí
+          logStep('⚠️ QM: fallback scoring', 'error');
+          geminiVerdict = {scores:{}, best:workerKeys[0], avgScore:0.75, recommendation:'synthesize', reason:'QM automatický fallback'};
+          let bestLen = 0;
+          for(const k of workerKeys){
+            const ans = assistantAnswers[k]||'';
+            const len = ans.length;
+            const hasData = /\d/.test(ans); // obsahuje čísla
+            const hasStructure = /\n/.test(ans); // víceřádkový
+            const score = Math.min(1, 0.5 + (len>200?0.1:0) + (len>500?0.1:0) + (hasData?0.1:0) + (hasStructure?0.1:0));
+            geminiVerdict.scores[k] = {score, strengths:[len>300?'obsáhlá odpověď':'stručná'], weaknesses:[len<100?'příliš krátká':'']};
+            if(len>bestLen){ bestLen=len; geminiVerdict.best=k; }
+          }
+          geminiVerdict.avgScore = Object.values(geminiVerdict.scores).reduce((s,v)=>s+v.score,0)/workerKeys.length;
         } else {
           geminiVerdict = parsed;
         }
